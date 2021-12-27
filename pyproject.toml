@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "cook-import"
+version = "0.1.0"
+description = ""
+authors = ["Alexey Dubovskoy <dubovskoy.a@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+recipe-scrapers = "^13.10.0"
+parse-ingredients = "^0.0.3"
+
+[tool.poetry.dev-dependencies]
+
+[tool.poetry.scripts]
+cook-import = 'cook-import:main'
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

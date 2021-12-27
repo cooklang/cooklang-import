@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+import sys
+from recipe_scrapers import scrape_me
+from parse_ingredients import parse_ingredient
+
+# give the url as a string, it can be url from any site listed below
+scraper = scrape_me(sys.argv[1])
+
+# Q: What if the recipe site I want to extract information from is not listed below?
+# A: You can give it a try with the wild_mode option! If there is Schema/Recipe available it will work just fine.
+# scraper = scrape_me('https://www.feastingathome.com/tomato-risotto/', wild_mode=True)
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+eprint("Title", scraper.title())
+eprint("Image", scraper.image())
+
+instructions = scraper.instructions()
+
+for combined_ingredient in scraper.ingredients():
+    parsed = parse_ingredient(combined_ingredient)
+
+    index = instructions.find(parsed.name)
+
+    eprint("")
+    eprint("Searching ingredient: ", parsed.name, "✅" if index > -1 else "❌")
+
+    if index > -1:
+        start = index - 5
+        end = start + len(parsed.name) + 5
+
+        if start < 0:
+            start = 0
+        if end > len(instructions):
+            end = len(instructions)
+
+        eprint("Found near", instructions[start:end])
+
+        instructions = instructions.replace(parsed.name, f'@{parsed.name}{{{parsed.quantity}%{parsed.unit}}}', 1)
+
+
+eprint("")
+eprint("")
+print("\n\n".join(instructions.splitlines()))
