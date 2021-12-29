@@ -139,12 +139,15 @@ requests = ">=2.18.4"
 
 [[package]]
 name = "parse-ingredients"
-version = "0.0.3"
+version = "0.0.4"
 description = "Parse strings of ingredients to their name, unit, quantity and optional comments."
 category = "main"
 optional = false
 python-versions = ">=3.6"
 
+[package.source]
+type = "url"
+url = "https://github.com/cooklang/parse-ingredients/archive/refs/tags/v0.0.4.tar.gz"
 [[package]]
 name = "pyparsing"
 version = "3.0.6"
@@ -278,7 +281,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "70159770234d6a762e8ecbd676a22e371fa4c06688a50ab89282329c07966088"
+content-hash = "fb8abe60d05d767c419421fff538efb14ac375fba662b841c95895b9f1dd66e1"
 
 [metadata.files]
 beautifulsoup4 = [
@@ -381,10 +384,7 @@ lxml = [
 mf2py = [
     {file = "mf2py-1.1.2.tar.gz", hash = "sha256:84f1f8f2ff3f1deb1c30be497e7ccd805452996a662fd4a77f09e0105bede2c9"},
 ]
-parse-ingredients = [
-    {file = "parse-ingredients-0.0.3.tar.gz", hash = "sha256:246ad718be7dfcba2411cd4cfd84c7a13462d9869ef1889739f1659075e69dd3"},
-    {file = "parse_ingredients-0.0.3-py3-none-any.whl", hash = "sha256:73084dfeadcdac24e0c3e6138f8ad549b87de24ec3fe05d802c9aba75b2be847"},
-]
+parse-ingredients = []
 pyparsing = [
     {file = "pyparsing-3.0.6-py3-none-any.whl", hash = "sha256:04ff808a5b90911829c55c4e26f75fa5ca8a2f5f36aa3a51f68e27033341d3e4"},
     {file = "pyparsing-3.0.6.tar.gz", hash = "sha256:d9bdec0013ef1eb5a84ab39a3b3868911598afa494f5faa038647101504e2b81"},

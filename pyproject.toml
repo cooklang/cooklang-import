@@ -7,7 +7,7 @@ authors = ["Alexey Dubovskoy <dubovskoy.a@gmail.com>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 recipe-scrapers = "^13.10.0"
-parse-ingredients = "^0.0.3"
+parse-ingredients = {url = "https://github.com/cooklang/parse-ingredients/archive/refs/tags/v0.0.4.tar.gz"}
 
 [tool.poetry.dev-dependencies]
 
