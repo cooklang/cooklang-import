@@ -1,46 +1,106 @@
 #!/usr/bin/env python3
 
+import argparse
+import re
 import sys
+
 from recipe_scrapers import scrape_me
 from parse_ingredients import parse_ingredient
 
+from utils import eprint, sub_lists, write_to_file
+
+
+parser = argparse.ArgumentParser(
+    description="Automatically extract recipes from online websites."
+)
+parser.add_argument("--link", help="Input a url link to a recipe")
+parser.add_argument(
+    "--file",
+    help="If you want the output to be in a file, use this flag. Otherwise defaults to console screen.",
+    action="store_true",
+)
+args = parser.parse_args()
+
 # give the url as a string, it can be url from any site listed below
-scraper = scrape_me(sys.argv[1])
+scraper = scrape_me(args.link)
 
 # Q: What if the recipe site I want to extract information from is not listed below?
 # A: You can give it a try with the wild_mode option! If there is Schema/Recipe available it will work just fine.
 # scraper = scrape_me('https://www.feastingathome.com/tomato-risotto/', wild_mode=True)
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+title = scraper.title()
+image = scraper.image()
+total_time = scraper.total_time()
 
-eprint("Title", scraper.title())
-eprint("Image", scraper.image())
+eprint("Title", title)
+eprint("Image", image)
 
 instructions = scraper.instructions()
+# Remove those pesky punctuation
+ingredients_list = [
+    parse_ingredient(re.sub(r"\.", "", ingredient))
+    for ingredient in scraper.ingredients()
+]
 
-for combined_ingredient in scraper.ingredients():
-    parsed = parse_ingredient(combined_ingredient)
+# Convert the timers
+time_regex_match_str = r"(\d+|\d+\.\d+|\d+-\d+|\d+ to \d+) (min(?:utes)?|hours?|days?)"
+instructions = re.sub(time_regex_match_str, r"~{\1%\2}", instructions)
 
-    index = instructions.find(parsed.name)
+for combined_ingredient in ingredients_list:
+
+    quantity = combined_ingredient.quantity
+    unit = combined_ingredient.unit
+
+    # remove extra characters aka ')'
+    ingredient_fixed = re.sub(r" ?\)", "", combined_ingredient.name)
+
+    # Create sublists for word matches
+    # Idea is to greedly match as many words as possible
+    ing_list = sub_lists(ingredient_fixed.split(" "))
+
+    # Filter out empty sublist
+    ing_list = list(filter(lambda x: len(x) > 0, ing_list))
+
+    # Remove single stop words
+    ing_list = list(
+        filter(lambda x: x[0] not in {"and", "or", "for", "the", "of"}, ing_list)
+    )
+
+    # Now generate regex string to  match
+    ing_list = sorted(ing_list, reverse=True, key=lambda x: len(x))
+    ing_regex_match_str = "|".join(list(map(lambda x: fr'\b{" ".join(x)}\b', ing_list)))
+    ing_regex_match_str = "(?:[^@])(" + ing_regex_match_str + ")"
+    # regex match the text
+    match_obj = re.search(ing_regex_match_str, instructions, flags=re.I)
 
     eprint("")
-    eprint("Searching ingredient: ", parsed.name, "✅" if index > -1 else "❌")
+    eprint(
+        "Searching ingredient: ",
+        combined_ingredient.name,
+        "✅" if match_obj is not None else "❌",
+    )
 
-    if index > -1:
-        start = index - 5
-        end = start + len(parsed.name) + 5
+    # If no match skip ingredient
+    if match_obj is None:
+        continue
 
-        if start < 0:
-            start = 0
-        if end > len(instructions):
-            end = len(instructions)
+    match_start = match_obj.start(1)
+    match_end = match_obj.end(1)
 
-        eprint("Found near", instructions[start:end])
+    ing_replacement = f"@{match_obj[1]}{{{quantity}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity}}}"
+    instructions = (
+        instructions[0:match_start]
+        + ing_replacement
+        + instructions[match_obj.end() :]
+    )
 
-        instructions = instructions.replace(parsed.name, f'@{parsed.name}{{{parsed.quantity}%{parsed.unit}}}', 1)
 
-
-eprint("")
-eprint("")
-print("\n\n".join(instructions.splitlines()))
+if args.file:
+    write_to_file(title, args.link, total_time, image, instructions)
+else:
+    eprint("")
+    eprint(f"{title}")
+    eprint(f">> source: {args.link}")
+    eprint(f">> time required: {total_time} minutes")
+    eprint(f">> image: {image}\n")
+    eprint(instructions)
