@@ -32,6 +32,6 @@ def write_to_file(title, link, total_time, image, instructions):
     """
     with open(f"{title}.cook", "w") as outfile:
         outfile.write(f">> source: {sys.argv[1]}\n")
-        outfile.write(f">> time required: {total_time}\n")
+        outfile.write(f">> time required: {total_time} minutes\n")
         outfile.write(f">> image: {image}\n\n")
         outfile.write(instructions)

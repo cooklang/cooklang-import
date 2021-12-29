@@ -43,18 +43,13 @@ ingredients_list = [
 ]
 
 # Convert the timers
-time_regex_match_str = r"(\d+|\d+\.\d+|\d+-\d+) (min(?:utes)?|hours?|days?)"
+time_regex_match_str = r"(\d+|\d+\.\d+|\d+-\d+|\d+ to \d+) (min(?:utes)?|hours?|days?)"
 instructions = re.sub(time_regex_match_str, r"~{\1%\2}", instructions)
-print(instructions)
+
 for combined_ingredient in ingredients_list:
 
     quantity = combined_ingredient.quantity
     unit = combined_ingredient.unit
-
-    # Forces ingredients to have a unit
-    # Completely optional here
-    if unit == "":
-        continue
 
     # remove extra characters aka ')'
     ingredient_fixed = re.sub(r" ?\)", "", combined_ingredient.name)
@@ -75,9 +70,8 @@ for combined_ingredient in ingredients_list:
     ing_list = sorted(ing_list, reverse=True, key=lambda x: len(x))
     ing_regex_match_str = "|".join(list(map(lambda x: fr'\b{" ".join(x)}\b', ing_list)))
     ing_regex_match_str = "(?:[^@])(" + ing_regex_match_str + ")"
-
     # regex match the text
-    match_obj = re.search(ing_regex_match_str, instructions)
+    match_obj = re.search(ing_regex_match_str, instructions, flags=re.I)
 
     eprint("")
     eprint(
@@ -93,9 +87,10 @@ for combined_ingredient in ingredients_list:
     match_start = match_obj.start(1)
     match_end = match_obj.end(1)
 
+    ing_replacement = f"@{match_obj[1]}{{{quantity}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity}}}"
     instructions = (
         instructions[0:match_start]
-        + f"@{match_obj[1]}{{{quantity}%{unit}}}"
+        + ing_replacement
         + instructions[match_obj.end() :]
     )
 
@@ -106,6 +101,6 @@ else:
     eprint("")
     eprint(f"{title}")
     eprint(f">> source: {args.link}")
-    eprint(f">> time required: {total_time}")
+    eprint(f">> time required: {total_time} minutes")
     eprint(f">> image: {image}\n")
     eprint(instructions)
