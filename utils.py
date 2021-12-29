@@ -19,6 +19,18 @@ def sub_lists(l):
             lists.append(l[j:i])
     return lists
 
+def highlight_replacement_in_text(instructions, match_start, match_end):
+    start = match_start - 18
+    end = match_end + 18
+
+    if start < 0:
+        start = 0
+
+    if end > len(instructions):
+        end = lent(instructions)
+
+    eprint("...", instructions[start:end], "...")
+    eprint(" " * (3 + match_start - start), "^" * (match_end - match_start))
 
 def write_to_file(title, link, total_time, image, instructions):
     """

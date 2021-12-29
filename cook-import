@@ -7,7 +7,7 @@ import sys
 from recipe_scrapers import scrape_me
 from parse_ingredients import parse_ingredient
 
-from utils import eprint, sub_lists, write_to_file
+from utils import eprint, sub_lists, write_to_file, highlight_replacement_in_text
 
 
 parser = argparse.ArgumentParser(
@@ -32,8 +32,8 @@ title = scraper.title()
 image = scraper.image()
 total_time = scraper.total_time()
 
-eprint("Title", title)
-eprint("Image", image)
+eprint("Title:", title)
+eprint("Image:", image)
 
 instructions = scraper.instructions()
 # Remove those pesky punctuation
@@ -75,9 +75,8 @@ for combined_ingredient in ingredients_list:
 
     eprint("")
     eprint(
-        "Searching ingredient: ",
-        combined_ingredient.name,
         "✅" if match_obj is not None else "❌",
+        f'@{combined_ingredient.name}{{{combined_ingredient.quantity}%{combined_ingredient.unit}}}'
     )
 
     # If no match skip ingredient
@@ -87,6 +86,8 @@ for combined_ingredient in ingredients_list:
     match_start = match_obj.start(1)
     match_end = match_obj.end(1)
 
+    highlight_replacement_in_text(instructions, match_start, match_end)
+
     ing_replacement = f"@{match_obj[1]}{{{quantity}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity}}}"
     instructions = (
         instructions[0:match_start]
@@ -94,6 +95,8 @@ for combined_ingredient in ingredients_list:
         + instructions[match_obj.end() :]
     )
 
+
+instructions = instructions.replace("\n", "\n\n")
 
 if args.file:
     write_to_file(title, args.link, total_time, image, instructions)
