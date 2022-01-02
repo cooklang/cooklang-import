@@ -76,7 +76,7 @@ for combined_ingredient in ingredients_list:
     eprint("")
     eprint(
         "✅" if match_obj is not None else "❌",
-        f'@{combined_ingredient.name}{{{combined_ingredient.quantity}%{combined_ingredient.unit}}}'
+        f"@{combined_ingredient.name}{{{quantity:.0f}%{unit}}}" if unit != "" else f"@{combined_ingredient.name}{{{quantity:.0f}}}"
     )
 
     # If no match skip ingredient
@@ -88,7 +88,7 @@ for combined_ingredient in ingredients_list:
 
     highlight_replacement_in_text(instructions, match_start, match_end)
 
-    ing_replacement = f"@{match_obj[1]}{{{quantity}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity}}}"
+    ing_replacement = f"@{match_obj[1]}{{{quantity:.0f}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity:.0f}}}"
     instructions = (
         instructions[0:match_start]
         + ing_replacement
