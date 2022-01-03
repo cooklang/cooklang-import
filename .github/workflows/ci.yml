@@ -27,6 +27,12 @@ jobs:
       - name: Build binary
         run: poetry run pyinstaller cook-import.spec
 
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v2
+        with:
+          path: "dist/cook-import"
+          name: Linux binary
+
 
   build_macos:
     if: ${{ false }}
