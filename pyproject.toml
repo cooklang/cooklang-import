@@ -5,9 +5,10 @@ description = ""
 authors = ["Alexey Dubovskoy <dubovskoy.a@gmail.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.8,<3.11"
 recipe-scrapers = "^13.10.0"
 parse-ingredients = {url = "https://github.com/cooklang/parse-ingredients/archive/refs/tags/v0.0.4.tar.gz"}
+pyinstaller = "^4.7"
 
 [tool.poetry.dev-dependencies]
 
