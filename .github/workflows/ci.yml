@@ -24,3 +24,6 @@ jobs:
 
       - name: Install dependencies
         run: poetry install
+
+      - name: Build binary
+        run: poetry run pyinstaller cook-import.spec
