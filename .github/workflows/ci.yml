@@ -3,10 +3,10 @@ on: pull_request
 
 jobs:
   build_linux:
-    name: Build macOS binary
+    name: Build Linux binary
     runs-on: ubuntu-latest
     env:
-      PYTHON_VERSION: "3.10.0"
+      PYTHON_VERSION: "3.9.0"
       POETRY_VERSION: "1.1.11"
 
     steps:
@@ -29,6 +29,7 @@ jobs:
 
 
   build_macos:
+    if: ${{ false }}
     name: Build macOS binary
     runs-on: macos-11
     env:
