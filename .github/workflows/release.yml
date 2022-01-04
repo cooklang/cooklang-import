@@ -31,12 +31,13 @@ jobs:
       - name: Build binary
         run: poetry run pyinstaller cook-import.spec
 
-      - name: Tar files
-        run: tar -czvf cook-import_${{ github.ref }}_linux_amd64.tar.gz ./dist/cook-import
-
       - name: Get tag/branch name
         id: vars
         run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
+
+      - name: Tar files
+        run: tar -czvf cook-import_${{ steps.vars.outputs.tag }}_linux_amd64.tar.gz ./dist/cook-import
+
 
       - name: Upload Linux binary
         uses: actions/upload-artifact@v2
