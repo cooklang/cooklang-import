@@ -1,5 +1,9 @@
-name: CI
-on: pull_request
+name: Release
+on:
+  push:
+    tags:
+      - '*'
+
 
 jobs:
   build_linux:
@@ -27,12 +31,33 @@ jobs:
       - name: Build binary
         run: poetry run pyinstaller cook-import.spec
 
+      - name: Tar files
+        run: tar -czvf cook-import_${{ github.ref }}_linux_amd64.tar.gz ./dist/cook-import
+
+      - name: Get tag/branch name
+        id: vars
+        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
+
       - name: Upload Linux binary
         uses: actions/upload-artifact@v2
         with:
-          path: "dist/cook-import"
-          name: Linux binary
+          path: "*.tar.gz"
+          name: Linux Binary
 
+      - name: Create Release (on Tag only)
+        id: create_release
+        uses: ncipollo/release-action@v1
+        if: contains(github.ref, 'refs/tags/')
+        with:
+          tag: ${{ github.ref }}
+          name: ${{ steps.vars.outputs.tag }}
+          draft: true
+          prerelease: true
+          allowUpdates: true
+          omitNameDuringUpdate: true
+          replacesArtifacts: true
+          artifacts: "*.tar.gz"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build_macos:
     if: ${{ false }}
