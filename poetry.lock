@@ -1,4 +1,12 @@
 [[package]]
+name = "altgraph"
+version = "0.17.2"
+description = "Python graph (network) package"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.10.0"
 description = "Screen-scraping library"
@@ -53,6 +61,14 @@ w3lib = "*"
 
 [package.extras]
 cli = ["requests"]
+
+[[package]]
+name = "future"
+version = "0.18.2"
+description = "Clean single-source support for Python 3 and 2"
+category = "main"
+optional = false
+python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "html-text"
@@ -125,6 +141,17 @@ htmlsoup = ["beautifulsoup4"]
 source = ["Cython (>=0.29.7)"]
 
 [[package]]
+name = "macholib"
+version = "1.15.2"
+description = "Mach-O header analysis and editing"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+altgraph = ">=0.15"
+
+[[package]]
 name = "mf2py"
 version = "1.1.2"
 description = "Python Microformats2 parser"
@@ -148,6 +175,45 @@ python-versions = ">=3.6"
 [package.source]
 type = "url"
 url = "https://github.com/cooklang/parse-ingredients/archive/refs/tags/v0.0.4.tar.gz"
+
+[[package]]
+name = "pefile"
+version = "2021.9.3"
+description = "Python PE parsing module"
+category = "main"
+optional = false
+python-versions = ">=3.6.0"
+
+[package.dependencies]
+future = "*"
+
+[[package]]
+name = "pyinstaller"
+version = "4.7"
+description = "PyInstaller bundles a Python application and all its dependencies into a single package."
+category = "main"
+optional = false
+python-versions = "<3.11,>=3.6"
+
+[package.dependencies]
+altgraph = "*"
+macholib = {version = ">=1.8", markers = "sys_platform == \"darwin\""}
+pefile = {version = ">=2017.8.1", markers = "sys_platform == \"win32\""}
+pyinstaller-hooks-contrib = ">=2020.6"
+pywin32-ctypes = {version = ">=0.2.0", markers = "sys_platform == \"win32\""}
+
+[package.extras]
+encryption = ["tinyaes (>=1.0.0)"]
+hook_testing = ["pytest (>=2.7.3)", "execnet (>=1.5.0)", "psutil"]
+
+[[package]]
+name = "pyinstaller-hooks-contrib"
+version = "2021.4"
+description = "Community maintained hooks for PyInstaller"
+category = "main"
+optional = false
+python-versions = "*"
+
 [[package]]
 name = "pyparsing"
 version = "3.0.6"
@@ -170,6 +236,14 @@ python-versions = "*"
 [package.dependencies]
 html5lib = "*"
 rdflib = "*"
+
+[[package]]
+name = "pywin32-ctypes"
+version = "0.2.0"
+description = ""
+category = "main"
+optional = false
+python-versions = "*"
 
 [[package]]
 name = "rdflib"
@@ -280,10 +354,14 @@ python-versions = "*"
 
 [metadata]
 lock-version = "1.1"
-python-versions = "^3.8"
-content-hash = "fb8abe60d05d767c419421fff538efb14ac375fba662b841c95895b9f1dd66e1"
+python-versions = ">=3.8,<3.11"
+content-hash = "6c7b40276a6d78b389ae27fc427adf1fe32e13535da5b9f88aee5c1a724f75ba"
 
 [metadata.files]
+altgraph = [
+    {file = "altgraph-0.17.2-py2.py3-none-any.whl", hash = "sha256:743628f2ac6a7c26f5d9223c91ed8ecbba535f506f4b6f558885a8a56a105857"},
+    {file = "altgraph-0.17.2.tar.gz", hash = "sha256:ebf2269361b47d97b3b88e696439f6e4cbc607c17c51feb1754f90fb79839158"},
+]
 beautifulsoup4 = [
     {file = "beautifulsoup4-4.10.0-py3-none-any.whl", hash = "sha256:9a315ce70049920ea4572a4055bc4bd700c940521d36fc858205ad4fcde149bf"},
     {file = "beautifulsoup4-4.10.0.tar.gz", hash = "sha256:c23ad23c521d818955a4151a67d81580319d4bf548d3d49f4223ae041ff98891"},
@@ -299,6 +377,9 @@ charset-normalizer = [
 extruct = [
     {file = "extruct-0.13.0-py2.py3-none-any.whl", hash = "sha256:fe19b9aefdb4dfbf828c2b082b81a363a03a44c7591c2d6b62ca225cb8f8c0be"},
     {file = "extruct-0.13.0.tar.gz", hash = "sha256:50a5b5bac4c5e19ecf682bf63a28fde0b1bb57433df7057371f60b58c94a2c64"},
+]
+future = [
+    {file = "future-0.18.2.tar.gz", hash = "sha256:b1bead90b70cf6ec3f0710ae53a525360fa360d306a86583adc6bf83a4db537d"},
 ]
 html-text = [
     {file = "html_text-0.5.2-py2.py3-none-any.whl", hash = "sha256:3f1e063f05eddf3e099a88f0440219c55fdc01c44f1291fe59c66e5228d7fc56"},
@@ -381,10 +462,32 @@ lxml = [
     {file = "lxml-4.7.1-pp38-pypy38_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_24_x86_64.whl", hash = "sha256:447d5009d6b5447b2f237395d0018901dcc673f7d9f82ba26c1b9f9c3b444b60"},
     {file = "lxml-4.7.1.tar.gz", hash = "sha256:a1613838aa6b89af4ba10a0f3a972836128801ed008078f8c1244e65958f1b24"},
 ]
+macholib = [
+    {file = "macholib-1.15.2-py2.py3-none-any.whl", hash = "sha256:885613dd02d3e26dbd2b541eb4cc4ce611b841f827c0958ab98656e478b9e6f6"},
+    {file = "macholib-1.15.2.tar.gz", hash = "sha256:1542c41da3600509f91c165cb897e7e54c0e74008bd8da5da7ebbee519d593d2"},
+]
 mf2py = [
     {file = "mf2py-1.1.2.tar.gz", hash = "sha256:84f1f8f2ff3f1deb1c30be497e7ccd805452996a662fd4a77f09e0105bede2c9"},
 ]
 parse-ingredients = []
+pefile = [
+    {file = "pefile-2021.9.3.tar.gz", hash = "sha256:344a49e40a94e10849f0fe34dddc80f773a12b40675bf2f7be4b8be578bdd94a"},
+]
+pyinstaller = [
+    {file = "pyinstaller-4.7-py3-none-macosx_10_13_universal2.whl", hash = "sha256:0f488407108dd4e0531576552514889b2d5620367c81a177dfbe1eb628ad7a8c"},
+    {file = "pyinstaller-4.7-py3-none-manylinux2014_aarch64.whl", hash = "sha256:5a130e2cf694975787026db1839b53c833b8d4922d850703c7076a06774cb6af"},
+    {file = "pyinstaller-4.7-py3-none-manylinux2014_i686.whl", hash = "sha256:fea70754a8cdca04763d0cdbbb9b8b07854355232c8f512bc7211e2c07361c06"},
+    {file = "pyinstaller-4.7-py3-none-manylinux2014_x86_64.whl", hash = "sha256:03636feec822de1d23d9753054f0b1229fb23d58723ae796f41b1127fc54f572"},
+    {file = "pyinstaller-4.7-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:c766e1d643f8820fe70d12c3690911bc43556ae97e12885e2925fa43bc1e7649"},
+    {file = "pyinstaller-4.7-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:ba410e9aadae61aa9172d56180ca381b3ad7abd721a31495db21cc82ede4003b"},
+    {file = "pyinstaller-4.7-py3-none-win32.whl", hash = "sha256:7942ac8043e538422fe9c6733fe201e4d765d31ad13ff40bcc7b9bf4c2d0ad64"},
+    {file = "pyinstaller-4.7-py3-none-win_amd64.whl", hash = "sha256:c8d3b4e64b0e6c1c837b5215077675796a7d95679245b40843343d647465fb69"},
+    {file = "pyinstaller-4.7.tar.gz", hash = "sha256:2c7f4810dc5272ec1b388a7f1ff6b56d38653c1b0c9ac2d9dd54fa06b590e372"},
+]
+pyinstaller-hooks-contrib = [
+    {file = "pyinstaller-hooks-contrib-2021.4.tar.gz", hash = "sha256:775b52200b39e12c95cc24f809eb050a97110fee819d178ebfde214f0f51e5f4"},
+    {file = "pyinstaller_hooks_contrib-2021.4-py2.py3-none-any.whl", hash = "sha256:60a57e4057fa2183bbaa81f10401a27eb7dd701ef8a11b287bb6345b571f94e7"},
+]
 pyparsing = [
     {file = "pyparsing-3.0.6-py3-none-any.whl", hash = "sha256:04ff808a5b90911829c55c4e26f75fa5ca8a2f5f36aa3a51f68e27033341d3e4"},
     {file = "pyparsing-3.0.6.tar.gz", hash = "sha256:d9bdec0013ef1eb5a84ab39a3b3868911598afa494f5faa038647101504e2b81"},
@@ -392,6 +495,10 @@ pyparsing = [
 pyrdfa3 = [
     {file = "pyRdfa3-3.5.3-py3-none-any.whl", hash = "sha256:4da7ed49e8f524b573ed67e4f7bc7f403bff3be00546d7438fe263c924a91ccf"},
     {file = "pyRdfa3-3.5.3.tar.gz", hash = "sha256:157663a92b87df345b6f69bde235dff5f797891608e12fe1e4fa8dad687131ae"},
+]
+pywin32-ctypes = [
+    {file = "pywin32-ctypes-0.2.0.tar.gz", hash = "sha256:24ffc3b341d457d48e8922352130cf2644024a4ff09762a2261fd34c36ee5942"},
+    {file = "pywin32_ctypes-0.2.0-py2.py3-none-any.whl", hash = "sha256:9dc2d991b3479cc2df15930958b674a48a227d5361d413827a4cfd0b5876fc98"},
 ]
 rdflib = [
     {file = "rdflib-6.1.1-py3-none-any.whl", hash = "sha256:fc81cef513cd552d471f2926141396b633207109d0154c8e77926222c70367fe"},
