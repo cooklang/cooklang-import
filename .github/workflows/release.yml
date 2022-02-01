@@ -61,7 +61,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
   build_macos:
-    if: ${{ false }}
     name: Build macOS binary
     runs-on: macos-11
     env:
@@ -72,7 +71,7 @@ jobs:
       # # We need the official Python, because the GA ones only support newer macOS versions
       # # The deployment target is picked up by the Python build tools automatically
       # # If updated, make sure to also set LSMinimumSystemVersion in SABnzbd.spec
-      PYTHON_VERSION: "3.10.0"
+      PYTHON_VERSION: "3.10.2"
       POETRY_VERSION: "1.1.11"
       MACOSX_DEPLOYMENT_TARGET: "10.9"
       # We need to force compile for universal2 support
@@ -90,7 +89,18 @@ jobs:
         if: steps.cache-python-download.outputs.cache-hit != 'true'
         run: curl https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg -o ~/python.pkg
       - name: Install Python
-        run: sudo installer -pkg ~/python.pkg -target /
+        run: |
+          sudo installer -pkg ~/python.pkg -target /
+          unlink /usr/local/bin/python
+          ln -s /usr/local/bin/python3 /usr/local/bin/python
+      - name: Cache Python virtualenv
+        uses: syphar/restore-virtualenv@v1.2
+        id: cache-virtualenv
+        with:
+          custom_cache_key_element: "release"
+          requirement_files: |
+            **/requirements.txt
+            PKG-INFO
       - name: Run image
         uses: abatilo/actions-poetry@v2.0.0
         with:
@@ -103,3 +113,22 @@ jobs:
 
       - name: Build binary
         run: poetry run pyinstaller cook-import.spec
+
+      - name: Import macOS codesign certificates
+        uses: apple-actions/import-codesign-certs@v1
+        if: env.SIGNING_AUTH
+        with:
+          p12-file-base64: ${{ secrets.CERTIFICATES_P12 }}
+          p12-password: ${{ secrets.CERTIFICATES_P12_PASSWORD }}
+      - name: Build macOS binary
+        run: |
+          python3 builder/package.py app
+          python3 builder/make_dmg.py
+      - name: Upload macOS binary
+        uses: actions/upload-artifact@v2
+        with:
+          path: "*-osx.dmg"
+          name: macOS binary (not notarized)
+      - name: Prepare official release
+        if: env.AUTOMATION_GITHUB_TOKEN && startsWith(github.ref, 'refs/tags/')
+        run: python3 builder/package.py release
