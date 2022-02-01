@@ -7,6 +7,7 @@ on:
 
 jobs:
   build_linux:
+    if: ${{ false }}
     name: Build Linux binary
     runs-on: ubuntu-latest
     env:
@@ -93,14 +94,6 @@ jobs:
           sudo installer -pkg ~/python.pkg -target /
           unlink /usr/local/bin/python
           ln -s /usr/local/bin/python3 /usr/local/bin/python
-      - name: Cache Python virtualenv
-        uses: syphar/restore-virtualenv@v1.2
-        id: cache-virtualenv
-        with:
-          custom_cache_key_element: "release"
-          requirement_files: |
-            **/requirements.txt
-            PKG-INFO
       - name: Run image
         uses: abatilo/actions-poetry@v2.0.0
         with:
