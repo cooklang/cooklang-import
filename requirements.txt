@@ -1,0 +1,3 @@
+recipe-scrapers
+git+https://github.com/cooklang/parse-ingredients@v0.0.4#egg=parse-ingredients
+pyinstaller

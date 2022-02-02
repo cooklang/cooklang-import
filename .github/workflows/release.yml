@@ -94,15 +94,33 @@ jobs:
           sudo installer -pkg ~/python.pkg -target /
           unlink /usr/local/bin/python
           ln -s /usr/local/bin/python3 /usr/local/bin/python
-      - name: Run image
-        uses: abatilo/actions-poetry@v2.0.0
+      - name: Cache Python virtualenv
+        uses: syphar/restore-virtualenv@v1.2
+        id: cache-virtualenv
         with:
-          poetry-version: ${{ env.POETRY_VERSION }}
-      - name: View poetry --help
-        run: poetry --help
+          custom_cache_key_element: "release"
+          requirement_files: |
+            requirements.txt
+            PKG-INFO
+      - name: Install Python dependencies
+        # We have to manually install a few packages:
+        # 1.  cffi will pick up the single-arch libffi from Homebrew, while Apple provides universal2-version
+        #     of libffi with XCode. So we forcefully have to remove the Homebrew one.
+        # 2.  Because building cryptography is hard, and we cannot force pip to fetch universal2 version we
+        #     first install the x86 version (and it's dependencies) and then manually fetch the universal2 build
+        #     https://github.com/pyca/cryptography/issues/5918
+        # 3.  We need to build the PyInstaller bootloader from sources:
+        #     https://github.com/pyinstaller/pyinstaller/issues/6235
+        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+        run: |
+          python3 --version
+          pip3 install --upgrade pip wheel
 
-      - name: Install dependencies
-        run: poetry install
+          brew uninstall libffi --ignore-dependencies
+          ARCHFLAGS="-arch x86_64 -arch arm64" pip3 install --upgrade cffi --no-binary cffi
+          pip3 install --upgrade -r requirements.txt --no-binary
+
+          PYINSTALLER_COMPILE_BOOTLOADER=1 pip3 install --upgrade -r requirements.txt --no-binary pyinstaller
 
       - name: Build binary
         run: poetry run pyinstaller cook-import.spec
