@@ -118,12 +118,12 @@ jobs:
 
           brew uninstall libffi --ignore-dependencies
           ARCHFLAGS="-arch x86_64 -arch arm64" pip3 install --upgrade cffi --no-binary cffi
-          pip3 install --upgrade -r requirements.txt --no-binary
+          pip3 install --upgrade -r requirements.txt
 
           PYINSTALLER_COMPILE_BOOTLOADER=1 pip3 install --upgrade -r requirements.txt --no-binary pyinstaller
 
       - name: Build binary
-        run: poetry run pyinstaller cook-import.spec
+        run: pyinstaller cook-import.spec
 
       - name: Import macOS codesign certificates
         uses: apple-actions/import-codesign-certs@v1
