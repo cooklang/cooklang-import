@@ -63,7 +63,7 @@ jobs:
 
   build_macos:
     name: Build macOS binary
-    runs-on: catalina
+    runs-on: macos-10.15
     env:
       # SIGNING_AUTH: ${{ secrets.SIGNING_AUTH }}
       # NOTARIZATION_USER: ${{ secrets.NOTARIZATION_USER }}
