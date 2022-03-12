@@ -16,7 +16,7 @@ A command-line tool to import recipes into [Cooklang](https://cooklang.org/) for
 ```
 ### Scrape a recipe from a webpage and output to screen
 ```
-    poetry run. /cook-import --link https://www.bbcgoodfood.com/recipes/next-level-tikka-masala
+    poetry run ./cook-import --link https://www.bbcgoodfood.com/recipes/next-level-tikka-masala
 ```
 ### Scrape a recipe from a webpage and output to file
 ```
