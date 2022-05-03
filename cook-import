@@ -13,13 +13,19 @@ from utils import eprint, sub_lists, write_to_file, highlight_replacement_in_tex
 parser = argparse.ArgumentParser(
     description="Automatically extract recipes from online websites."
 )
-parser.add_argument("--link", help="Input a url link to a recipe")
+parser.add_argument("-l","--link", help="Input a url link to a recipe")
 parser.add_argument(
+    "-f",
     "--file",
     help="If you want the output to be in a file, use this flag. Otherwise defaults to console screen.",
     action="store_true",
 )
 args = parser.parse_args()
+
+# Check if no arguments are passed
+if len(sys.argv) == 1:
+    parser.print_help()
+    sys.exit()
 
 # give the url as a string, it can be url from any site listed below
 scraper = scrape_me(args.link)
