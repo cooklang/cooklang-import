@@ -4,7 +4,7 @@ import argparse
 import re
 import sys
 
-from recipe_scrapers import scrape_me
+from recipe_scrapers import scrape_me, WebsiteNotImplementedError
 from parse_ingredients import parse_ingredient
 
 from utils import eprint, sub_lists, write_to_file, highlight_replacement_in_text
@@ -28,8 +28,12 @@ if len(sys.argv) == 1:
     sys.exit()
 
 # give the url as a string, it can be url from any site listed below
-scraper = scrape_me(args.link)
-
+try:
+    scraper = scrape_me(args.link)
+except WebsiteNotImplementedError as e:
+    print("The domain is currently not supported, %s" % e.domain)
+    sys.exit(1)
+  
 # Q: What if the recipe site I want to extract information from is not listed below?
 # A: You can give it a try with the wild_mode option! If there is Schema/Recipe available it will work just fine.
 # scraper = scrape_me('https://www.feastingathome.com/tomato-risotto/', wild_mode=True)
