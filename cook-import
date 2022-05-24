@@ -108,12 +108,4 @@ for combined_ingredient in ingredients_list:
 
 instructions = instructions.replace("\n", "\n\n")
 
-if args.file:
-    write_to_file(title, args.link, total_time, image, instructions)
-else:
-    print("")
-    print(f"{title}")
-    print(f">> source: {args.link}")
-    print(f">> time required: {total_time} minutes")
-    print(f">> image: {image}\n")
-    print(instructions)
+write_to_file(title, args.link, total_time, image, instructions, stdout=not(args.file))
