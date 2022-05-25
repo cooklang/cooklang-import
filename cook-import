@@ -7,7 +7,7 @@ import sys
 from recipe_scrapers import scrape_me, WebsiteNotImplementedError
 from parse_ingredients import parse_ingredient
 
-from utils import eprint, sub_lists, write_to_file, highlight_replacement_in_text
+from utils import eprint, sub_lists, print_recipe, highlight_replacement_in_text
 
 
 parser = argparse.ArgumentParser(
@@ -108,4 +108,4 @@ for combined_ingredient in ingredients_list:
 
 instructions = instructions.replace("\n", "\n\n")
 
-write_to_file(title, args.link, total_time, image, instructions, stdout=not(args.file))
+print_recipe(title, args.link, total_time, image, instructions, to_file=args.file)
