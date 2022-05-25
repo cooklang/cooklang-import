@@ -48,8 +48,7 @@ def write_to_file(title, link, total_time, image, instructions, stdout=False):
         f">> source: {link}",
         f">> time required: {total_time} minutes",
         f">> image: {image}",
-        "\n",
-        instructions,
+        "\n" + instructions,
     ]
     if stdout:
         print("\n".join(recipe))
