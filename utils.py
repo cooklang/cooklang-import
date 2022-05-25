@@ -34,7 +34,7 @@ def highlight_replacement_in_text(instructions, match_start, match_end):
     eprint(" " * (3 + match_start - start), "^" * (match_end - match_start))
 
 
-def write_to_file(title, link, total_time, image, instructions):
+def print_recipe(title, link, total_time, image, instructions, to_file=False):
     """
     Write the recipe to a file
     args:
@@ -43,9 +43,16 @@ def write_to_file(title, link, total_time, image, instructions):
     @param total_time the total amount of time for the recipe
     @param image the image associated with the recipe
     @param instructions the instructions for the desired recipe
+    @param to_file write formatted recipe to file instead to stdout
     """
-    with open(f"{title}.cook", "w") as outfile:
-        outfile.write(f">> source: {link}\n")
-        outfile.write(f">> time required: {total_time} minutes\n")
-        outfile.write(f">> image: {image}\n\n")
-        outfile.write(instructions)
+    recipe = [
+        f">> source: {link}",
+        f">> time required: {total_time} minutes",
+        f">> image: {image}",
+        "\n" + instructions,
+    ]
+    if to_file:
+        with open(f"{title}.cook", "w") as outfile:
+            outfile.write("\n".join(recipe) + "\n")
+    else:
+        print("\n".join(recipe))
