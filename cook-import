@@ -9,6 +9,8 @@ from parse_ingredients import parse_ingredient
 
 from utils import eprint, sub_lists, print_recipe, highlight_replacement_in_text
 
+# List of single stop words used to remove from ingredient list. Prevents outputs like @onion @powder{1%tbsp}{1%tbsp}
+single_stop_words={"and", "or", "for", "the", "of", "powder", "syrup"}
 
 parser = argparse.ArgumentParser(
     description="Automatically extract recipes from online websites."
@@ -61,6 +63,14 @@ for combined_ingredient in ingredients_list:
     quantity = combined_ingredient.quantity
     unit = combined_ingredient.unit
 
+    # Remove decimal places of whole numbers, such as 1.0 to 1
+    if quantity % 1 == 0:
+        quantity = int(quantity)
+
+    # Truncate repeating decimals such as .333333
+    if len(str(quantity)) > 5:
+        quantity = f"{quantity:.2f}"
+          
     # remove extra characters aka ')'
     ingredient_fixed = re.sub(r" ?\)", "", combined_ingredient.name)
 
@@ -73,7 +83,7 @@ for combined_ingredient in ingredients_list:
 
     # Remove single stop words
     ing_list = list(
-        filter(lambda x: x[0] not in {"and", "or", "for", "the", "of"}, ing_list)
+        filter(lambda x: x[0] not in single_stop_words, ing_list)
     )
 
     # Now generate regex string to  match
@@ -86,7 +96,7 @@ for combined_ingredient in ingredients_list:
     eprint("")
     eprint(
         "✅" if match_obj is not None else "❌",
-        f"@{combined_ingredient.name}{{{quantity:.0f}%{unit}}}" if unit != "" else f"@{combined_ingredient.name}{{{quantity:.0f}}}"
+        f"@{combined_ingredient.name}{{{quantity}%{unit}}}" if unit != "" else f"@{combined_ingredient.name}{{{quantity}}}"
     )
 
     # If no match skip ingredient
@@ -97,14 +107,13 @@ for combined_ingredient in ingredients_list:
     match_end = match_obj.end(1)
 
     highlight_replacement_in_text(instructions, match_start, match_end)
-
-    ing_replacement = f"@{match_obj[1]}{{{quantity:.0f}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity:.0f}}}"
+    ing_replacement = f"@{match_obj[1]}{{{quantity}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity}}}"
+      
     instructions = (
         instructions[0:match_start]
         + ing_replacement
         + instructions[match_obj.end() :]
     )
-
 
 instructions = instructions.replace("\n", "\n\n")
 
