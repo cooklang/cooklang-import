@@ -108,7 +108,6 @@ for combined_ingredient in ingredients_list:
 
     highlight_replacement_in_text(instructions, match_start, match_end)
     ing_replacement = f"@{match_obj[1]}{{{quantity}%{unit}}}" if unit != "" else f"@{match_obj[1]}{{{quantity}}}"
-      
     instructions = (
         instructions[0:match_start]
         + ing_replacement
