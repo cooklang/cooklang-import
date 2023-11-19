@@ -36,9 +36,13 @@ if len(sys.argv) == 1:
 try:
     scraper = scrape_me(args.link)
 except WebsiteNotImplementedError as e:
-    print("The domain is currently not supported, %s. You can request adding this domain at https://github.com/hhursev/recipe-scrapers." % e.domain)
-    sys.exit(1)
-  
+    try:
+        scraper = scrape_me(args.link, wild_mode=True)
+    except NoSchemaFoundInWildMode as exc:
+        print(
+            "The domain is currently not supported, %s. You can request adding this domain at https://github.com/hhursev/recipe-scrapers." % e.domain)
+        sys.exit(1)
+
 # Q: What if the recipe site I want to extract information from is not listed below?
 # A: You can give it a try with the wild_mode option! If there is Schema/Recipe available it will work just fine.
 # scraper = scrape_me('https://www.feastingathome.com/tomato-risotto/', wild_mode=True)
