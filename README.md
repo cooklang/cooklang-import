@@ -1,4 +1,4 @@
-# cook-import
+# cooklang-import
 A command-line tool to import recipes into [Cooklang](https://cooklang.org/) format.
 
 ## Getting started
@@ -12,10 +12,10 @@ A command-line tool to import recipes into [Cooklang](https://cooklang.org/) for
 ## Usage examples
 ### See all available flags
 ```
-cook-import --help
+cooklang-import --help
 ```
 ### Scrape a recipe from a webpage and output to screen
 ```
-cook-import https://www.bbcgoodfood.com/recipes/next-level-tikka-masala
+cooklang-import https://www.bbcgoodfood.com/recipes/next-level-tikka-masala
 ```
 
