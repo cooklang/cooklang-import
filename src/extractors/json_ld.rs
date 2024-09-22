@@ -1,11 +1,11 @@
 use crate::extractors::Extractor;
 use crate::model::Recipe;
 use html_escape::decode_html_entities;
+use log::debug;
 use scraper::{Html, Selector};
 use serde::Deserialize;
 use serde_json::Value;
 use std::convert::TryFrom;
-
 pub struct JsonLdExtractor;
 
 #[derive(Debug, Deserialize)]
@@ -144,7 +144,7 @@ impl Extractor for JsonLdExtractor {
             .inner_html();
 
         let json_ld: serde_json::Value = serde_json::from_str(&script_content)?;
-        println!("{:#?}", json_ld);
+        debug!("{:#?}", json_ld);
 
         let json_ld_recipe: JsonLdRecipe = if json_ld.is_array() {
             // If it's an array, find the first object of type "Recipe"
@@ -217,8 +217,14 @@ mod tests {
         assert_eq!(result.name, "Chocolate Chip Cookies");
         assert_eq!(result.description, "Delicious homemade cookies");
         assert_eq!(result.image, vec!["https://example.com/cookie.jpg"]);
-        assert_eq!(result.ingredients, vec!["flour", "sugar", "chocolate chips"]);
-        assert_eq!(result.steps, "Mix ingredients. Bake at 350F for 10 minutes.");
+        assert_eq!(
+            result.ingredients,
+            vec!["flour", "sugar", "chocolate chips"]
+        );
+        assert_eq!(
+            result.steps,
+            "Mix ingredients. Bake at 350F for 10 minutes."
+        );
     }
 
     #[test]
@@ -252,8 +258,20 @@ mod tests {
 
         assert_eq!(result.name, "Pasta Carbonara");
         assert_eq!(result.description, "Classic Italian pasta dish");
-        assert_eq!(result.image, vec!["https://example.com/carbonara1.jpg", "https://example.com/carbonara2.jpg"]);
-        assert_eq!(result.ingredients, vec!["spaghetti", "eggs", "bacon", "cheese"]);
-        assert_eq!(result.steps, "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients");
+        assert_eq!(
+            result.image,
+            vec![
+                "https://example.com/carbonara1.jpg",
+                "https://example.com/carbonara2.jpg"
+            ]
+        );
+        assert_eq!(
+            result.ingredients,
+            vec!["spaghetti", "eggs", "bacon", "cheese"]
+        );
+        assert_eq!(
+            result.steps,
+            "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
+        );
     }
 }

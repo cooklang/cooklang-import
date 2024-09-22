@@ -1,10 +1,14 @@
-use crate::extractors::Extractor;
+use log::{debug, error};
 use reqwest::blocking::get;
 use scraper::Html;
 use std::env;
 
+mod converters;
 mod extractors;
 mod model;
+
+use crate::converters::ConvertToCooklang;
+use crate::extractors::Extractor;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get the URL from command-line arguments
@@ -20,9 +24,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let extractor = extractors::JsonLdExtractor;
     if extractor.can_parse(&document) {
         let recipe = extractor.parse(&document)?;
-        println!("{:#?}", recipe);
+        debug!("{:#?}", recipe);
+
+        let openai_api_key =
+            env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in the environment");
+        let converter = converters::OpenAIConverter::new(openai_api_key);
+        let cooklang_recipe = converter.convert(&recipe.ingredients, &recipe.steps)?;
+        println!("{}", cooklang_recipe);
     } else {
-        println!("Unable to parse the recipe from this webpage.");
+        error!("Unable to parse the recipe from this webpage.");
     }
 
     Ok(())
