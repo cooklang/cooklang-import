@@ -84,13 +84,13 @@ impl TryFrom<Value> for JsonLdRecipe {
 }
 
 fn decode_html_symbols(text: &str) -> String {
+    // for some reason need to decode twice to get the correct string
     decode_html_entities(&decode_html_entities(text)).into_owned()
 }
 
 impl From<JsonLdRecipe> for Recipe {
     fn from(json_ld_recipe: JsonLdRecipe) -> Self {
         Recipe {
-            // for some reason need to decode twice to get the correct string
             name: decode_html_symbols(&json_ld_recipe.name),
             description: match json_ld_recipe.description {
                 DescriptionType::String(desc) => decode_html_symbols(&desc),
@@ -164,5 +164,96 @@ impl Extractor for JsonLdExtractor {
 
         // Use the From trait to convert JsonLdRecipe to Recipe
         Ok(Recipe::from(json_ld_recipe))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use scraper::Html;
+
+    fn create_html_document(json_ld: &str) -> Html {
+        let html = format!(
+            r#"
+            <html>
+                <head>
+                    <script type="application/ld+json">
+                        {}
+                    </script>
+                </head>
+                <body></body>
+            </html>
+            "#,
+            json_ld
+        );
+        Html::parse_document(&html)
+    }
+
+    #[test]
+    fn test_can_parse() {
+        let extractor = JsonLdExtractor;
+        let document = create_html_document("{}");
+        assert!(extractor.can_parse(&document));
+    }
+
+    #[test]
+    fn test_parse_basic_recipe() {
+        let extractor = JsonLdExtractor;
+        let json_ld = r#"
+        {
+            "@context": "https://schema.org/",
+            "@type": "Recipe",
+            "name": "Chocolate Chip Cookies",
+            "description": "Delicious homemade cookies",
+            "image": "https://example.com/cookie.jpg",
+            "recipeIngredient": ["flour", "sugar", "chocolate chips"],
+            "recipeInstructions": "Mix ingredients. Bake at 350F for 10 minutes."
+        }
+        "#;
+        let document = create_html_document(json_ld);
+
+        let result = extractor.parse(&document).unwrap();
+
+        assert_eq!(result.name, "Chocolate Chip Cookies");
+        assert_eq!(result.description, "Delicious homemade cookies");
+        assert_eq!(result.image, vec!["https://example.com/cookie.jpg"]);
+        assert_eq!(result.ingredients, vec!["flour", "sugar", "chocolate chips"]);
+        assert_eq!(result.steps, "Mix ingredients. Bake at 350F for 10 minutes.");
+    }
+
+    #[test]
+    fn test_parse_recipe_with_array() {
+        let extractor = JsonLdExtractor;
+        let json_ld = r#"
+        [
+            {
+                "@context": "https://schema.org/",
+                "@type": "Recipe",
+                "name": "Pasta Carbonara",
+                "description": "Classic Italian pasta dish",
+                "image": ["https://example.com/carbonara1.jpg", "https://example.com/carbonara2.jpg"],
+                "recipeIngredient": ["spaghetti", "eggs", "bacon", "cheese"],
+                "recipeInstructions": [
+                    {"@type": "HowToStep", "text": "Cook pasta"},
+                    {"@type": "HowToStep", "text": "Fry bacon"},
+                    {"@type": "HowToStep", "text": "Mix eggs and cheese"},
+                    {"@type": "HowToStep", "text": "Combine all ingredients"}
+                ]
+            },
+            {
+                "@type": "WebSite",
+                "name": "Recipe Website"
+            }
+        ]
+        "#;
+        let document = create_html_document(json_ld);
+
+        let result = extractor.parse(&document).unwrap();
+
+        assert_eq!(result.name, "Pasta Carbonara");
+        assert_eq!(result.description, "Classic Italian pasta dish");
+        assert_eq!(result.image, vec!["https://example.com/carbonara1.jpg", "https://example.com/carbonara2.jpg"]);
+        assert_eq!(result.ingredients, vec!["spaghetti", "eggs", "bacon", "cheese"]);
+        assert_eq!(result.steps, "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients");
     }
 }
