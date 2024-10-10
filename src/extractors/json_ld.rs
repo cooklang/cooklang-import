@@ -73,6 +73,19 @@ enum RecipeInstructions {
     String(String),
     Multiple(Vec<String>),
     MultipleObject(Vec<RecipeInstructionObject>),
+    HowToSection(Vec<HowToSection>),
+    HowToSteps(Vec<HowToStep>),
+}
+
+#[derive(Debug, Deserialize)]
+struct HowToStep {
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HowToSection {
+    #[serde(rename = "itemListElement")]
+    item_list_element: Vec<HowToStep>,
 }
 
 impl TryFrom<Value> for JsonLdRecipe {
@@ -123,6 +136,17 @@ impl From<JsonLdRecipe> for Recipe {
                     .map(|obj| decode_html_symbols(&obj.text))
                     .collect::<Vec<String>>()
                     .join(" "),
+                RecipeInstructions::HowToSection(sections) => sections
+                    .into_iter()
+                    .flat_map(|section| section.item_list_element)
+                    .map(|step| decode_html_symbols(&step.text))
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                RecipeInstructions::HowToSteps(steps) => steps
+                    .into_iter()
+                    .map(|step| decode_html_symbols(&step.text))
+                    .collect::<Vec<String>>()
+                    .join(" "),
             },
         }
     }
@@ -144,20 +168,37 @@ impl Extractor for JsonLdExtractor {
             .inner_html();
 
         let json_ld: serde_json::Value = serde_json::from_str(&script_content)?;
-        debug!("{:#?}", json_ld);
 
         let json_ld_recipe: JsonLdRecipe = if json_ld.is_array() {
             // If it's an array, find the first object of type "Recipe"
-            json_ld
+            let recipe = json_ld
                 .as_array()
                 .and_then(|arr| {
                     arr.iter()
                         .find(|item| item.get("recipeInstructions").is_some())
                 })
                 .ok_or("No Recipe object found in the JSON-LD array")?
-                .clone()
-                .try_into()?
+                .clone();
+
+            debug!("{:#?}", recipe);
+
+            recipe.try_into()?
+        } else if let Some(graph) = json_ld.get("@graph") {
+            // If it's an object with a "@graph" array, find the first object of type "Recipe"
+            let recipe =graph
+                .as_array()
+                .and_then(|arr| {
+                    arr.iter()
+                        .find(|item| item.get("@type") == Some(&Value::String("Recipe".to_string())))
+                })
+                .ok_or("No Recipe object found in the @graph array")?
+                .clone();
+
+            debug!("{:#?}", recipe);
+
+            recipe.try_into()?
         } else {
+            debug!("{:#?}", json_ld);
             // If it's a single object, use it directly
             json_ld.try_into()?
         };
