@@ -183,6 +183,10 @@ impl Extractor for JsonLdExtractor {
             debug!("{:#?}", recipe);
 
             recipe.try_into()?
+        } else if json_ld.get("recipeInstructions").is_some() {
+            debug!("{:#?}", json_ld);
+            // If it's a single object, use it directly
+            json_ld.try_into()?
         } else if let Some(graph) = json_ld.get("@graph") {
             // If it's an object with a "@graph" array, find the first object of type "Recipe"
             let recipe =graph
