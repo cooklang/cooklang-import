@@ -73,16 +73,25 @@ enum RecipeInstructions {
     String(String),
     Multiple(Vec<String>),
     MultipleObject(Vec<RecipeInstructionObject>),
-    HowToSection(Vec<HowToSection>),
-    HowToSteps(Vec<HowToStep>),
+    HowTo(Vec<HowTo>),
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(tag = "@type")]
+enum HowTo {
+    HowToStep(HowToStep),
+    HowToSection(HowToSection),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "@type")]
 struct HowToStep {
-    text: String,
+    text: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(tag = "@type")]
 struct HowToSection {
     #[serde(rename = "itemListElement")]
     item_list_element: Vec<HowToStep>,
@@ -136,15 +145,34 @@ impl From<JsonLdRecipe> for Recipe {
                     .map(|obj| decode_html_symbols(&obj.text))
                     .collect::<Vec<String>>()
                     .join(" "),
-                RecipeInstructions::HowToSection(sections) => sections
+                RecipeInstructions::HowTo(sections) => sections
                     .into_iter()
-                    .flat_map(|section| section.item_list_element)
-                    .map(|step| decode_html_symbols(&step.text))
-                    .collect::<Vec<String>>()
-                    .join(" "),
-                RecipeInstructions::HowToSteps(steps) => steps
-                    .into_iter()
-                    .map(|step| decode_html_symbols(&step.text))
+                    .flat_map(|section| match section {
+                        HowTo::HowToStep(step) => {
+                            let mut texts = Vec::new();
+                            if let Some(text) = step.text {
+                                texts.push(text);
+                            }
+                            if let Some(desc) = step.description {
+                                texts.push(desc);
+                            }
+                            texts
+                        }
+                        HowTo::HowToSection(section) => section.item_list_element
+                            .into_iter()
+                            .flat_map(|step| {
+                                let mut texts = Vec::new();
+                                if let Some(text) = step.text {
+                                    texts.push(text);
+                                }
+                                if let Some(desc) = step.description {
+                                    texts.push(desc);
+                                }
+                                texts
+                            })
+                            .collect()
+                    })
+                    .map(|text| decode_html_symbols(&text))
                     .collect::<Vec<String>>()
                     .join(" "),
             },
@@ -152,63 +180,105 @@ impl From<JsonLdRecipe> for Recipe {
     }
 }
 
+// Add this new function to clean JSON strings
+fn sanitize_json(json_str: &str) -> String {
+    // Remove any leading/trailing whitespace
+    let mut cleaned = json_str.trim().to_string();
+
+    // Handle cases where there might be multiple JSON objects
+    if !cleaned.starts_with('{') && !cleaned.starts_with('[') {
+        if let Some(start) = cleaned.find('{') {
+            cleaned = cleaned[start..].to_string();
+        }
+    }
+
+    // Remove any trailing comma followed by closing brace/bracket
+    cleaned = cleaned.replace(",]", "]").replace(",}", "}");
+
+    // Remove any HTML comments that might be present
+    cleaned = cleaned.replace(r"<!--", "").replace("-->", "");
+
+    cleaned
+}
+
 impl Extractor for JsonLdExtractor {
     fn can_parse(&self, document: &Html) -> bool {
         let selector = Selector::parse("script[type='application/ld+json']").unwrap();
-        document.select(&selector).next().is_some()
+
+        debug!("Document: {}", document.html());
+
+        // Check all script elements
+        document.select(&selector).any(|script| {
+            debug!("Script: {}", script.inner_html());
+
+            // Use the sanitize function before parsing
+            let cleaned_json = sanitize_json(&script.inner_html());
+            if let Ok(json_ld) = serde_json::from_str::<Value>(&cleaned_json) {
+                debug!("JSON-LD: {:#?}", json_ld);
+
+                if json_ld.is_array() {
+                    json_ld.as_array()
+                        .and_then(|arr| arr.iter().find(|item| item.get("recipeInstructions").is_some()))
+                        .is_some()
+                } else if json_ld.get("recipeInstructions").is_some() {
+                    debug!("Recipe Instructions: {:#?}", json_ld.get("recipeInstructions"));
+                    true
+                } else if let Some(graph) = json_ld.get("@graph") {
+                    debug!("Graph: {:#?}", graph);
+                    graph.as_array()
+                        .and_then(|arr| arr.iter().find(|item|
+                            item.get("@type") == Some(&Value::String("Recipe".to_string()))
+                        ))
+                        .is_some()
+                } else {
+                    debug!("No valid recipe found in JSON-LD");
+                    false
+                }
+            } else {
+                false
+            }
+        })
     }
 
     fn parse(&self, document: &Html) -> Result<Recipe, Box<dyn std::error::Error>> {
         let selector = Selector::parse("script[type='application/ld+json']").unwrap();
 
-        let script_content = document
-            .select(&selector)
-            .next()
-            .ok_or("No JSON-LD script found")?
-            .inner_html();
+        // Try each script element until we find a valid recipe
+        for script in document.select(&selector) {
+            // Use the sanitize function before parsing
+            let cleaned_json = sanitize_json(&script.inner_html());
+            if let Ok(json_ld) = serde_json::from_str::<Value>(&cleaned_json) {
+                debug!("Trying JSON-LD: {:#?}", json_ld);
 
-        let json_ld: serde_json::Value = serde_json::from_str(&script_content)?;
+                let recipe_result: Option<JsonLdRecipe> = if json_ld.is_array() {
+                    json_ld
+                        .as_array()
+                        .and_then(|arr| arr.iter().find(|item| item.get("recipeInstructions").is_some()))
+                        .and_then(|recipe| recipe.clone().try_into().ok())
+                } else if json_ld.get("recipeInstructions").is_some() {
+                    debug!("Recipe Instructions: {:#?}", json_ld.get("recipeInstructions"));
+                    json_ld.try_into().ok()
+                } else if let Some(graph) = json_ld.get("@graph") {
+                    graph
+                        .as_array()
+                        .and_then(|arr| arr.iter().find(|item|
+                            item.get("@type") == Some(&Value::String("Recipe".to_string()))
+                        ))
+                        .and_then(|recipe| recipe.clone().try_into().ok())
+                } else {
+                    None
+                };
 
-        let json_ld_recipe: JsonLdRecipe = if json_ld.is_array() {
-            // If it's an array, find the first object of type "Recipe"
-            let recipe = json_ld
-                .as_array()
-                .and_then(|arr| {
-                    arr.iter()
-                        .find(|item| item.get("recipeInstructions").is_some())
-                })
-                .ok_or("No Recipe object found in the JSON-LD array")?
-                .clone();
+                // If we found a valid recipe, return it
+                if let Some(recipe) = recipe_result {
+                    debug!("Found valid recipe: {:#?}", recipe);
+                    return Ok(Recipe::from(recipe));
+                }
+                // Otherwise continue to the next script block
+            }
+        }
 
-            debug!("{:#?}", recipe);
-
-            recipe.try_into()?
-        } else if json_ld.get("recipeInstructions").is_some() {
-            debug!("{:#?}", json_ld);
-            // If it's a single object, use it directly
-            json_ld.try_into()?
-        } else if let Some(graph) = json_ld.get("@graph") {
-            // If it's an object with a "@graph" array, find the first object of type "Recipe"
-            let recipe =graph
-                .as_array()
-                .and_then(|arr| {
-                    arr.iter()
-                        .find(|item| item.get("@type") == Some(&Value::String("Recipe".to_string())))
-                })
-                .ok_or("No Recipe object found in the @graph array")?
-                .clone();
-
-            debug!("{:#?}", recipe);
-
-            recipe.try_into()?
-        } else {
-            debug!("{:#?}", json_ld);
-            // If it's a single object, use it directly
-            json_ld.try_into()?
-        };
-
-        // Use the From trait to convert JsonLdRecipe to Recipe
-        Ok(Recipe::from(json_ld_recipe))
+        Err("No valid recipe found in any JSON-LD script".into())
     }
 }
 
