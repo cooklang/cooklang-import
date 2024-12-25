@@ -11,11 +11,18 @@ A command-line tool to import recipes into [Cooklang](https://cooklang.org/) for
 
 ## Usage examples
 ### See all available flags
-```
+```sh
 cooklang-import --help
 ```
 ### Scrape a recipe from a webpage and output to screen
-```
+
+```sh
 cooklang-import https://www.bbcgoodfood.com/recipes/next-level-tikka-masala
+```
+
+also supports `--download-only` flag to only download the recipe and not convert it to Cooklang
+
+```sh
+cooklang-import https://www.bbcgoodfood.com/recipes/next-level-tikka-masala --download-only
 ```
 

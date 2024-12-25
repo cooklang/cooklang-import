@@ -67,23 +67,26 @@ pub struct OpenAIConverter {
     client: Client,
     api_key: String,
     base_url: String,
+    model: String,
 }
 
 impl OpenAIConverter {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, model: String) -> Self {
         OpenAIConverter {
             client: Client::new(),
             api_key,
             base_url: "https://api.openai.com".to_string(),
+            model,
         }
     }
 
     #[cfg(test)]
-    fn with_base_url(api_key: String, base_url: String) -> Self {
+    fn with_base_url(api_key: String, base_url: String, model: String) -> Self {
         OpenAIConverter {
             client: Client::new(),
             api_key,
             base_url,
+            model,
         }
     }
 }
@@ -94,7 +97,7 @@ impl ConvertToCooklang for OpenAIConverter {
             .post(format!("{}/v1/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&json!({
-                "model": "gpt-4o",
+                "model": self.model,
                 "messages": [
                     {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
                     {"role": "user", "content": format!("Ingredients: {:?}\nSteps: {}", ingredients, steps)}
@@ -139,7 +142,11 @@ mod tests {
             "#)
             .create();
 
-        let converter = OpenAIConverter::with_base_url("test_api_key".to_string(), server.url());
+        let converter = OpenAIConverter::with_base_url(
+            "test_api_key".to_string(),
+            server.url(),
+            "gpt-3.5-turbo".to_string(),
+        );
         let ingredients = vec![
             "Pasta".to_string(),
             "Tomato sauce".to_string(),
@@ -165,7 +172,11 @@ mod tests {
             .with_status(500)
             .create();
 
-        let converter = OpenAIConverter::with_base_url("fake_api_key".to_string(), server.url());
+        let converter = OpenAIConverter::with_base_url(
+            "fake_api_key".to_string(),
+            server.url(),
+            "gpt-3.5-turbo".to_string(),
+        );
         let ingredients = vec!["ingredient".to_string()];
         let steps = "step";
 

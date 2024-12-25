@@ -1,7 +1,12 @@
 [package]
 name = "cooklang-import"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+description = "A tool for importing recipes into Cooklang format"
+license = "MIT"
+repository = "https://github.com/cooklang/cooklang-import"
+documentation = "https://docs.rs/cooklang-import"
+homepage = "https://github.com/cooklang/cooklang-import"
 
 [lib]
 name = "cooklang_import"
@@ -12,13 +17,13 @@ name = "cooklang-import"
 path = "src/main.rs"
 
 [dependencies]
-env_logger = "0.11.5"
-html-escape = "0.2.13"
-log = "0.4.22"
-reqwest = { version = "0.12.5", features = ["blocking", "json"] }
-scraper = "0.20.0"
-serde = { version = "1.0.204", features = ["derive"] }
-serde_json = "1.0.122"
+env_logger = "0.11"
+html-escape = "0.2"
+log = "0.4"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+scraper = "0.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [dev-dependencies]
 mockito = "1.5.0"

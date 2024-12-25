@@ -158,7 +158,8 @@ impl From<JsonLdRecipe> for Recipe {
                             }
                             texts
                         }
-                        HowTo::HowToSection(section) => section.item_list_element
+                        HowTo::HowToSection(section) => section
+                            .item_list_element
                             .into_iter()
                             .flat_map(|step| {
                                 let mut texts = Vec::new();
@@ -170,7 +171,7 @@ impl From<JsonLdRecipe> for Recipe {
                                 }
                                 texts
                             })
-                            .collect()
+                            .collect(),
                     })
                     .map(|text| decode_html_symbols(&text))
                     .collect::<Vec<String>>()
@@ -217,18 +218,28 @@ impl Extractor for JsonLdExtractor {
                 debug!("JSON-LD: {:#?}", json_ld);
 
                 if json_ld.is_array() {
-                    json_ld.as_array()
-                        .and_then(|arr| arr.iter().find(|item| item.get("recipeInstructions").is_some()))
+                    json_ld
+                        .as_array()
+                        .and_then(|arr| {
+                            arr.iter()
+                                .find(|item| item.get("recipeInstructions").is_some())
+                        })
                         .is_some()
                 } else if json_ld.get("recipeInstructions").is_some() {
-                    debug!("Recipe Instructions: {:#?}", json_ld.get("recipeInstructions"));
+                    debug!(
+                        "Recipe Instructions: {:#?}",
+                        json_ld.get("recipeInstructions")
+                    );
                     true
                 } else if let Some(graph) = json_ld.get("@graph") {
                     debug!("Graph: {:#?}", graph);
-                    graph.as_array()
-                        .and_then(|arr| arr.iter().find(|item|
-                            item.get("@type") == Some(&Value::String("Recipe".to_string()))
-                        ))
+                    graph
+                        .as_array()
+                        .and_then(|arr| {
+                            arr.iter().find(|item| {
+                                item.get("@type") == Some(&Value::String("Recipe".to_string()))
+                            })
+                        })
                         .is_some()
                 } else {
                     debug!("No valid recipe found in JSON-LD");
@@ -253,17 +264,25 @@ impl Extractor for JsonLdExtractor {
                 let recipe_result: Option<JsonLdRecipe> = if json_ld.is_array() {
                     json_ld
                         .as_array()
-                        .and_then(|arr| arr.iter().find(|item| item.get("recipeInstructions").is_some()))
+                        .and_then(|arr| {
+                            arr.iter()
+                                .find(|item| item.get("recipeInstructions").is_some())
+                        })
                         .and_then(|recipe| recipe.clone().try_into().ok())
                 } else if json_ld.get("recipeInstructions").is_some() {
-                    debug!("Recipe Instructions: {:#?}", json_ld.get("recipeInstructions"));
+                    debug!(
+                        "Recipe Instructions: {:#?}",
+                        json_ld.get("recipeInstructions")
+                    );
                     json_ld.try_into().ok()
                 } else if let Some(graph) = json_ld.get("@graph") {
                     graph
                         .as_array()
-                        .and_then(|arr| arr.iter().find(|item|
-                            item.get("@type") == Some(&Value::String("Recipe".to_string()))
-                        ))
+                        .and_then(|arr| {
+                            arr.iter().find(|item| {
+                                item.get("@type") == Some(&Value::String("Recipe".to_string()))
+                            })
+                        })
                         .and_then(|recipe| recipe.clone().try_into().ok())
                 } else {
                     None
@@ -287,16 +306,18 @@ mod tests {
     use super::*;
     use scraper::Html;
 
+    // Add helper function for tests
     fn create_html_document(json_ld: &str) -> Html {
         let html = format!(
             r#"
+            <!DOCTYPE html>
             <html>
-                <head>
-                    <script type="application/ld+json">
-                        {}
-                    </script>
-                </head>
-                <body></body>
+            <head>
+                <script type="application/ld+json">
+                    {}
+                </script>
+            </head>
+            <body></body>
             </html>
             "#,
             json_ld
@@ -306,8 +327,26 @@ mod tests {
 
     #[test]
     fn test_can_parse() {
+        let html = r#"
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <script type="application/ld+json">
+                {
+                    "@context": "https://schema.org/",
+                    "@type": "Recipe",
+                    "name": "Test Recipe",
+                    "recipeIngredient": ["ingredient 1", "ingredient 2"],
+                    "recipeInstructions": ["step 1", "step 2"]
+                }
+                </script>
+            </head>
+            <body></body>
+            </html>
+        "#;
+
+        let document = Html::parse_document(html);
         let extractor = JsonLdExtractor;
-        let document = create_html_document("{}");
         assert!(extractor.can_parse(&document));
     }
 
