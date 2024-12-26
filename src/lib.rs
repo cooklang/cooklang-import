@@ -36,7 +36,7 @@ pub fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error::Erro
     }
 }
 
-pub fn convert_recipe(recipe: model::Recipe) -> Result<String, Box<dyn std::error::Error>> {
+pub fn convert_recipe(recipe: &model::Recipe) -> Result<String, Box<dyn std::error::Error>> {
     let openai_api_key =
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in the environment");
     let model = std::env::var("OPENAI_MODEL").unwrap_or("gpt-4o".to_string());
@@ -48,5 +48,5 @@ pub fn convert_recipe(recipe: model::Recipe) -> Result<String, Box<dyn std::erro
 pub fn import_recipe(url: &str) -> Result<String, Box<dyn std::error::Error>> {
     let recipe = fetch_recipe(url)?;
 
-    convert_recipe(recipe)
+    convert_recipe(&recipe)
 }
