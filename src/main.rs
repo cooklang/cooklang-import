@@ -1,4 +1,4 @@
-use cooklang_import::{import_recipe, import_recipe_raw};
+use cooklang_import::{fetch_recipe, import_recipe};
 use log::info;
 use std::env;
 
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Import the recipe
     let result = if download_only {
-        let recipe = import_recipe_raw(url)?;
+        let recipe = fetch_recipe(url)?;
         Ok(format!(
             "# {}\n\n## Ingredients\n{}\n\n## Steps\n{}",
             recipe.name,
