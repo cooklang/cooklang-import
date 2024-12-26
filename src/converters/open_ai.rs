@@ -1,6 +1,6 @@
 use crate::converters::ConvertToCooklang;
 use log::debug;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde_json::{json, Value};
 use std::error::Error;
 
@@ -91,8 +91,9 @@ impl OpenAIConverter {
     }
 }
 
+#[async_trait::async_trait]
 impl ConvertToCooklang for OpenAIConverter {
-    fn convert(&self, ingredients: &[String], steps: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, ingredients: &[String], steps: &str) -> Result<String, Box<dyn Error>> {
         let response = self.client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -104,9 +105,10 @@ impl ConvertToCooklang for OpenAIConverter {
                 ],
                 "temperature": 0.7
             }))
-            .send()?;
+            .send()
+            .await?;
 
-        let response_body: Value = response.json()?;
+        let response_body: Value = response.json().await?;
         debug!("{:?}", response_body);
         let cooklang_recipe = response_body["choices"][0]["message"]["content"]
             .as_str()
@@ -120,9 +122,10 @@ impl ConvertToCooklang for OpenAIConverter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio;
 
-    #[test]
-    fn test_convert() {
+    #[tokio::test]
+    async fn test_convert() {
         let mut server = mockito::Server::new();
 
         // Mock the OpenAI API response
@@ -154,7 +157,7 @@ mod tests {
         ];
         let steps = "Cook pasta, heat sauce, mix, add cheese.";
 
-        let result = converter.convert(&ingredients, steps);
+        let result = converter.convert(&ingredients, steps).await;
 
         mock.assert();
 
@@ -164,8 +167,8 @@ mod tests {
         assert!(converted_recipe.contains("#Cook the pasta according to package instructions."));
     }
 
-    #[test]
-    fn test_convert_api_error() {
+    #[tokio::test]
+    async fn test_convert_api_error() {
         let mut server = mockito::Server::new();
         let mock = server
             .mock("POST", "/v1/chat/completions")
@@ -180,7 +183,7 @@ mod tests {
         let ingredients = vec!["ingredient".to_string()];
         let steps = "step";
 
-        let result = converter.convert(&ingredients, steps);
+        let result = converter.convert(&ingredients, steps).await;
 
         mock.assert();
         assert!(result.is_err());

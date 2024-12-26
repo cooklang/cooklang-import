@@ -2,7 +2,8 @@ use cooklang_import::{fetch_recipe, import_recipe};
 use log::info;
 use std::env;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the logger
     env_logger::init();
 
@@ -18,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Import the recipe
     let result = if download_only {
-        let recipe = fetch_recipe(url)?;
+        let recipe = fetch_recipe(url).await?;
         Ok(format!(
             "# {}\n\n## Ingredients\n{}\n\n## Steps\n{}",
             recipe.name,
@@ -31,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             recipe.steps
         ))
     } else {
-        import_recipe(url)
+        import_recipe(url).await
     };
 
     println!("{}", result?);
