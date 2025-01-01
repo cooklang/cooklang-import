@@ -13,7 +13,7 @@ struct JsonLdRecipe {
     name: String,
     description: DescriptionType,
     image: ImageType,
-    #[serde(rename = "recipeIngredient")]
+    #[serde(rename = "recipeIngredient", alias = "ingredients")]
     recipe_ingredient: Vec<String>,
     #[serde(rename = "recipeInstructions")]
     recipe_instructions: RecipeInstructions,
@@ -97,11 +97,11 @@ struct HowToSection {
     item_list_element: Vec<HowToStep>,
 }
 
-impl TryFrom<Value> for JsonLdRecipe {
+impl TryFrom<Option<&Value>> for JsonLdRecipe {
     type Error = serde_json::Error;
 
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        serde_json::from_value(value)
+    fn try_from(value: Option<&Value>) -> Result<Self, Self::Error> {
+        serde_json::from_value(value.unwrap().clone())
     }
 }
 
@@ -181,27 +181,6 @@ impl From<JsonLdRecipe> for Recipe {
     }
 }
 
-// Add this new function to clean JSON strings
-fn sanitize_json(json_str: &str) -> String {
-    // Remove any leading/trailing whitespace
-    let mut cleaned = json_str.trim().to_string();
-
-    // Handle cases where there might be multiple JSON objects
-    if !cleaned.starts_with('{') && !cleaned.starts_with('[') {
-        if let Some(start) = cleaned.find('{') {
-            cleaned = cleaned[start..].to_string();
-        }
-    }
-
-    // Remove any trailing comma followed by closing brace/bracket
-    cleaned = cleaned.replace(",]", "]").replace(",}", "}");
-
-    // Remove any HTML comments that might be present
-    cleaned = cleaned.replace(r"<!--", "").replace("-->", "");
-
-    cleaned
-}
-
 impl Extractor for JsonLdExtractor {
     fn can_parse(&self, document: &Html) -> bool {
         let selector = Selector::parse("script[type='application/ld+json']").unwrap();
@@ -214,6 +193,7 @@ impl Extractor for JsonLdExtractor {
 
             // Use the sanitize function before parsing
             let cleaned_json = sanitize_json(&script.inner_html());
+            debug!("Cleaned JSON: {}", cleaned_json);
             if let Ok(json_ld) = serde_json::from_str::<Value>(&cleaned_json) {
                 debug!("JSON-LD: {:#?}", json_ld);
 
@@ -262,31 +242,56 @@ impl Extractor for JsonLdExtractor {
                 debug!("Trying JSON-LD: {:#?}", json_ld);
 
                 let recipe_result: Option<JsonLdRecipe> = if json_ld.is_array() {
-                    json_ld
+                    let extracted_recipe = json_ld
                         .as_array()
                         .and_then(|arr| {
                             arr.iter()
                                 .find(|item| item.get("recipeInstructions").is_some())
-                        })
-                        .and_then(|recipe| recipe.clone().try_into().ok())
+                        });
+
+                        match JsonLdRecipe::try_from(extracted_recipe.clone()) {
+                            Ok(recipe) => Some(recipe),
+                            Err(e) => {
+                                debug!("Failed to parse recipe: {}", e);
+                                None
+                            }
+                        }
                 } else if json_ld.get("recipeInstructions").is_some() {
                     debug!(
                         "Recipe Instructions: {:#?}",
                         json_ld.get("recipeInstructions")
                     );
-                    json_ld.try_into().ok()
+
+                    match JsonLdRecipe::try_from(Some(&json_ld)) {
+                        Ok(recipe) => Some(recipe),
+                        Err(e) => {
+                            debug!("Failed to parse recipe: {}", e);
+                            None
+                        }
+                    }
                 } else if let Some(graph) = json_ld.get("@graph") {
-                    graph
+                    debug!("Graph: {:#?}", graph);
+                    let extracted_recipe = graph
                         .as_array()
                         .and_then(|arr| {
                             arr.iter().find(|item| {
                                 item.get("@type") == Some(&Value::String("Recipe".to_string()))
                             })
-                        })
-                        .and_then(|recipe| recipe.clone().try_into().ok())
+                        });
+
+                        match JsonLdRecipe::try_from(extracted_recipe) {
+                            Ok(recipe) => Some(recipe),
+                            Err(e) => {
+                                debug!("Failed to parse recipe: {}", e);
+                                None
+                            }
+                        }
                 } else {
+                    debug!("None of the conditions were met");
                     None
                 };
+
+                debug!("Recipe Result: {:#?}", recipe_result);
 
                 // If we found a valid recipe, return it
                 if let Some(recipe) = recipe_result {
@@ -299,6 +304,88 @@ impl Extractor for JsonLdExtractor {
 
         Err("No valid recipe found in any JSON-LD script".into())
     }
+}
+
+fn sanitize_json(json_str: &str) -> String {
+    debug!("Original JSON: {}", json_str);
+
+    let mut minified = String::with_capacity(json_str.len());
+    let mut in_string = false;
+    let mut prev_char = None;
+    let mut depth = 0;
+    let chars: Vec<char> = json_str.chars().collect();
+    let len = chars.len();
+
+    for i in 0..len {
+        let c = chars[i];
+        match c {
+            '"' if prev_char != Some('\\') => {
+                in_string = !in_string;
+                if !in_string {
+                    // We're ending a string - check if we need a comma
+                    let rest_chars = &chars[i + 1..];
+                    let next_char = rest_chars.iter().find(|c| !c.is_whitespace());
+                    if !matches!(prev_char, Some(',') | Some('[') | Some('{'))
+                        && matches!(next_char, Some('"' | '[' | '{')) {
+                        debug!("Adding missing comma after string");
+                        minified.push('"');
+                        minified.push(',');
+                        prev_char = Some(',');
+                        continue;
+                    }
+                }
+                minified.push(c);
+            }
+            '[' | '{' if !in_string => {
+                depth += 1;
+                minified.push(c);
+            }
+            ']' | '}' if !in_string => {
+                depth -= 1;
+                minified.push(c);
+                // Check if we need a comma after array/object closing
+                let rest = &json_str[i + 1..];
+                let next_char = rest.trim_start().chars().next();
+                if depth > 0 && matches!(next_char, Some('"')) {
+                    debug!("Adding missing comma after array/object closing");
+                    minified.push(',');
+                    prev_char = Some(',');
+                    continue;
+                }
+            }
+            ',' if !in_string => {
+                // Avoid duplicate commas
+                if prev_char != Some(',') {
+                    minified.push(c);
+                }
+            }
+            ':' if !in_string => {
+                // Handle malformed key-value pairs
+                if prev_char == Some(',') {
+                    minified.pop(); // Remove the extra comma
+                }
+                minified.push(c);
+            }
+            _ => {
+                if in_string || !c.is_whitespace() {
+                    minified.push(c);
+                }
+            }
+        }
+        prev_char = Some(c);
+    }
+
+    // Clean up any remaining issues
+    let cleaned = minified
+        .replace(",]", "]")
+        .replace(",}", "}")
+        .replace(",,", ",")
+        .replace(",:,", ":")
+        .replace(":,", ":")
+        .replace(",:", ":");
+
+    debug!("Sanitized JSON: {}", cleaned);
+    cleaned
 }
 
 #[cfg(test)]
