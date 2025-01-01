@@ -10,7 +10,7 @@ Sometimes the text is not a recipe, in that case specify that in error field.
 Given the text output only this JSON without any other characters:
 
 {
-  "ingredients":[<LIST OF INGREDIENTS HERE>],
+  "ingredients": [<LIST OF INGREDIENTS HERE>],
   "instructions": [<LIST OF INSTRUCTIONS HERE>],
   "error": "<ERROR MESSAGE HERE IF NO RECIPE>"
 }
@@ -54,15 +54,16 @@ impl Extractor for PlainTextLlmExtractor {
 
         Ok(Recipe {
             name: title,
-            description: "".to_string(),
+            description: None,
             image: vec![],
             ingredients: recipe_data["ingredients"]
                 .as_array()
                 .unwrap_or(&Vec::new())
                 .iter()
                 .filter_map(|i| i.as_str().map(String::from))
-                .collect(),
-            steps: recipe_data["instructions"]
+                .collect::<Vec<String>>()
+                .join("\n"),
+            instructions: recipe_data["instructions"]
                 .as_array()
                 .unwrap_or(&Vec::new())
                 .iter()
@@ -79,7 +80,7 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error>> {
     // For testing environment, return mock data
     if api_key == "test_key" {
         return Ok(serde_json::json!({
-            "ingredients": ["pasta", "sauce"],
+            "ingredients": "pasta\nsauce",
             "instructions": ["Cook pasta with sauce"],
             "error": ""
         }));
@@ -316,7 +317,7 @@ mod tests {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let result = extractor.parse(&document).unwrap();
             assert_eq!(result.name, "Test Recipe");
-            assert!(!result.steps.is_empty());
+            assert!(!result.instructions.is_empty());
         });
     }
 

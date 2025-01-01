@@ -49,7 +49,9 @@ pub async fn convert_recipe(recipe: &model::Recipe) -> Result<String, Box<dyn st
     let model = std::env::var("OPENAI_MODEL").unwrap_or("gpt-4".to_string());
 
     let converter = converters::OpenAIConverter::new(openai_api_key, model);
-    converter.convert(&recipe.ingredients, &recipe.steps).await
+    converter
+        .convert(&recipe.ingredients, &recipe.instructions)
+        .await
 }
 
 pub async fn import_recipe(url: &str) -> Result<String, Box<dyn std::error::Error>> {

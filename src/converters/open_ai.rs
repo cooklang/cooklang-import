@@ -93,7 +93,11 @@ impl OpenAIConverter {
 
 #[async_trait::async_trait]
 impl ConvertToCooklang for OpenAIConverter {
-    async fn convert(&self, ingredients: &[String], steps: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        ingredients: &str,
+        instructions: &str,
+    ) -> Result<String, Box<dyn Error>> {
         let response = self.client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -101,7 +105,7 @@ impl ConvertToCooklang for OpenAIConverter {
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
-                    {"role": "user", "content": format!("Ingredients: {:?}\nSteps: {}", ingredients, steps)}
+                    {"role": "user", "content": format!("Ingredients: {:?}\nInstructions: {}", ingredients, instructions)}
                 ],
                 "temperature": 0.7
             }))
@@ -147,10 +151,10 @@ mod tests {
             server.url(),
             "gpt-3.5-turbo".to_string(),
         );
-        let ingredients = vec!["pasta".to_string()];
-        let steps = "Cook pasta with sauce";
+        let ingredients = "pasta\nsauce";
+        let instructions = "Cook pasta with sauce";
 
-        let result = converter.convert(&ingredients, steps).await.unwrap();
+        let result = converter.convert(ingredients, instructions).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();
@@ -171,10 +175,10 @@ mod tests {
             server.url(),
             "gpt-3.5-turbo".to_string(),
         );
-        let ingredients = vec!["ingredient".to_string()];
-        let steps = "step";
+        let ingredients = "ingredient";
+        let instructions = "step";
 
-        let result = converter.convert(&ingredients, steps).await;
+        let result = converter.convert(ingredients, instructions).await;
         assert!(result.is_err());
         mock.assert();
     }

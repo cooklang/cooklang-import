@@ -115,8 +115,8 @@ impl From<JsonLdRecipe> for Recipe {
         Recipe {
             name: decode_html_symbols(&json_ld_recipe.name),
             description: match json_ld_recipe.description {
-                DescriptionType::String(desc) => decode_html_symbols(&desc),
-                DescriptionType::Object(desc) => decode_html_symbols(&desc.text),
+                DescriptionType::String(desc) => Some(decode_html_symbols(&desc)),
+                DescriptionType::Object(desc) => Some(decode_html_symbols(&desc.text)),
             },
             image: match json_ld_recipe.image {
                 ImageType::String(img) => vec![decode_html_symbols(&img)],
@@ -132,8 +132,9 @@ impl From<JsonLdRecipe> for Recipe {
                 .recipe_ingredient
                 .into_iter()
                 .map(|ing| decode_html_symbols(&ing))
-                .collect(),
-            steps: match json_ld_recipe.recipe_instructions {
+                .collect::<Vec<String>>()
+                .join("\n"),
+            instructions: match json_ld_recipe.recipe_instructions {
                 RecipeInstructions::String(instructions) => decode_html_symbols(&instructions),
                 RecipeInstructions::Multiple(instructions) => instructions
                     .into_iter()
@@ -453,14 +454,14 @@ mod tests {
         let result = extractor.parse(&document).unwrap();
 
         assert_eq!(result.name, "Chocolate Chip Cookies");
-        assert_eq!(result.description, "Delicious homemade cookies");
-        assert_eq!(result.image, vec!["https://example.com/cookie.jpg"]);
         assert_eq!(
-            result.ingredients,
-            vec!["flour", "sugar", "chocolate chips"]
+            result.description,
+            Some("Delicious homemade cookies".to_string())
         );
+        assert_eq!(result.image, vec!["https://example.com/cookie.jpg"]);
+        assert_eq!(result.ingredients, "flour\nsugar\nchocolate chips");
         assert_eq!(
-            result.steps,
+            result.instructions,
             "Mix ingredients. Bake at 350F for 10 minutes."
         );
     }
@@ -495,7 +496,10 @@ mod tests {
         let result = extractor.parse(&document).unwrap();
 
         assert_eq!(result.name, "Pasta Carbonara");
-        assert_eq!(result.description, "Classic Italian pasta dish");
+        assert_eq!(
+            result.description,
+            Some("Classic Italian pasta dish".to_string())
+        );
         assert_eq!(
             result.image,
             vec![
@@ -503,12 +507,9 @@ mod tests {
                 "https://example.com/carbonara2.jpg"
             ]
         );
+        assert_eq!(result.ingredients, "spaghetti\neggs\nbacon\ncheese");
         assert_eq!(
-            result.ingredients,
-            vec!["spaghetti", "eggs", "bacon", "cheese"]
-        );
-        assert_eq!(
-            result.steps,
+            result.instructions,
             "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
         );
     }

@@ -21,15 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = if download_only {
         let recipe = fetch_recipe(url).await?;
         Ok(format!(
-            "# {}\n\n## Ingredients\n{}\n\n## Steps\n{}",
-            recipe.name,
-            recipe
-                .ingredients
-                .iter()
-                .map(|i| format!("- {}", i))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            recipe.steps
+            "# {}\n\n## Ingredients\n{}\n\n## Instructions\n{}",
+            recipe.name, recipe.ingredients, recipe.instructions
         ))
     } else {
         import_recipe(url).await
