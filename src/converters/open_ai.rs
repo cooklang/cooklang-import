@@ -122,57 +122,48 @@ impl ConvertToCooklang for OpenAIConverter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio;
+    use mockito::Server;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_convert() {
-        let mut server = mockito::Server::new();
-
-        // Mock the OpenAI API response
-        let mock = server.mock("POST", "/v1/chat/completions")
+        let mut server = Server::new();
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
             .with_status(200)
             .with_header("content-type", "application/json")
-            .with_body(r#"
-                {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": ">> Converted recipe in Cooklang format:\n\n@Pasta{500%g}\n@Tomato sauce{1%jar}\n@Cheese{200%g}\n\n#Cook the pasta according to package instructions.\n#Heat the tomato sauce in a pan.\n#Drain the pasta and mix with the sauce.\n#Sprinkle grated cheese on top and serve."
-                            }
+            .with_body(
+                r#"{
+                    "choices": [{
+                        "message": {
+                            "content": ">> ingredients\n@pasta{500%g}\n@sauce\n\n>> instructions\n1. Cook pasta\n2. Add sauce"
                         }
-                    ]
-                }
-            "#)
+                    }]
+                }"#,
+            )
             .create();
 
         let converter = OpenAIConverter::with_base_url(
-            "test_api_key".to_string(),
+            "fake_api_key".to_string(),
             server.url(),
             "gpt-3.5-turbo".to_string(),
         );
-        let ingredients = vec![
-            "Pasta".to_string(),
-            "Tomato sauce".to_string(),
-            "Cheese".to_string(),
-        ];
-        let steps = "Cook pasta, heat sauce, mix, add cheese.";
+        let ingredients = vec!["pasta".to_string()];
+        let steps = "Cook pasta with sauce";
 
-        let result = converter.convert(&ingredients, steps).await;
-
+        let result = converter.convert(&ingredients, steps).await.unwrap();
+        assert!(result.contains("@pasta"));
+        assert!(result.contains("@sauce"));
         mock.assert();
-
-        assert!(result.is_ok(), "Conversion failed: {:?}", result.err());
-        let converted_recipe = result.unwrap();
-        assert!(converted_recipe.contains("@Pasta{500%g}"));
-        assert!(converted_recipe.contains("#Cook the pasta according to package instructions."));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_convert_api_error() {
-        let mut server = mockito::Server::new();
+        let mut server = Server::new();
         let mock = server
             .mock("POST", "/v1/chat/completions")
-            .with_status(500)
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"error": "Invalid request"}"#)
             .create();
 
         let converter = OpenAIConverter::with_base_url(
@@ -184,8 +175,7 @@ mod tests {
         let steps = "step";
 
         let result = converter.convert(&ingredients, steps).await;
-
-        mock.assert();
         assert!(result.is_err());
+        mock.assert();
     }
 }

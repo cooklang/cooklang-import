@@ -9,7 +9,6 @@ use scraper::Html;
 use crate::converters::ConvertToCooklang;
 use crate::extractors::Extractor;
 
-
 pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error::Error>> {
     // Set up headers with a user agent
     let mut headers = HeaderMap::new();
@@ -27,15 +26,21 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error
     // Parse the HTML document
     let document = Html::parse_document(&body);
 
-    let extractor = extractors::JsonLdExtractor;
-    if extractor.can_parse(&document) {
-        let recipe = extractor.parse(&document)?;
-        debug!("{:#?}", recipe);
-        Ok(recipe)
-    } else {
-        error!("No extractor found to parse the recipe from this webpage.");
-        Err("No extractor found to parse the recipe from this webpage.".into())
+    let extractors_list: Vec<Box<dyn Extractor>> = vec![
+        Box::new(extractors::JsonLdExtractor),
+        Box::new(extractors::PlainTextLlmExtractor),
+    ];
+
+    for extractor in extractors_list {
+        if extractor.can_parse(&document) {
+            let recipe = extractor.parse(&document)?;
+            debug!("{:#?}", recipe);
+            return Ok(recipe);
+        }
     }
+
+    error!("No extractor found to parse the recipe from this webpage.");
+    Err("No extractor found to parse the recipe from this webpage.".into())
 }
 
 pub async fn convert_recipe(recipe: &model::Recipe) -> Result<String, Box<dyn std::error::Error>> {

@@ -1,6 +1,6 @@
 [package]
 name = "cooklang-import"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "A tool for importing recipes into Cooklang format"
 license = "MIT"
@@ -25,7 +25,8 @@ scraper = "0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
-async-trait = "0.1"
+async-trait = "0.1.83"
 
 [dev-dependencies]
 mockito = "1.5.0"
+tokio = { version = "1.0", features = ["full", "rt", "macros", "test-util"] }

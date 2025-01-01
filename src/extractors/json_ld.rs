@@ -242,20 +242,18 @@ impl Extractor for JsonLdExtractor {
                 debug!("Trying JSON-LD: {:#?}", json_ld);
 
                 let recipe_result: Option<JsonLdRecipe> = if json_ld.is_array() {
-                    let extracted_recipe = json_ld
-                        .as_array()
-                        .and_then(|arr| {
-                            arr.iter()
-                                .find(|item| item.get("recipeInstructions").is_some())
-                        });
+                    let extracted_recipe = json_ld.as_array().and_then(|arr| {
+                        arr.iter()
+                            .find(|item| item.get("recipeInstructions").is_some())
+                    });
 
-                        match JsonLdRecipe::try_from(extracted_recipe.clone()) {
-                            Ok(recipe) => Some(recipe),
-                            Err(e) => {
-                                debug!("Failed to parse recipe: {}", e);
-                                None
-                            }
+                    match JsonLdRecipe::try_from(extracted_recipe) {
+                        Ok(recipe) => Some(recipe),
+                        Err(e) => {
+                            debug!("Failed to parse recipe: {}", e);
+                            None
                         }
+                    }
                 } else if json_ld.get("recipeInstructions").is_some() {
                     debug!(
                         "Recipe Instructions: {:#?}",
@@ -271,21 +269,19 @@ impl Extractor for JsonLdExtractor {
                     }
                 } else if let Some(graph) = json_ld.get("@graph") {
                     debug!("Graph: {:#?}", graph);
-                    let extracted_recipe = graph
-                        .as_array()
-                        .and_then(|arr| {
-                            arr.iter().find(|item| {
-                                item.get("@type") == Some(&Value::String("Recipe".to_string()))
-                            })
-                        });
+                    let extracted_recipe = graph.as_array().and_then(|arr| {
+                        arr.iter().find(|item| {
+                            item.get("@type") == Some(&Value::String("Recipe".to_string()))
+                        })
+                    });
 
-                        match JsonLdRecipe::try_from(extracted_recipe) {
-                            Ok(recipe) => Some(recipe),
-                            Err(e) => {
-                                debug!("Failed to parse recipe: {}", e);
-                                None
-                            }
+                    match JsonLdRecipe::try_from(extracted_recipe) {
+                        Ok(recipe) => Some(recipe),
+                        Err(e) => {
+                            debug!("Failed to parse recipe: {}", e);
+                            None
                         }
+                    }
                 } else {
                     debug!("None of the conditions were met");
                     None
@@ -326,7 +322,8 @@ fn sanitize_json(json_str: &str) -> String {
                     let rest_chars = &chars[i + 1..];
                     let next_char = rest_chars.iter().find(|c| !c.is_whitespace());
                     if !matches!(prev_char, Some(',') | Some('[') | Some('{'))
-                        && matches!(next_char, Some('"' | '[' | '{')) {
+                        && matches!(next_char, Some('"' | '[' | '{'))
+                    {
                         debug!("Adding missing comma after string");
                         minified.push('"');
                         minified.push(',');
