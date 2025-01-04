@@ -1,6 +1,6 @@
 [package]
 name = "cooklang-import"
-version = "0.3.3"
+version = "0.4.0"
 edition = "2021"
 description = "A tool for importing recipes into Cooklang format"
 license = "MIT"

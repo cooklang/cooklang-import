@@ -82,17 +82,26 @@ async fn fetch_inner_text(url: &str) -> Result<String, Box<dyn Error>> {
     let client = Client::new();
     let endpoint = format!("{}/api/fetch-content", page_scriber_url);
 
-    let response: ContentResponse = client
+    let response = client
         .post(&endpoint)
         .json(&ContentRequest {
             url: url.to_string(),
         })
         .send()
-        .await?
-        .json()
         .await?;
 
-    Ok(response.content)
+    // Check status code before attempting to parse JSON
+    if !response.status().is_success() {
+        return Err(format!(
+            "Page scriber request failed with status: {}",
+            response.status()
+        )
+        .into());
+    }
+
+    let content: ContentResponse = response.json().await?;
+
+    Ok(content.content)
 }
 
 async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error>> {
