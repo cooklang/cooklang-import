@@ -26,11 +26,7 @@ pub struct PlainTextLlmExtractor;
 
 #[async_trait::async_trait]
 impl Extractor for PlainTextLlmExtractor {
-    fn can_parse(&self, _context: &ParsingContext) -> bool {
-        true
-    }
-
-    fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn Error>> {
+    fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn std::error::Error>> {
         info!("Parsing with PlainTextLlmExtractor for {}", context.url);
 
         let document = &context.document;
@@ -40,11 +36,8 @@ impl Extractor for PlainTextLlmExtractor {
                 tokio::runtime::Handle::current().block_on(fetch_inner_text(&context.url))
             })?
         } else {
-            // Fallback to existing approach
             extract_inner_texts(document).join("\n")
         };
-
-        // Extract title from document
 
         let title = document
             .select(&scraper::Selector::parse("title").unwrap())
@@ -56,27 +49,24 @@ impl Extractor for PlainTextLlmExtractor {
             tokio::runtime::Handle::current().block_on(fetch_json(texts))
         })?;
 
-        let recipe_data = if let Some(error) = json["error"].as_str() {
+        if let Some(error) = json["error"].as_str() {
             if !error.is_empty() {
                 return Err(error.into());
             }
-            json
-        } else {
-            json
-        };
+        }
 
         Ok(Recipe {
             name: title,
             description: None,
             image: vec![],
-            ingredients: recipe_data["ingredients"]
+            ingredients: json["ingredients"]
                 .as_array()
                 .unwrap_or(&Vec::new())
                 .iter()
                 .filter_map(|i| i.as_str().map(String::from))
                 .collect::<Vec<String>>()
                 .join("\n"),
-            instructions: recipe_data["instructions"]
+            instructions: json["instructions"]
                 .as_array()
                 .unwrap_or(&Vec::new())
                 .iter()
@@ -311,7 +301,7 @@ mod tests {
     use std::env;
 
     #[test]
-    fn test_can_parse() {
+    fn test_parse_success() {
         let html = "<html><body>Test</body></html>";
         let document = Html::parse_document(html);
         let context = ParsingContext {
@@ -320,7 +310,13 @@ mod tests {
             texts: None,
         };
         let extractor = PlainTextLlmExtractor;
-        assert!(extractor.can_parse(&context));
+        // Set up environment for test
+        env::set_var("OPENAI_API_KEY", "test_key");
+
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let result = extractor.parse(&context);
+            assert!(result.is_ok());
+        });
     }
 
     #[test]

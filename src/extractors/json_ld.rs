@@ -184,64 +184,12 @@ impl From<JsonLdRecipe> for Recipe {
 }
 
 impl Extractor for JsonLdExtractor {
-    fn can_parse(&self, context: &ParsingContext) -> bool {
-        let selector = Selector::parse("script[type='application/ld+json']").unwrap();
-
-        let document = &context.document;
-
-        debug!("Document: {}", document.html());
-
-        // Check all script elements
-        document.select(&selector).any(|script| {
-            debug!("Script: {}", script.inner_html());
-
-            // Use the sanitize function before parsing
-            let cleaned_json = sanitize_json(&script.inner_html());
-            debug!("Cleaned JSON: {}", cleaned_json);
-            if let Ok(json_ld) = serde_json::from_str::<Value>(&cleaned_json) {
-                debug!("JSON-LD: {:#?}", json_ld);
-
-                if json_ld.is_array() {
-                    json_ld
-                        .as_array()
-                        .and_then(|arr| {
-                            arr.iter()
-                                .find(|item| item.get("recipeInstructions").is_some())
-                        })
-                        .is_some()
-                } else if json_ld.get("recipeInstructions").is_some() {
-                    debug!(
-                        "Recipe Instructions: {:#?}",
-                        json_ld.get("recipeInstructions")
-                    );
-                    true
-                } else if let Some(graph) = json_ld.get("@graph") {
-                    debug!("Graph: {:#?}", graph);
-                    graph
-                        .as_array()
-                        .and_then(|arr| {
-                            arr.iter().find(|item| {
-                                item.get("@type") == Some(&Value::String("Recipe".to_string()))
-                            })
-                        })
-                        .is_some()
-                } else {
-                    debug!("No valid recipe found in JSON-LD");
-                    false
-                }
-            } else {
-                false
-            }
-        })
-    }
-
     fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn std::error::Error>> {
         let selector = Selector::parse("script[type='application/ld+json']").unwrap();
         let document = &context.document;
 
         // Try each script element until we find a valid recipe
         for script in document.select(&selector) {
-            // Use the sanitize function before parsing
             let cleaned_json = sanitize_json(&script.inner_html());
             if let Ok(json_ld) = serde_json::from_str::<Value>(&cleaned_json) {
                 debug!("Trying JSON-LD: {:#?}", json_ld);
@@ -288,18 +236,13 @@ impl Extractor for JsonLdExtractor {
                         }
                     }
                 } else {
-                    debug!("None of the conditions were met");
                     None
                 };
 
-                debug!("Recipe Result: {:#?}", recipe_result);
-
-                // If we found a valid recipe, return it
                 if let Some(recipe) = recipe_result {
                     debug!("Found valid recipe: {:#?}", recipe);
                     return Ok(Recipe::from(recipe));
                 }
-                // Otherwise continue to the next script block
             }
         }
 
@@ -413,7 +356,7 @@ mod tests {
     }
 
     #[test]
-    fn test_can_parse() {
+    fn test_parse_success() {
         let html = "<html><body>Test</body></html>";
         let document = Html::parse_document(html);
         let context = ParsingContext {
@@ -422,7 +365,8 @@ mod tests {
             texts: None,
         };
         let extractor = JsonLdExtractor;
-        assert!(extractor.can_parse(&context));
+        // Just verify that parse returns an error for invalid input
+        assert!(extractor.parse(&context).is_err());
     }
 
     #[test]

@@ -2,7 +2,7 @@ pub mod converters;
 pub mod extractors;
 pub mod model;
 
-use log::{debug, error};
+use log::debug;
 use reqwest::header::{HeaderMap, USER_AGENT};
 use scraper::Html;
 
@@ -34,16 +34,22 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error
         Box::new(extractors::PlainTextLlmExtractor),
     ];
 
+    let mut last_error = None;
     for extractor in extractors_list {
-        if extractor.can_parse(&context) {
-            let recipe = extractor.parse(&context)?;
-            debug!("{:#?}", recipe);
-            return Ok(recipe);
+        match extractor.parse(&context) {
+            Ok(recipe) => {
+                debug!("{:#?}", recipe);
+                return Ok(recipe);
+            }
+            Err(e) => {
+                debug!("Extractor failed: {}", e);
+                last_error = Some(e);
+            }
         }
     }
 
-    error!("No extractor found to parse the recipe from this webpage.");
-    Err("No extractor found to parse the recipe from this webpage.".into())
+    Err(last_error
+        .unwrap_or_else(|| "No extractor could parse the recipe from this webpage.".into()))
 }
 
 pub async fn convert_recipe(recipe: &model::Recipe) -> Result<String, Box<dyn std::error::Error>> {

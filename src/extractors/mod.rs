@@ -14,6 +14,5 @@ pub struct ParsingContext {
 }
 
 pub trait Extractor {
-    fn can_parse(&self, context: &ParsingContext) -> bool;
     fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn std::error::Error>>;
 }
