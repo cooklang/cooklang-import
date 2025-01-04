@@ -1,11 +1,12 @@
-use crate::extractors::Extractor;
+use crate::extractors::{Extractor, ParsingContext};
 use crate::model::Recipe;
 use html_escape::decode_html_entities;
 use log::debug;
-use scraper::{Html, Selector};
+use scraper::Selector;
 use serde::Deserialize;
 use serde_json::Value;
 use std::convert::TryFrom;
+
 pub struct JsonLdExtractor;
 
 #[derive(Debug, Deserialize)]
@@ -183,8 +184,10 @@ impl From<JsonLdRecipe> for Recipe {
 }
 
 impl Extractor for JsonLdExtractor {
-    fn can_parse(&self, document: &Html) -> bool {
+    fn can_parse(&self, context: &ParsingContext) -> bool {
         let selector = Selector::parse("script[type='application/ld+json']").unwrap();
+
+        let document = &context.document;
 
         debug!("Document: {}", document.html());
 
@@ -232,8 +235,9 @@ impl Extractor for JsonLdExtractor {
         })
     }
 
-    fn parse(&self, document: &Html) -> Result<Recipe, Box<dyn std::error::Error>> {
+    fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn std::error::Error>> {
         let selector = Selector::parse("script[type='application/ld+json']").unwrap();
+        let document = &context.document;
 
         // Try each script element until we find a valid recipe
         for script in document.select(&selector) {
@@ -311,16 +315,14 @@ fn sanitize_json(json_str: &str) -> String {
     let mut prev_char = None;
     let mut depth = 0;
     let chars: Vec<char> = json_str.chars().collect();
-    let len = chars.len();
 
-    for i in 0..len {
-        let c = chars[i];
+    for (i, &c) in chars.iter().enumerate() {
         match c {
             '"' if prev_char != Some('\\') => {
                 in_string = !in_string;
                 if !in_string {
                     // We're ending a string - check if we need a comma
-                    let rest_chars = &chars[i + 1..];
+                    let rest_chars = chars.get(i + 1..).unwrap_or(&[]);
                     let next_char = rest_chars.iter().find(|c| !c.is_whitespace());
                     if !matches!(prev_char, Some(',') | Some('[') | Some('{'))
                         && matches!(next_char, Some('"' | '[' | '{'))
@@ -342,13 +344,14 @@ fn sanitize_json(json_str: &str) -> String {
                 depth -= 1;
                 minified.push(c);
                 // Check if we need a comma after array/object closing
-                let rest = &json_str[i + 1..];
-                let next_char = rest.trim_start().chars().next();
-                if depth > 0 && matches!(next_char, Some('"')) {
-                    debug!("Adding missing comma after array/object closing");
-                    minified.push(',');
-                    prev_char = Some(',');
-                    continue;
+                if let Some(rest_chars) = chars.get(i + 1..) {
+                    let next_char = rest_chars.iter().find(|&&c| !c.is_whitespace());
+                    if depth > 0 && matches!(next_char, Some(&'"')) {
+                        debug!("Adding missing comma after array/object closing");
+                        minified.push(',');
+                        prev_char = Some(',');
+                        continue;
+                    }
                 }
             }
             ',' if !in_string => {
@@ -389,11 +392,11 @@ fn sanitize_json(json_str: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extractors::ParsingContext;
     use scraper::Html;
 
-    // Add helper function for tests
-    fn create_html_document(json_ld: &str) -> Html {
-        let html = format!(
+    fn create_html_document(json_ld: &str) -> String {
+        format!(
             r#"
             <!DOCTYPE html>
             <html>
@@ -406,33 +409,20 @@ mod tests {
             </html>
             "#,
             json_ld
-        );
-        Html::parse_document(&html)
+        )
     }
 
     #[test]
     fn test_can_parse() {
-        let html = r#"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <script type="application/ld+json">
-                {
-                    "@context": "https://schema.org/",
-                    "@type": "Recipe",
-                    "name": "Test Recipe",
-                    "recipeIngredient": ["ingredient 1", "ingredient 2"],
-                    "recipeInstructions": ["step 1", "step 2"]
-                }
-                </script>
-            </head>
-            <body></body>
-            </html>
-        "#;
-
+        let html = "<html><body>Test</body></html>";
         let document = Html::parse_document(html);
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document,
+            texts: None,
+        };
         let extractor = JsonLdExtractor;
-        assert!(extractor.can_parse(&document));
+        assert!(extractor.can_parse(&context));
     }
 
     #[test]
@@ -449,9 +439,15 @@ mod tests {
             "recipeInstructions": "Mix ingredients. Bake at 350F for 10 minutes."
         }
         "#;
-        let document = create_html_document(json_ld);
+        let html_str = create_html_document(json_ld);
+        let document = Html::parse_document(&html_str);
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document,
+            texts: None,
+        };
 
-        let result = extractor.parse(&document).unwrap();
+        let result = extractor.parse(&context).unwrap();
 
         assert_eq!(result.name, "Chocolate Chip Cookies");
         assert_eq!(
@@ -491,9 +487,15 @@ mod tests {
             }
         ]
         "#;
-        let document = create_html_document(json_ld);
+        let html_str = create_html_document(json_ld);
+        let document = Html::parse_document(&html_str);
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document,
+            texts: None,
+        };
 
-        let result = extractor.parse(&document).unwrap();
+        let result = extractor.parse(&context).unwrap();
 
         assert_eq!(result.name, "Pasta Carbonara");
         assert_eq!(

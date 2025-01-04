@@ -7,7 +7,7 @@ use reqwest::header::{HeaderMap, USER_AGENT};
 use scraper::Html;
 
 use crate::converters::ConvertToCooklang;
-use crate::extractors::Extractor;
+use crate::extractors::{Extractor, ParsingContext};
 
 pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error::Error>> {
     // Set up headers with a user agent
@@ -23,8 +23,11 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error
         .text()
         .await?;
 
-    // Parse the HTML document
-    let document = Html::parse_document(&body);
+    let context = ParsingContext {
+        url: url.to_string(),
+        document: Html::parse_document(&body),
+        texts: None,
+    };
 
     let extractors_list: Vec<Box<dyn Extractor>> = vec![
         Box::new(extractors::JsonLdExtractor),
@@ -32,8 +35,8 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error
     ];
 
     for extractor in extractors_list {
-        if extractor.can_parse(&document) {
-            let recipe = extractor.parse(&document)?;
+        if extractor.can_parse(&context) {
+            let recipe = extractor.parse(&context)?;
             debug!("{:#?}", recipe);
             return Ok(recipe);
         }

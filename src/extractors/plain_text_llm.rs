@@ -1,7 +1,11 @@
-use crate::extractors::Extractor;
+use crate::extractors::{Extractor, ParsingContext};
 use crate::model::Recipe;
+use log::info;
+use reqwest::Client;
 use scraper::{ElementRef, Html, Node};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::env;
 use std::error::Error;
 
 const PROMPT: &str = r#"
@@ -22,14 +26,26 @@ pub struct PlainTextLlmExtractor;
 
 #[async_trait::async_trait]
 impl Extractor for PlainTextLlmExtractor {
-    fn can_parse(&self, _document: &Html) -> bool {
+    fn can_parse(&self, _context: &ParsingContext) -> bool {
         true
     }
 
-    fn parse(&self, document: &Html) -> Result<Recipe, Box<dyn Error>> {
-        let texts = extract_inner_texts(document).join("\n");
+    fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn Error>> {
+        info!("Parsing with PlainTextLlmExtractor for {}", context.url);
+
+        let document = &context.document;
+
+        let texts = if env::var("PAGE_SCRIBER_URL").is_ok() {
+            tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(fetch_inner_text(&context.url))
+            })?
+        } else {
+            // Fallback to existing approach
+            extract_inner_texts(document).join("\n")
+        };
 
         // Extract title from document
+
         let title = document
             .select(&scraper::Selector::parse("title").unwrap())
             .next()
@@ -38,18 +54,15 @@ impl Extractor for PlainTextLlmExtractor {
 
         let json = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(fetch_json(texts))
-        });
+        })?;
 
-        let recipe_data = match json {
-            Ok(recipe_data) => {
-                if let Some(error) = recipe_data["error"].as_str() {
-                    if !error.is_empty() {
-                        return Err(error.into());
-                    }
-                }
-                recipe_data
+        let recipe_data = if let Some(error) = json["error"].as_str() {
+            if !error.is_empty() {
+                return Err(error.into());
             }
-            Err(e) => return Err(e),
+            json
+        } else {
+            json
         };
 
         Ok(Recipe {
@@ -72,6 +85,24 @@ impl Extractor for PlainTextLlmExtractor {
                 .join("\n"),
         })
     }
+}
+
+async fn fetch_inner_text(url: &str) -> Result<String, Box<dyn Error>> {
+    let page_scriber_url = env::var("PAGE_SCRIBER_URL")?;
+    let client = Client::new();
+    let endpoint = format!("{}/api/fetch-content", page_scriber_url);
+
+    let response: ContentResponse = client
+        .post(&endpoint)
+        .json(&ContentRequest {
+            url: url.to_string(),
+        })
+        .send()
+        .await?
+        .json()
+        .await?;
+
+    Ok(response.content)
 }
 
 async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error>> {
@@ -264,35 +295,32 @@ fn should_skip_element(element: &ElementRef) -> bool {
     )
 }
 
+#[derive(Serialize)]
+struct ContentRequest {
+    url: String,
+}
+
+#[derive(Deserialize)]
+struct ContentResponse {
+    content: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::env;
 
     #[test]
-    fn test_extract_inner_text() {
-        let html = r#"
-            <html>
-                <body>
-                    <div>Hello</div>
-                    <p>World</p>
-                    <span>Test</span>
-                </body>
-            </html>
-        "#;
-
-        let document = Html::parse_document(html);
-        let text = extract_inner_texts(&document);
-        let joined = text.join(" ");
-        assert_eq!(joined.trim(), "Hello World Test");
-    }
-
-    #[test]
     fn test_can_parse() {
         let html = "<html><body>Test</body></html>";
         let document = Html::parse_document(html);
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document,
+            texts: None,
+        };
         let extractor = PlainTextLlmExtractor;
-        assert!(extractor.can_parse(&document));
+        assert!(extractor.can_parse(&context));
     }
 
     #[test]
@@ -311,14 +339,36 @@ mod tests {
         "#;
 
         let document = Html::parse_document(html);
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document,
+            texts: None,
+        };
         let extractor = PlainTextLlmExtractor;
 
-        // Override the fetch_json function for testing
         tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let result = extractor.parse(&document).unwrap();
+            let result = extractor.parse(&context).unwrap();
             assert_eq!(result.name, "Test Recipe");
             assert!(!result.instructions.is_empty());
         });
+    }
+
+    #[test]
+    fn test_extract_inner_text() {
+        let html = r#"
+            <html>
+                <body>
+                    <div>Hello</div>
+                    <p>World</p>
+                    <span>Test</span>
+                </body>
+            </html>
+        "#;
+
+        let document = Html::parse_document(html);
+        let text = extract_inner_texts(&document);
+        let joined = text.join(" ");
+        assert_eq!(joined.trim(), "Hello World Test");
     }
 
     #[test]
