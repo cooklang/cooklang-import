@@ -98,11 +98,11 @@ struct HowToSection {
     item_list_element: Vec<HowToStep>,
 }
 
-impl TryFrom<Option<&Value>> for JsonLdRecipe {
+impl TryFrom<&Value> for JsonLdRecipe {
     type Error = serde_json::Error;
 
-    fn try_from(value: Option<&Value>) -> Result<Self, Self::Error> {
-        serde_json::from_value(value.unwrap().clone())
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        serde_json::from_value(value.clone())
     }
 }
 
@@ -194,54 +194,27 @@ impl Extractor for JsonLdExtractor {
             if let Ok(json_ld) = serde_json::from_str::<Value>(&cleaned_json) {
                 debug!("Trying JSON-LD: {:#?}", json_ld);
 
-                let recipe_result: Option<JsonLdRecipe> = if json_ld.is_array() {
-                    let extracted_recipe = json_ld.as_array().and_then(|arr| {
+                let recipe_json = if json_ld.is_array() {
+                    json_ld.as_array().and_then(|arr| {
                         arr.iter()
                             .find(|item| item.get("recipeInstructions").is_some())
-                    });
-
-                    match JsonLdRecipe::try_from(extracted_recipe) {
-                        Ok(recipe) => Some(recipe),
-                        Err(e) => {
-                            debug!("Failed to parse recipe: {}", e);
-                            None
-                        }
-                    }
+                    })
                 } else if json_ld.get("recipeInstructions").is_some() {
-                    debug!(
-                        "Recipe Instructions: {:#?}",
-                        json_ld.get("recipeInstructions")
-                    );
-
-                    match JsonLdRecipe::try_from(Some(&json_ld)) {
-                        Ok(recipe) => Some(recipe),
-                        Err(e) => {
-                            debug!("Failed to parse recipe: {}", e);
-                            None
-                        }
-                    }
+                    Some(&json_ld)
                 } else if let Some(graph) = json_ld.get("@graph") {
-                    debug!("Graph: {:#?}", graph);
-                    let extracted_recipe = graph.as_array().and_then(|arr| {
+                    graph.as_array().and_then(|arr| {
                         arr.iter().find(|item| {
                             item.get("@type") == Some(&Value::String("Recipe".to_string()))
                         })
-                    });
-
-                    match JsonLdRecipe::try_from(extracted_recipe) {
-                        Ok(recipe) => Some(recipe),
-                        Err(e) => {
-                            debug!("Failed to parse recipe: {}", e);
-                            None
-                        }
-                    }
+                    })
                 } else {
                     None
                 };
 
-                if let Some(recipe) = recipe_result {
-                    debug!("Found valid recipe: {:#?}", recipe);
-                    return Ok(Recipe::from(recipe));
+                if let Some(recipe) = recipe_json {
+                    if let Ok(recipe) = JsonLdRecipe::try_from(recipe) {
+                        return Ok(Recipe::from(recipe));
+                    }
                 }
             }
         }
