@@ -513,10 +513,7 @@ fn convert_duration(duration: &str) -> String {
 
         // Handle seconds (including decimal values like 5400.0S)
         if let Some(s_pos) = duration.find('S') {
-            let start = duration
-                .rfind(['H', 'M'])
-                .map(|p| p + 1)
-                .unwrap_or(0);
+            let start = duration.rfind(['H', 'M']).map(|p| p + 1).unwrap_or(0);
             let seconds_str = &duration[start..s_pos];
 
             if let Ok(seconds) = seconds_str.parse::<f64>() {
