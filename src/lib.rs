@@ -52,15 +52,51 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error
         .unwrap_or_else(|| "No extractor could parse the recipe from this webpage.".into()))
 }
 
+pub fn generate_frontmatter(metadata: &std::collections::HashMap<String, String>) -> String {
+    if metadata.is_empty() {
+        return String::new();
+    }
+
+    let mut frontmatter = String::from("---\n");
+
+    // Sort keys for consistent output
+    let mut keys: Vec<_> = metadata.keys().collect();
+    keys.sort();
+
+    for key in keys {
+        if let Some(value) = metadata.get(key) {
+            // Escape values that contain special characters
+            if value.contains('\n') || value.contains('"') || value.contains(':') {
+                frontmatter.push_str(&format!("{}: \"{}\"\n", key, value.replace('"', "\\\"")));
+            } else {
+                frontmatter.push_str(&format!("{}: {}\n", key, value));
+            }
+        }
+    }
+
+    frontmatter.push_str("---\n\n");
+    frontmatter
+}
+
 pub async fn convert_recipe(recipe: &model::Recipe) -> Result<String, Box<dyn std::error::Error>> {
     let openai_api_key =
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in the environment");
     let model = std::env::var("OPENAI_MODEL").unwrap_or("gpt-4".to_string());
 
     let converter = converters::OpenAIConverter::new(openai_api_key, model);
-    converter
+
+    // Convert using the basic convert method
+    let mut cooklang_recipe = converter
         .convert(&recipe.ingredients, &recipe.instructions)
-        .await
+        .await?;
+
+    // Prepend frontmatter if there's metadata
+    let frontmatter = generate_frontmatter(&recipe.metadata);
+    if !frontmatter.is_empty() {
+        cooklang_recipe = frontmatter + &cooklang_recipe;
+    }
+
+    Ok(cooklang_recipe)
 }
 
 pub async fn import_recipe(url: &str) -> Result<String, Box<dyn std::error::Error>> {

@@ -1,4 +1,4 @@
-use cooklang_import::{fetch_recipe, import_recipe};
+use cooklang_import::{fetch_recipe, generate_frontmatter, import_recipe};
 use log::info;
 use std::env;
 
@@ -20,10 +20,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Import the recipe
     let result = if download_only {
         let recipe = fetch_recipe(url).await?;
-        Ok(format!(
+
+        // Build the output with frontmatter if metadata exists
+        let mut output = generate_frontmatter(&recipe.metadata);
+
+        output.push_str(&format!(
             "# {}\n\n## Ingredients\n{}\n\n## Instructions\n{}",
             recipe.name, recipe.ingredients, recipe.instructions
-        ))
+        ));
+
+        Ok(output)
     } else {
         import_recipe(url).await
     };

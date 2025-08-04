@@ -73,6 +73,7 @@ impl Extractor for PlainTextLlmExtractor {
                 .filter_map(|i| i.as_str().map(String::from))
                 .collect::<Vec<String>>()
                 .join("\n"),
+            metadata: std::collections::HashMap::new(),
         })
     }
 }

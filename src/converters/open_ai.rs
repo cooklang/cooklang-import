@@ -80,8 +80,8 @@ impl OpenAIConverter {
         }
     }
 
-    #[cfg(test)]
-    fn with_base_url(api_key: String, base_url: String, model: String) -> Self {
+    #[doc(hidden)]
+    pub fn with_base_url(api_key: String, base_url: String, model: String) -> Self {
         OpenAIConverter {
             client: Client::new(),
             api_key,
@@ -128,9 +128,9 @@ mod tests {
     use super::*;
     use mockito::Server;
 
-    #[tokio::test(flavor = "current_thread")]
+    #[tokio::test]
     async fn test_convert() {
-        let mut server = Server::new();
+        let mut server = Server::new_async().await;
         let mock = server
             .mock("POST", "/v1/chat/completions")
             .with_status(200)
@@ -160,9 +160,9 @@ mod tests {
         mock.assert();
     }
 
-    #[tokio::test(flavor = "current_thread")]
+    #[tokio::test]
     async fn test_convert_api_error() {
-        let mut server = Server::new();
+        let mut server = Server::new_async().await;
         let mock = server
             .mock("POST", "/v1/chat/completions")
             .with_status(400)
