@@ -31,6 +31,7 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, Box<dyn std::error
 
     let extractors_list: Vec<Box<dyn Extractor>> = vec![
         Box::new(extractors::JsonLdExtractor),
+        Box::new(extractors::HtmlClassExtractor),
         Box::new(extractors::PlainTextLlmExtractor),
     ];
 

@@ -1,9 +1,11 @@
 use crate::model::Recipe;
 use scraper::Html;
 
+mod html_class;
 mod json_ld;
 mod plain_text_llm;
 
+pub use self::html_class::HtmlClassExtractor;
 pub use self::json_ld::JsonLdExtractor;
 pub use self::plain_text_llm::PlainTextLlmExtractor;
 
