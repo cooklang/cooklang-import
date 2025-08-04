@@ -69,7 +69,7 @@ pub fn generate_frontmatter(metadata: &std::collections::HashMap<String, String>
             if value.contains('\n') || value.contains('"') || value.contains(':') {
                 frontmatter.push_str(&format!("{}: \"{}\"\n", key, value.replace('"', "\\\"")));
             } else {
-                frontmatter.push_str(&format!("{}: {}\n", key, value));
+                frontmatter.push_str(&format!("{key}: {value}\n"));
             }
         }
     }

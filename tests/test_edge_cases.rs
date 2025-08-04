@@ -9,15 +9,14 @@ fn create_recipe_html(json_ld: &str) -> String {
         <head>
             <title>Recipe Page</title>
             <script type="application/ld+json">
-                {}
+                {json_ld}
             </script>
         </head>
         <body>
             <h1>Recipe</h1>
         </body>
         </html>
-        "#,
-        json_ld
+        "#
     )
 }
 
@@ -100,13 +99,13 @@ async fn test_empty_strings_and_empty_arrays() {
     let result = fetch_recipe(&url).await.unwrap();
 
     // These should not exist due to empty values
-    assert!(result.metadata.get("author").is_none());
-    assert!(result.metadata.get("prep time").is_none());
-    assert!(result.metadata.get("time required").is_none());
-    assert!(result.metadata.get("tags").is_none());
-    assert!(result.metadata.get("cuisine").is_none());
-    assert!(result.metadata.get("course").is_none());
-    assert!(result.metadata.get("servings").is_none());
+    assert!(!result.metadata.contains_key("author"));
+    assert!(!result.metadata.contains_key("prep time"));
+    assert!(!result.metadata.contains_key("time required"));
+    assert!(!result.metadata.contains_key("tags"));
+    assert!(!result.metadata.contains_key("cuisine"));
+    assert!(!result.metadata.contains_key("course"));
+    assert!(!result.metadata.contains_key("servings"));
 
     // This should exist
     assert_eq!(result.metadata.get("cook time").unwrap(), "30 minutes");
@@ -690,5 +689,5 @@ async fn test_author_with_only_id_field() {
     let result = fetch_recipe(&url).await.unwrap();
 
     // Author should not be in metadata since it only had an @id
-    assert!(result.metadata.get("author").is_none());
+    assert!(!result.metadata.contains_key("author"));
 }

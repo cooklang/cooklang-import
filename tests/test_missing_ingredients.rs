@@ -9,15 +9,14 @@ fn create_recipe_html(json_ld: &str) -> String {
         <head>
             <title>Recipe Page</title>
             <script type="application/ld+json">
-                {}
+                {json_ld}
             </script>
         </head>
         <body>
             <h1>Recipe</h1>
         </body>
         </html>
-        "#,
-        json_ld
+        "#
     )
 }
 
@@ -127,11 +126,11 @@ async fn test_recipe_with_duration_range() {
     // Check that some time value is extracted (even if not perfect)
     let cook_time = result.metadata.get("cook time");
     assert!(cook_time.is_some());
-    println!("Cook time extracted: {:?}", cook_time);
+    println!("Cook time extracted: {cook_time:?}");
 
     let total_time = result.metadata.get("time required");
     assert!(total_time.is_some());
-    println!("Total time extracted: {:?}", total_time);
+    println!("Total time extracted: {total_time:?}");
 }
 
 #[tokio::test]
@@ -218,7 +217,7 @@ async fn test_recipe_with_ingredient_objects() {
     );
 
     // Empty category array should not create metadata
-    assert!(result.metadata.get("course").is_none());
+    assert!(!result.metadata.contains_key("course"));
 }
 
 #[tokio::test]

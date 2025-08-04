@@ -9,15 +9,14 @@ fn create_recipe_html(json_ld: &str) -> String {
         <head>
             <title>Recipe Page</title>
             <script type="application/ld+json">
-                {}
+                {json_ld}
             </script>
         </head>
         <body>
             <h1>Recipe</h1>
         </body>
         </html>
-        "#,
-        json_ld
+        "#
     )
 }
 
@@ -90,7 +89,7 @@ async fn test_author_with_only_id() {
     assert_eq!(result.name, "BLT Pasta Salad");
 
     // Author should not be in metadata since it only had an @id
-    assert!(result.metadata.get("author").is_none());
+    assert!(!result.metadata.contains_key("author"));
 
     // Other metadata should be present
     assert_eq!(result.metadata.get("prep time").unwrap(), "10 minutes");

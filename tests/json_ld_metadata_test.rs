@@ -9,15 +9,14 @@ fn create_recipe_html_with_metadata(json_ld: &str) -> String {
         <head>
             <title>Recipe Page</title>
             <script type="application/ld+json">
-                {}
+                {json_ld}
             </script>
         </head>
         <body>
             <h1>Recipe</h1>
         </body>
         </html>
-        "#,
-        json_ld
+        "#
     )
 }
 
@@ -87,15 +86,15 @@ async fn test_comprehensive_metadata_extraction() {
     );
 
     // Check that duplicate keys are NOT present
-    assert!(result.metadata.get("source.url").is_none());
-    assert!(result.metadata.get("source.author").is_none());
-    assert!(result.metadata.get("time.prep").is_none());
-    assert!(result.metadata.get("time.cook").is_none());
-    assert!(result.metadata.get("time").is_none());
-    assert!(result.metadata.get("duration").is_none());
-    assert!(result.metadata.get("serves").is_none());
-    assert!(result.metadata.get("yield").is_none());
-    assert!(result.metadata.get("category").is_none());
+    assert!(!result.metadata.contains_key("source.url"));
+    assert!(!result.metadata.contains_key("source.author"));
+    assert!(!result.metadata.contains_key("time.prep"));
+    assert!(!result.metadata.contains_key("time.cook"));
+    assert!(!result.metadata.contains_key("time"));
+    assert!(!result.metadata.contains_key("duration"));
+    assert!(!result.metadata.contains_key("serves"));
+    assert!(!result.metadata.contains_key("yield"));
+    assert!(!result.metadata.contains_key("category"));
 }
 
 #[tokio::test]
@@ -196,7 +195,7 @@ async fn test_metadata_partial_fields() {
     assert_eq!(result.metadata.get("tags").unwrap(), "simple, easy");
 
     // Check absent fields
-    assert!(result.metadata.get("author").is_none());
-    assert!(result.metadata.get("cook time").is_none());
-    assert!(result.metadata.get("servings").is_none());
+    assert!(!result.metadata.contains_key("author"));
+    assert!(!result.metadata.contains_key("cook time"));
+    assert!(!result.metadata.contains_key("servings"));
 }

@@ -9,15 +9,14 @@ fn create_recipe_html_with_arrays(json_ld: &str) -> String {
         <head>
             <title>Recipe Page</title>
             <script type="application/ld+json">
-                {}
+                {json_ld}
             </script>
         </head>
         <body>
             <h1>Recipe</h1>
         </body>
         </html>
-        "#,
-        json_ld
+        "#
     )
 }
 
@@ -90,13 +89,13 @@ async fn test_recipe_with_array_fields_and_empty_strings() {
     );
 
     // Check that empty arrays don't create entries
-    assert!(result.metadata.get("cuisine").is_none());
+    assert!(!result.metadata.contains_key("cuisine"));
 
     // Check that empty strings don't create entries
-    assert!(result.metadata.get("tags").is_none());
-    assert!(result.metadata.get("prep time").is_none());
-    assert!(result.metadata.get("time required").is_none());
-    assert!(result.metadata.get("servings").is_none());
+    assert!(!result.metadata.contains_key("tags"));
+    assert!(!result.metadata.contains_key("prep time"));
+    assert!(!result.metadata.contains_key("time required"));
+    assert!(!result.metadata.contains_key("servings"));
 
     // Check that non-empty time fields work
     assert_eq!(result.metadata.get("cook time").unwrap(), "30 minutes");

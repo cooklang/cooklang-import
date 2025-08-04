@@ -9,15 +9,14 @@ fn create_recipe_html_with_metadata(json_ld: &str) -> String {
         <head>
             <title>Recipe Page</title>
             <script type="application/ld+json">
-                {}
+                {json_ld}
             </script>
         </head>
         <body>
             <h1>Recipe</h1>
         </body>
         </html>
-        "#,
-        json_ld
+        "#
     )
 }
 
@@ -61,7 +60,7 @@ async fn test_download_mode_with_metadata() {
 
     // Run the binary with --download-only flag
     let output = Command::new("cargo")
-        .args(&["run", "--", &url, "--download-only"])
+        .args(["run", "--", &url, "--download-only"])
         .env("RUST_LOG", "error") // Suppress debug logs
         .output()
         .expect("Failed to execute command");
@@ -78,7 +77,7 @@ async fn test_download_mode_with_metadata() {
     assert!(stdout.contains("cuisine: Italian"));
     assert!(stdout.contains("servings: 4 servings"));
     assert!(stdout.contains("tags: test, recipe, metadata"));
-    assert!(stdout.contains(&format!("source: \"{}\"", url)));
+    assert!(stdout.contains(&format!("source: \"{url}\"")));
     assert!(stdout.contains("---\n\n# Test Recipe"));
 
     // Check that ingredients and instructions are included
@@ -115,7 +114,7 @@ async fn test_download_mode_without_metadata() {
 
     // Run the binary with --download-only flag
     let output = Command::new("cargo")
-        .args(&["run", "--", &url, "--download-only"])
+        .args(["run", "--", &url, "--download-only"])
         .env("RUST_LOG", "error") // Suppress debug logs
         .output()
         .expect("Failed to execute command");
@@ -124,7 +123,7 @@ async fn test_download_mode_without_metadata() {
 
     // Should still have frontmatter with at least the source URL
     assert!(stdout.contains("---\n"));
-    assert!(stdout.contains(&format!("source: \"{}\"", url)));
+    assert!(stdout.contains(&format!("source: \"{url}\"")));
     assert!(stdout.contains("---\n\n# Simple Recipe"));
 
     // Check basic content

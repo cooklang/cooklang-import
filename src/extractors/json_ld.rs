@@ -167,7 +167,7 @@ impl JsonLdExtractor {
                         if amount.is_empty() {
                             name
                         } else {
-                            format!("{} {}", amount, name)
+                            format!("{amount} {name}")
                         }
                     })
                     .collect::<Vec<String>>()
@@ -451,8 +451,7 @@ fn convert_duration(duration: &str) -> String {
     // Convert ISO 8601 duration to human-readable format
     // e.g., PT30M -> 30 minutes, PT1H30M -> 1 hour 30 minutes
     // Also handle ranges like PT15-20M and seconds like PT5400.0S
-    if duration.starts_with("PT") {
-        let duration = &duration[2..];
+    if let Some(duration) = duration.strip_prefix("PT") {
         let mut result = String::new();
 
         // Handle hours
@@ -474,9 +473,9 @@ fn convert_duration(duration: &str) -> String {
             if minutes_str.contains('-') {
                 // For ranges, just use the full range string
                 if !result.is_empty() {
-                    result.push_str(" ");
+                    result.push(' ');
                 }
-                result.push_str(&format!("{} minutes", minutes_str));
+                result.push_str(&format!("{minutes_str} minutes"));
             } else if let Ok(minutes) = minutes_str.parse::<u32>() {
                 // Convert minutes > 60 to hours and minutes
                 if minutes >= 60 {
@@ -484,7 +483,7 @@ fn convert_duration(duration: &str) -> String {
                     let remaining_minutes = minutes % 60;
 
                     if !result.is_empty() {
-                        result.push_str(" ");
+                        result.push(' ');
                     }
                     result.push_str(&format!(
                         "{} hour{}",
@@ -501,7 +500,7 @@ fn convert_duration(duration: &str) -> String {
                     }
                 } else {
                     if !result.is_empty() {
-                        result.push_str(" ");
+                        result.push(' ');
                     }
                     result.push_str(&format!(
                         "{} minute{}",
@@ -515,7 +514,7 @@ fn convert_duration(duration: &str) -> String {
         // Handle seconds (including decimal values like 5400.0S)
         if let Some(s_pos) = duration.find('S') {
             let start = duration
-                .rfind(|c: char| c == 'H' || c == 'M')
+                .rfind(['H', 'M'])
                 .map(|p| p + 1)
                 .unwrap_or(0);
             let seconds_str = &duration[start..s_pos];
@@ -537,7 +536,7 @@ fn convert_duration(duration: &str) -> String {
 
                 if minutes > 0 {
                     if !result.is_empty() {
-                        result.push_str(" ");
+                        result.push(' ');
                     }
                     result.push_str(&format!(
                         "{} minute{}",
@@ -743,13 +742,12 @@ mod tests {
             <html>
             <head>
                 <script type="application/ld+json">
-                    {}
+                    {json_ld}
                 </script>
             </head>
             <body></body>
             </html>
-            "#,
-            json_ld
+            "#
         )
     }
 

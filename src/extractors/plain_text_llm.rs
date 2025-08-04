@@ -81,7 +81,7 @@ impl Extractor for PlainTextLlmExtractor {
 async fn fetch_inner_text(url: &str) -> Result<String, Box<dyn Error>> {
     let page_scriber_url = env::var("PAGE_SCRIBER_URL")?;
     let client = Client::new();
-    let endpoint = format!("{}/api/fetch-content", page_scriber_url);
+    let endpoint = format!("{page_scriber_url}/api/fetch-content");
 
     let response = client
         .post(&endpoint)
@@ -119,7 +119,7 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error>> {
 
     let response = reqwest::Client::new()
         .post("https://api.openai.com/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Authorization", format!("Bearer {api_key}"))
         .json(&serde_json::json!({
             "model": MODEL,
             "messages": [
@@ -189,7 +189,7 @@ fn extract_inner_texts(document: &Html) -> Vec<String> {
     }
 
     // Remove any trailing empty lines
-    while processed.last().map_or(false, |s| s.trim().is_empty()) {
+    while processed.last().is_some_and(|s| s.trim().is_empty()) {
         processed.pop();
     }
 

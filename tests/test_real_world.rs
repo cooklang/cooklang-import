@@ -28,7 +28,7 @@ async fn test_shahi_paneer_recipe() {
             );
         }
         Err(e) => {
-            panic!("Failed to fetch recipe: {}", e);
+            panic!("Failed to fetch recipe: {e}");
         }
     }
 }
