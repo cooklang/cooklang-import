@@ -1,104 +1,83 @@
-use crate::converters::ConvertToCooklang;
+use crate::config::ProviderConfig;
+use crate::providers::{LlmProvider, COOKLANG_CONVERTER_PROMPT};
+use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::error::Error;
 
-const COOKLANG_CONVERTER_PROMPT: &str = "
-    As a distinguished Cooklang Converter, your primary task is
-    to transform recipes provided by the user into the structured
-    Cooklang recipe markup format.
-
-    Ingredients
-
-    To define an ingredient, use the @ symbol. If the ingredient's
-    name contains multiple words, indicate the end of the name with {}.
-
-    Example:
-        Then add @salt and @ground black pepper{} to taste.
-
-    To indicate the quantity of an item, place the quantity inside {} after the name.
-
-    Example:
-        Poke holes in @potato{2}.
-
-    To use a unit of an item, such as weight or volume, add a % between
-    the quantity and unit.
-
-    Example:
-        Place @bacon strips{1%kg} on a baking sheet and glaze with @syrup{1/2%tbsp}.
-
-    Cookware
-
-    You can define any necessary cookware with # symbol. If the cookware's
-    name contains multiple words, indicate the end of the name with {}.
-
-    Example:
-        Place the potatoes into a #pot.
-        Mash the potatoes with a #potato masher{}.
-
-    Timer
-
-    You can define a timer using ~.
-
-    Example:
-        Lay the potatoes on a #baking sheet{} and place into the #oven{}. Bake for ~{25%minutes}.
-
-    Timers can have a name too.
-
-    Example:
-        Boil @eggs{2} for ~eggs{3%minutes}.
-
-    User will give you a classical recipe representation when ingredients listed first
-    and then method text.
-
-    Final result shouldn't have original ingredient list, you need to
-    incorporate each ingredient and quantities into method's text following
-    Cooklang conventions.
-
-    Ensure the original recipe's words are preserved, modifying only
-    ingredients and cookware according to Cooklang syntax. Don't convert
-    temperature.
-
-    Separate each step with two new lines.
-";
-
-pub struct OpenAIConverter {
+pub struct OpenAIProvider {
     client: Client,
     api_key: String,
     base_url: String,
     model: String,
+    temperature: f32,
+    max_tokens: u32,
 }
 
-impl OpenAIConverter {
-    pub fn new(api_key: String, model: String) -> Self {
-        OpenAIConverter {
+impl OpenAIProvider {
+    /// Create a new OpenAI provider from configuration
+    pub fn new(config: &ProviderConfig) -> Result<Self, Box<dyn Error>> {
+        // Try config first, then fall back to environment variable
+        let api_key = config
+            .api_key
+            .clone()
+            .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+            .ok_or("OPENAI_API_KEY not found in config or environment")?;
+
+        let base_url = config
+            .base_url
+            .clone()
+            .unwrap_or_else(|| "https://api.openai.com".to_string());
+
+        Ok(OpenAIProvider {
+            client: Client::new(),
+            api_key,
+            base_url,
+            model: config.model.clone(),
+            temperature: config.temperature,
+            max_tokens: config.max_tokens,
+        })
+    }
+
+    /// Create a new OpenAI provider with simple parameters (for backward compatibility)
+    pub fn with_api_key(api_key: String, model: String) -> Self {
+        OpenAIProvider {
             client: Client::new(),
             api_key,
             base_url: "https://api.openai.com".to_string(),
             model,
+            temperature: 0.7,
+            max_tokens: 2000,
         }
     }
 
     #[doc(hidden)]
     pub fn with_base_url(api_key: String, base_url: String, model: String) -> Self {
-        OpenAIConverter {
+        OpenAIProvider {
             client: Client::new(),
             api_key,
             base_url,
             model,
+            temperature: 0.7,
+            max_tokens: 2000,
         }
     }
 }
 
-#[async_trait::async_trait]
-impl ConvertToCooklang for OpenAIConverter {
+#[async_trait]
+impl LlmProvider for OpenAIProvider {
+    fn provider_name(&self) -> &str {
+        "openai"
+    }
+
     async fn convert(
         &self,
         ingredients: &str,
         instructions: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&json!({
@@ -107,7 +86,8 @@ impl ConvertToCooklang for OpenAIConverter {
                     {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
                     {"role": "user", "content": format!("Ingredients: {:?}\nInstructions: {}", ingredients, instructions)}
                 ],
-                "temperature": 0.7
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens
             }))
             .send()
             .await?;
@@ -146,7 +126,7 @@ mod tests {
             )
             .create();
 
-        let converter = OpenAIConverter::with_base_url(
+        let converter = OpenAIProvider::with_base_url(
             "fake_api_key".to_string(),
             server.url(),
             "gpt-3.5-turbo".to_string(),
@@ -170,7 +150,7 @@ mod tests {
             .with_body(r#"{"error": "Invalid request"}"#)
             .create();
 
-        let converter = OpenAIConverter::with_base_url(
+        let converter = OpenAIProvider::with_base_url(
             "fake_api_key".to_string(),
             server.url(),
             "gpt-3.5-turbo".to_string(),
@@ -181,5 +161,12 @@ mod tests {
         let result = converter.convert(ingredients, instructions).await;
         assert!(result.is_err());
         mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_provider_name() {
+        let provider =
+            OpenAIProvider::with_api_key("fake_api_key".to_string(), "gpt-4".to_string());
+        assert_eq!(provider.provider_name(), "openai");
     }
 }

@@ -1,6 +1,8 @@
+pub mod config;
 pub mod converters;
 pub mod extractors;
 pub mod model;
+pub mod providers;
 
 use log::debug;
 use reqwest::header::{HeaderMap, USER_AGENT};
@@ -84,7 +86,7 @@ pub async fn convert_recipe(recipe: &model::Recipe) -> Result<String, Box<dyn st
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in the environment");
     let model = std::env::var("OPENAI_MODEL").unwrap_or("gpt-4".to_string());
 
-    let converter = converters::OpenAIConverter::new(openai_api_key, model);
+    let converter = converters::OpenAIConverter::with_api_key(openai_api_key, model);
 
     // Convert using the basic convert method
     let mut cooklang_recipe = converter

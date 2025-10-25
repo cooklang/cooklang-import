@@ -1,14 +1,10 @@
-mod open_ai;
+// This module is maintained for backward compatibility
+// New code should use the providers module instead
 
-use std::error::Error;
+pub use crate::providers::{LlmProvider, OpenAIProvider};
 
-#[async_trait::async_trait]
-pub trait ConvertToCooklang {
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>>;
-}
+// Backward compatibility alias
+pub use OpenAIProvider as OpenAIConverter;
 
-pub use open_ai::OpenAIConverter;
+// Backward compatibility trait alias
+pub use LlmProvider as ConvertToCooklang;

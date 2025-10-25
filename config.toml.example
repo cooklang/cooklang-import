@@ -1,0 +1,68 @@
+# Cooklang Import Configuration File
+# Copy this file to config.toml and customize for your environment
+
+# Default AI provider to use for recipe conversion
+default_provider = "openai"
+
+# OpenAI Configuration
+[providers.openai]
+enabled = true
+model = "gpt-4"
+temperature = 0.7
+max_tokens = 2000
+# API key can be set here or via OPENAI_API_KEY environment variable
+# api_key = "sk-..."
+
+# Anthropic Claude Configuration
+[providers.anthropic]
+enabled = false
+model = "claude-3-5-sonnet-20250929"
+temperature = 0.7
+max_tokens = 4000
+# API key can be set here or via ANTHROPIC_API_KEY environment variable
+# api_key = "sk-ant-..."
+
+# Azure OpenAI Configuration
+[providers.azure_openai]
+enabled = false
+model = "gpt-4"
+temperature = 0.7
+max_tokens = 2000
+# Azure-specific settings
+# endpoint = "https://your-resource.openai.azure.com/"
+# deployment_name = "gpt-4"
+# api_version = "2024-02-15-preview"
+# API key can be set here or via AZURE_OPENAI_API_KEY environment variable
+# api_key = "..."
+
+# Google Gemini Configuration
+[providers.google]
+enabled = false
+model = "gemini-pro"
+temperature = 0.7
+max_tokens = 2000
+# Google-specific settings
+# project_id = "your-project-id"
+# API key can be set here or via GOOGLE_API_KEY environment variable
+# api_key = "..."
+
+# Ollama Configuration (Local Llama models)
+[providers.ollama]
+enabled = false
+model = "llama3"  # or llama2, codellama, mixtral, etc.
+temperature = 0.7
+max_tokens = 2000
+# Base URL for local Ollama instance (default: http://localhost:11434)
+# base_url = "http://localhost:11434"
+# No API key needed for local Ollama
+
+# Provider Fallback Configuration
+# Enables automatic fallback to alternative providers on failure
+[fallback]
+enabled = false
+# Order of providers to try (will attempt each in sequence)
+order = ["openai", "anthropic", "google", "ollama"]
+# Number of retry attempts per provider before switching
+retry_attempts = 3
+# Initial delay between retries in milliseconds (uses exponential backoff)
+retry_delay_ms = 1000
