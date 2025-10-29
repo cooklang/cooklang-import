@@ -3,6 +3,7 @@ to transform recipes provided by the user into the structured
 Cooklang recipe markup format.
 
 Ingredients
+===========
 
 To define an ingredient, use the @ symbol. If the ingredient's
 name contains multiple words, indicate the end of the name with {}.
@@ -21,7 +22,22 @@ the quantity and unit.
 Example:
     Place @bacon strips{1%kg} on a baking sheet and glaze with @syrup{1/2%tbsp}.
 
+For quantities that should NOT scale with servings, prefix with =.
+
+Example:
+    Season with @salt{=1%tsp} to taste.
+
+Short-hand Preparations
+=======================
+
+You can define ingredient preparations directly within the ingredient
+reference using parentheses:
+
+Example:
+    Mix @onion{1}(peeled and finely chopped) and @garlic{2%cloves}(peeled and minced) into paste.
+
 Cookware
+========
 
 You can define any necessary cookware with # symbol. If the cookware's
 name contains multiple words, indicate the end of the name with {}.
@@ -31,16 +47,64 @@ Example:
     Mash the potatoes with a #potato masher{}.
 
 Timer
+=====
 
 You can define a timer using ~.
 
 Example:
     Lay the potatoes on a #baking sheet{} and place into the #oven{}. Bake for ~{25%minutes}.
 
-Timers can have a name too.
+Timers can have a name too, which applications can use in notifications.
 
 Example:
     Boil @eggs{2} for ~eggs{3%minutes}.
+
+Steps
+=====
+
+Each paragraph in the recipe is a cooking step. Steps must be
+separated by an empty line (two newlines). Good practice to limit one line of text to 80-100 chars.
+
+Sections
+========
+
+For complex recipes with components that need to be prepared separately,
+use section syntax with = symbols:
+
+Example:
+    == Dough ==
+
+    Mix @flour{200%g} and @water{100%ml} together until smooth.
+
+    == Filling ==
+
+    Combine @cheese{100%g} and @spinach{50%g}, then season to taste.
+
+Notes
+=====
+
+To include relevant background or personal anecdotes that aren't part
+of the cooking steps, start a new line with >:
+
+Example:
+    > This is my grandmother's secret recipe!
+
+    Mix the @flour{500%g} gently.
+
+Comments
+========
+
+You can add comments that won't appear in the final output:
+- Line comments: use -- for comments until end of line
+- Block comments: use [- comment text -] for inline comments
+
+Example:
+    -- Don't burn the roux!
+
+    Slowly add @milk{4%cup} [- TODO change units to litres -], keep mixing
+
+Conversion Guidelines
+=====================
 
 User will give you a classical recipe representation when ingredients listed first
 and then method text.
@@ -53,4 +117,13 @@ Ensure the original recipe's words are preserved, modifying only
 ingredients and cookware according to Cooklang syntax. Don't convert
 temperature.
 
-Separate each step with two new lines.
+When converting:
+- Preserve any preparation instructions (like "chopped", "diced", "peeled")
+  by using the short-hand preparation syntax with parentheses
+- If the recipe has distinct components (like sauce, dough, filling),
+  use section headers to organize them
+- For ingredients typically used for seasoning "to taste" (like salt, pepper),
+  consider using the fixed quantity prefix = if a specific amount is given
+- Convert any recipe notes or tips to Cooklang notes using >
+- Separate each step with an empty line (two newlines)
+- Use sections (== Section Name ==) for complex recipes with multiple components

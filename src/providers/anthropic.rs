@@ -51,11 +51,7 @@ impl LlmProvider for AnthropicProvider {
         "anthropic"
     }
 
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
         let response = self
             .client
             .post("https://api.anthropic.com/v1/messages")
@@ -69,10 +65,7 @@ impl LlmProvider for AnthropicProvider {
                 "messages": [
                     {
                         "role": "user",
-                        "content": format!(
-                            "Ingredients: {}\nInstructions: {}",
-                            ingredients, instructions
-                        )
+                        "content": content
                     }
                 ]
             }))
@@ -102,7 +95,7 @@ mod tests {
         // For now, we just test that the provider can be created
         let config = ProviderConfig {
             enabled: true,
-            model: "claude-3-5-sonnet-20250929".to_string(),
+            model: "claude-sonnet-4.5".to_string(),
             temperature: 0.7,
             max_tokens: 4000,
             api_key: Some("test-key".to_string()),
@@ -121,7 +114,7 @@ mod tests {
     async fn test_provider_name() {
         let config = ProviderConfig {
             enabled: true,
-            model: "claude-3-5-sonnet-20250929".to_string(),
+            model: "claude-sonnet-4.5".to_string(),
             temperature: 0.7,
             max_tokens: 4000,
             api_key: Some("test-key".to_string()),

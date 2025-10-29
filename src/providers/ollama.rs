@@ -49,11 +49,7 @@ impl LlmProvider for OllamaProvider {
         "ollama"
     }
 
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
         // Ollama uses OpenAI-compatible API
         let response = self
             .client
@@ -62,7 +58,7 @@ impl LlmProvider for OllamaProvider {
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
-                    {"role": "user", "content": format!("Ingredients: {:?}\nInstructions: {}", ingredients, instructions)}
+                    {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens
@@ -106,10 +102,9 @@ mod tests {
             .create();
 
         let provider = OllamaProvider::with_base_url(server.url(), "llama3".to_string());
-        let ingredients = "pasta\nsauce";
-        let instructions = "Cook pasta with sauce";
+        let content = "pasta\nsauce\n\nCook pasta with sauce";
 
-        let result = provider.convert(ingredients, instructions).await.unwrap();
+        let result = provider.convert(content).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();

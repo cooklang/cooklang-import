@@ -40,16 +40,23 @@ impl OpenAIProvider {
         })
     }
 
-    /// Create a new OpenAI provider with simple parameters (for backward compatibility)
-    pub fn with_api_key(api_key: String, model: String) -> Self {
-        OpenAIProvider {
+    /// Create a new OpenAI provider from environment variables
+    ///
+    /// Uses OPENAI_API_KEY and OPENAI_MODEL (defaults to gpt-4.1-mini) from environment
+    pub fn from_env() -> Result<Self, Box<dyn Error>> {
+        let api_key = std::env::var("OPENAI_API_KEY")
+            .map_err(|_| "OPENAI_API_KEY environment variable not set")?;
+
+        let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string());
+
+        Ok(OpenAIProvider {
             client: Client::new(),
             api_key,
             base_url: "https://api.openai.com".to_string(),
             model,
-            temperature: 0.7,
+            temperature: 0.9,
             max_tokens: 2000,
-        }
+        })
     }
 
     #[doc(hidden)]
@@ -59,7 +66,7 @@ impl OpenAIProvider {
             api_key,
             base_url,
             model,
-            temperature: 0.7,
+            temperature: 0.9,
             max_tokens: 2000,
         }
     }
@@ -71,11 +78,7 @@ impl LlmProvider for OpenAIProvider {
         "openai"
     }
 
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
         let response = self
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
@@ -84,7 +87,7 @@ impl LlmProvider for OpenAIProvider {
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
-                    {"role": "user", "content": format!("Ingredients: {:?}\nInstructions: {}", ingredients, instructions)}
+                    {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens
@@ -131,10 +134,9 @@ mod tests {
             server.url(),
             "gpt-3.5-turbo".to_string(),
         );
-        let ingredients = "pasta\nsauce";
-        let instructions = "Cook pasta with sauce";
+        let content = "pasta\nsauce\n\nCook pasta with sauce";
 
-        let result = converter.convert(ingredients, instructions).await.unwrap();
+        let result = converter.convert(content).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();
@@ -155,18 +157,20 @@ mod tests {
             server.url(),
             "gpt-3.5-turbo".to_string(),
         );
-        let ingredients = "ingredient";
-        let instructions = "step";
+        let content = "ingredient\n\nstep";
 
-        let result = converter.convert(ingredients, instructions).await;
+        let result = converter.convert(content).await;
         assert!(result.is_err());
         mock.assert();
     }
 
     #[tokio::test]
     async fn test_provider_name() {
-        let provider =
-            OpenAIProvider::with_api_key("fake_api_key".to_string(), "gpt-4".to_string());
+        let provider = OpenAIProvider::with_base_url(
+            "fake_api_key".to_string(),
+            "https://api.openai.com".to_string(),
+            "gpt-4.1-mini".to_string(),
+        );
         assert_eq!(provider.provider_name(), "openai");
     }
 }

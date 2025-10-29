@@ -73,9 +73,9 @@ async fn test_recipe_without_ingredients() {
     let url = format!("{}/recipe", server.url());
     let result = fetch_recipe(&url).await.unwrap();
 
-    // Verify the recipe was parsed successfully without ingredients
+    // Verify the recipe was parsed successfully without ingredients (only instructions)
     assert_eq!(result.name, "Home style Bhindi fry");
-    assert_eq!(result.ingredients, ""); // Should be empty string
+    assert!(result.content.contains("In an iron kadai"));
 
     // Verify metadata
     assert_eq!(result.metadata.get("author").unwrap(), "Ranveer Brar");
@@ -87,8 +87,8 @@ async fn test_recipe_without_ingredients() {
     assert_eq!(result.metadata.get("servings").unwrap(), "2");
 
     // Verify instructions were parsed
-    assert!(result.instructions.contains("iron kadai"));
-    assert!(result.instructions.contains("ginger green chili paste"));
+    assert!(result.content.contains("iron kadai"));
+    assert!(result.content.contains("ginger green chili paste"));
 }
 
 #[tokio::test]
@@ -198,7 +198,7 @@ async fn test_recipe_with_ingredient_objects() {
     assert_eq!(result.name, "Nigella Lawson's Basque Burnt Cheesecake");
 
     // Check ingredients formatting
-    let ingredients = result.ingredients.lines().collect::<Vec<_>>();
+    let ingredients = result.content.lines().collect::<Vec<_>>();
     assert_eq!(ingredients[0], "For the cheesecake:"); // No amount
     assert_eq!(
         ingredients[1],
@@ -284,9 +284,9 @@ async fn test_recipe_with_nested_sections() {
     assert_eq!(result.name, "Sałatka z brokuła");
 
     // Check that nested instructions were extracted
-    assert!(result.instructions.contains("Brokuła umyć"));
-    assert!(result.instructions.contains("Ser feta pokroić"));
-    assert!(result.instructions.contains("Słonecznik podprażyć"));
+    assert!(result.content.contains("Brokuła umyć"));
+    assert!(result.content.contains("Ser feta pokroić"));
+    assert!(result.content.contains("Słonecznik podprażyć"));
 
     // Verify metadata
     assert_eq!(result.metadata.get("course").unwrap(), "Brokuły");

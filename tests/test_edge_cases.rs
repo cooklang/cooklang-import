@@ -308,11 +308,11 @@ async fn test_howto_instructions_variations() {
     let result = fetch_recipe(&url).await.unwrap();
 
     // Check that all instruction variations were captured
-    assert!(result.instructions.contains("Preheat oven to 180°C"));
-    assert!(result.instructions.contains("Mix all ingredients"));
-    assert!(result.instructions.contains("Bake for 30 minutes"));
-    assert!(result.instructions.contains("Until golden brown"));
-    assert!(result.instructions.contains("Let it cool and serve"));
+    assert!(result.content.contains("Preheat oven to 180°C"));
+    assert!(result.content.contains("Mix all ingredients"));
+    assert!(result.content.contains("Bake for 30 minutes"));
+    assert!(result.content.contains("Until golden brown"));
+    assert!(result.content.contains("Let it cool and serve"));
 }
 
 #[tokio::test]

@@ -122,6 +122,131 @@ impl JsonLdExtractor {
             }
         }
 
+        // Combine ingredients and instructions into a single content field
+        let ingredients = match json_ld_recipe.recipe_ingredient {
+            Some(RecipeIngredients::Strings(ingredients)) => ingredients
+                .into_iter()
+                .filter(|ing| !ing.trim().is_empty())
+                .map(|ing| decode_html_symbols(&ing))
+                .collect::<Vec<String>>()
+                .join("\n"),
+            Some(RecipeIngredients::Objects(ingredients)) => ingredients
+                .into_iter()
+                .filter(|ing| !ing.name.trim().is_empty())
+                .map(|ing| {
+                    let amount = ing.amount.as_deref().unwrap_or("").trim();
+                    let name = decode_html_symbols(&ing.name);
+                    if amount.is_empty() {
+                        name
+                    } else {
+                        format!("{amount} {name}")
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n"),
+            None => String::new(),
+        };
+
+        let instructions = match json_ld_recipe.recipe_instructions {
+            Some(instructions) => match instructions {
+                RecipeInstructions::String(instructions) => decode_html_symbols(&instructions),
+                RecipeInstructions::Multiple(instructions) => instructions
+                    .into_iter()
+                    .map(|step| decode_html_symbols(&step))
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                RecipeInstructions::MultipleObject(instructions) => instructions
+                    .iter()
+                    .map(|obj| decode_html_symbols(&obj.text))
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                RecipeInstructions::HowTo(sections) => sections
+                    .into_iter()
+                    .flat_map(|section| match section {
+                        HowTo::HowToStep(step) => {
+                            let mut texts = Vec::new();
+                            // Prefer text over name
+                            if let Some(text) = step.text {
+                                texts.push(text);
+                            } else if let Some(name) = step.name {
+                                texts.push(name);
+                            }
+                            if let Some(desc) = step.description {
+                                texts.push(desc);
+                            }
+                            texts
+                        }
+                        HowTo::HowToSection(section) => section
+                            .item_list_element
+                            .into_iter()
+                            .flat_map(|step| {
+                                let mut texts = Vec::new();
+                                // Prefer text over name
+                                if let Some(text) = step.text {
+                                    texts.push(text);
+                                } else if let Some(name) = step.name {
+                                    texts.push(name);
+                                }
+                                if let Some(desc) = step.description {
+                                    texts.push(desc);
+                                }
+                                texts
+                            })
+                            .collect(),
+                    })
+                    .map(|text| decode_html_symbols(&text))
+                    .collect::<Vec<String>>()
+                    .join(" "),
+                RecipeInstructions::NestedSections(sections) => sections
+                    .into_iter()
+                    .flat_map(|section| {
+                        section.into_iter().flat_map(|howto| match howto {
+                            HowTo::HowToStep(step) => {
+                                let mut texts = Vec::new();
+                                if let Some(text) = step.text {
+                                    texts.push(text);
+                                } else if let Some(name) = step.name {
+                                    texts.push(name);
+                                }
+                                if let Some(desc) = step.description {
+                                    texts.push(desc);
+                                }
+                                texts
+                            }
+                            HowTo::HowToSection(section) => section
+                                .item_list_element
+                                .into_iter()
+                                .flat_map(|step| {
+                                    let mut texts = Vec::new();
+                                    if let Some(text) = step.text {
+                                        texts.push(text);
+                                    } else if let Some(name) = step.name {
+                                        texts.push(name);
+                                    }
+                                    if let Some(desc) = step.description {
+                                        texts.push(desc);
+                                    }
+                                    texts
+                                })
+                                .collect(),
+                        })
+                    })
+                    .map(|text| decode_html_symbols(&text))
+                    .collect::<Vec<String>>()
+                    .join(" "),
+            },
+            None => String::new(),
+        };
+
+        // Combine into single content field
+        let content = if !ingredients.is_empty() && !instructions.is_empty() {
+            format!("{}\n\n{}", ingredients, instructions)
+        } else if !ingredients.is_empty() {
+            ingredients
+        } else {
+            instructions
+        };
+
         Recipe {
             name: decode_html_symbols(&json_ld_recipe.name),
             description: json_ld_recipe.description.and_then(|desc| match desc {
@@ -151,119 +276,7 @@ impl JsonLdExtractor {
                 ImageType::None => vec![],
                 ImageType::Object(i) => vec![i.url],
             }),
-            ingredients: match json_ld_recipe.recipe_ingredient {
-                Some(RecipeIngredients::Strings(ingredients)) => ingredients
-                    .into_iter()
-                    .filter(|ing| !ing.trim().is_empty())
-                    .map(|ing| decode_html_symbols(&ing))
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-                Some(RecipeIngredients::Objects(ingredients)) => ingredients
-                    .into_iter()
-                    .filter(|ing| !ing.name.trim().is_empty())
-                    .map(|ing| {
-                        let amount = ing.amount.as_deref().unwrap_or("").trim();
-                        let name = decode_html_symbols(&ing.name);
-                        if amount.is_empty() {
-                            name
-                        } else {
-                            format!("{amount} {name}")
-                        }
-                    })
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-                None => String::new(),
-            },
-            instructions: match json_ld_recipe.recipe_instructions {
-                Some(instructions) => match instructions {
-                    RecipeInstructions::String(instructions) => decode_html_symbols(&instructions),
-                    RecipeInstructions::Multiple(instructions) => instructions
-                        .into_iter()
-                        .map(|step| decode_html_symbols(&step))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    RecipeInstructions::MultipleObject(instructions) => instructions
-                        .iter()
-                        .map(|obj| decode_html_symbols(&obj.text))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    RecipeInstructions::HowTo(sections) => sections
-                        .into_iter()
-                        .flat_map(|section| match section {
-                            HowTo::HowToStep(step) => {
-                                let mut texts = Vec::new();
-                                // Prefer text over name
-                                if let Some(text) = step.text {
-                                    texts.push(text);
-                                } else if let Some(name) = step.name {
-                                    texts.push(name);
-                                }
-                                if let Some(desc) = step.description {
-                                    texts.push(desc);
-                                }
-                                texts
-                            }
-                            HowTo::HowToSection(section) => section
-                                .item_list_element
-                                .into_iter()
-                                .flat_map(|step| {
-                                    let mut texts = Vec::new();
-                                    // Prefer text over name
-                                    if let Some(text) = step.text {
-                                        texts.push(text);
-                                    } else if let Some(name) = step.name {
-                                        texts.push(name);
-                                    }
-                                    if let Some(desc) = step.description {
-                                        texts.push(desc);
-                                    }
-                                    texts
-                                })
-                                .collect(),
-                        })
-                        .map(|text| decode_html_symbols(&text))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                    RecipeInstructions::NestedSections(sections) => sections
-                        .into_iter()
-                        .flat_map(|section| {
-                            section.into_iter().flat_map(|howto| match howto {
-                                HowTo::HowToStep(step) => {
-                                    let mut texts = Vec::new();
-                                    if let Some(text) = step.text {
-                                        texts.push(text);
-                                    } else if let Some(name) = step.name {
-                                        texts.push(name);
-                                    }
-                                    if let Some(desc) = step.description {
-                                        texts.push(desc);
-                                    }
-                                    texts
-                                }
-                                HowTo::HowToSection(section) => section
-                                    .item_list_element
-                                    .into_iter()
-                                    .flat_map(|step| {
-                                        let mut texts = Vec::new();
-                                        if let Some(text) = step.text {
-                                            texts.push(text);
-                                        } else if let Some(name) = step.name {
-                                            texts.push(name);
-                                        }
-                                        if let Some(desc) = step.description {
-                                            texts.push(desc);
-                                        }
-                                        texts
-                                    })
-                                    .collect(),
-                            })
-                        })
-                        .map(|text| decode_html_symbols(&text))
-                        .collect::<Vec<String>>()
-                        .join(" "),
-                },
-                None => String::new(),
-            },
+            content,
             metadata,
         }
     }
@@ -800,10 +813,9 @@ mod tests {
             Some("Delicious homemade cookies".to_string())
         );
         assert_eq!(result.image, vec!["https://example.com/cookie.jpg"]);
-        assert_eq!(result.ingredients, "flour\nsugar\nchocolate chips");
         assert_eq!(
-            result.instructions,
-            "Mix ingredients. Bake at 350F for 10 minutes."
+            result.content,
+            "flour\nsugar\nchocolate chips\n\nMix ingredients. Bake at 350F for 10 minutes."
         );
 
         // Test metadata mappings
@@ -926,10 +938,9 @@ mod tests {
                 "https://example.com/carbonara2.jpg"
             ]
         );
-        assert_eq!(result.ingredients, "spaghetti\neggs\nbacon\ncheese");
         assert_eq!(
-            result.instructions,
-            "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
+            result.content,
+            "spaghetti\neggs\nbacon\ncheese\n\nCook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
         );
 
         // Test metadata extraction for complex types

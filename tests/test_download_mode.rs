@@ -80,10 +80,8 @@ async fn test_download_mode_with_metadata() {
     assert!(stdout.contains(&format!("source: \"{url}\"")));
     assert!(stdout.contains("---\n\n# Test Recipe"));
 
-    // Check that ingredients and instructions are included
-    assert!(stdout.contains("## Ingredients"));
+    // Check that content is included
     assert!(stdout.contains("1 cup flour"));
-    assert!(stdout.contains("## Instructions"));
     assert!(stdout.contains("Mix all ingredients and cook."));
 }
 
@@ -127,8 +125,6 @@ async fn test_download_mode_without_metadata() {
     assert!(stdout.contains("---\n\n# Simple Recipe"));
 
     // Check basic content
-    assert!(stdout.contains("## Ingredients"));
     assert!(stdout.contains("ingredient 1"));
-    assert!(stdout.contains("## Instructions"));
     assert!(stdout.contains("Simple instructions."));
 }

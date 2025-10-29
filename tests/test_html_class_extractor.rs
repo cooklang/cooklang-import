@@ -58,10 +58,10 @@ mod tests {
             recipe.description,
             Some("Delicious homemade chocolate chip cookies".to_string())
         );
-        assert!(recipe.ingredients.contains("2 cups all-purpose flour"));
-        assert!(recipe.ingredients.contains("1 cup butter, softened"));
-        assert!(recipe.instructions.contains("Preheat oven to 350°F"));
-        assert!(recipe.instructions.contains("Bake for 10-12 minutes"));
+        assert!(recipe.content.contains("2 cups all-purpose flour"));
+        assert!(recipe.content.contains("1 cup butter, softened"));
+        assert!(recipe.content.contains("Preheat oven to 350°F"));
+        assert!(recipe.content.contains("Bake for 10-12 minutes"));
         assert_eq!(
             recipe.metadata.get("prep_time"),
             Some(&"15 minutes".to_string())
@@ -123,8 +123,8 @@ mod tests {
             recipe.description,
             Some("Moist and delicious banana bread".to_string())
         );
-        assert!(recipe.ingredients.contains("3 ripe bananas"));
-        assert!(recipe.instructions.contains("Mash bananas"));
+        assert!(recipe.content.contains("3 ripe bananas"));
+        assert!(recipe.content.contains("Mash bananas"));
         assert_eq!(recipe.metadata.get("servings"), Some(&"1 loaf".to_string()));
     }
 
@@ -176,10 +176,8 @@ mod tests {
             recipe.description,
             Some("Classic Italian pasta dish".to_string())
         );
-        assert!(recipe.ingredients.contains("400g spaghetti"));
-        assert!(recipe
-            .instructions
-            .contains("Cook pasta according to package"));
+        assert!(recipe.content.contains("400g spaghetti"));
+        assert!(recipe.content.contains("Cook pasta according to package"));
     }
 
     #[test]
@@ -216,8 +214,8 @@ mod tests {
         match result {
             Ok(recipe) => {
                 assert_eq!(recipe.name, "Simple Salad");
-                assert!(recipe.ingredients.contains("Lettuce"));
-                assert!(recipe.instructions.contains("Wash vegetables"));
+                assert!(recipe.content.contains("Lettuce"));
+                assert!(recipe.content.contains("Wash vegetables"));
             }
             Err(e) => {
                 // The fuzzy matching doesn't extract list items properly from non-standard containers

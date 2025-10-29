@@ -25,10 +25,6 @@ pub trait LlmProvider: Send + Sync {
     /// Get the provider name (e.g., "openai", "anthropic")
     fn provider_name(&self) -> &str;
 
-    /// Convert recipe ingredients and instructions to Cooklang format
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>>;
+    /// Convert recipe content to Cooklang format
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>>;
 }

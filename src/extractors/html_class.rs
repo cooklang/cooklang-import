@@ -393,7 +393,7 @@ impl Extractor for HtmlClassExtractor {
             return Err("Could not extract recipe content from HTML".into());
         }
 
-        // Convert lists to formatted strings
+        // Convert lists to plain text (no markdown formatting)
         let ingredients_str = if !ingredients_list.is_empty() {
             ingredients_list.join("\n")
         } else {
@@ -401,14 +401,18 @@ impl Extractor for HtmlClassExtractor {
         };
 
         let instructions_str = if !instructions_list.is_empty() {
-            instructions_list
-                .iter()
-                .enumerate()
-                .map(|(i, instruction)| format!("{}. {}", i + 1, instruction))
-                .collect::<Vec<_>>()
-                .join("\n")
+            instructions_list.join(" ")
         } else {
             String::new()
+        };
+
+        // Combine ingredients and instructions into single content field
+        let content = if !ingredients_str.is_empty() && !instructions_str.is_empty() {
+            format!("{}\n\n{}", ingredients_str, instructions_str)
+        } else if !ingredients_str.is_empty() {
+            ingredients_str
+        } else {
+            instructions_str
         };
 
         debug!("Successfully extracted recipe using HTML class matchers");
@@ -420,8 +424,7 @@ impl Extractor for HtmlClassExtractor {
             name,
             description,
             image: Vec::new(),
-            ingredients: ingredients_str,
-            instructions: instructions_str,
+            content,
             metadata,
         })
     }

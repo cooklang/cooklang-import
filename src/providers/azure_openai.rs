@@ -59,11 +59,7 @@ impl LlmProvider for AzureOpenAIProvider {
         "azure_openai"
     }
 
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
         // Azure OpenAI URL format:
         // https://{endpoint}/openai/deployments/{deployment-name}/chat/completions?api-version={api-version}
         let url = format!(
@@ -80,7 +76,7 @@ impl LlmProvider for AzureOpenAIProvider {
             .json(&json!({
                 "messages": [
                     {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
-                    {"role": "user", "content": format!("Ingredients: {:?}\nInstructions: {}", ingredients, instructions)}
+                    {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens
@@ -158,10 +154,9 @@ mod tests {
         };
 
         let provider = AzureOpenAIProvider::new(&config).unwrap();
-        let ingredients = "pasta\nsauce";
-        let instructions = "Cook pasta with sauce";
+        let content = "pasta\nsauce\n\nCook pasta with sauce";
 
-        let result = provider.convert(ingredients, instructions).await.unwrap();
+        let result = provider.convert(content).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();

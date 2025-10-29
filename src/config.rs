@@ -93,6 +93,20 @@ fn default_retry_delay_ms() -> u64 {
     1000
 }
 
+impl AiConfig {
+    /// Load configuration from file and environment variables
+    ///
+    /// Configuration is loaded with the following priority (highest to lowest):
+    /// 1. Environment variables with COOKLANG__ prefix
+    /// 2. config.toml file in current directory
+    /// 3. Default values
+    ///
+    /// Environment variable format: COOKLANG__PROVIDERS__OPENAI__API_KEY
+    pub fn load() -> Result<Self, ConfigError> {
+        load_config()
+    }
+}
+
 /// Load configuration from file and environment variables
 ///
 /// Configuration is loaded with the following priority (highest to lowest):
@@ -145,7 +159,7 @@ mod tests {
         // Test that ProviderConfig can be created with None for optional fields
         let config = ProviderConfig {
             enabled: true,
-            model: "gpt-4".to_string(),
+            model: "gpt-4.1-mini".to_string(),
             temperature: 0.7,
             max_tokens: 2000,
             api_key: None,
@@ -189,7 +203,7 @@ mod tests {
             "openai".to_string(),
             ProviderConfig {
                 enabled: true,
-                model: "gpt-4".to_string(),
+                model: "gpt-4.1-mini".to_string(),
                 temperature: 0.7,
                 max_tokens: 2000,
                 api_key: Some("test-key".to_string()),

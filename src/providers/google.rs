@@ -40,11 +40,7 @@ impl LlmProvider for GoogleProvider {
         "google"
     }
 
-    async fn convert(
-        &self,
-        ingredients: &str,
-        instructions: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
         // Google Gemini API endpoint
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -58,10 +54,9 @@ impl LlmProvider for GoogleProvider {
                 "contents": [{
                     "parts": [{
                         "text": format!(
-                            "{}\n\nIngredients: {}\nInstructions: {}",
+                            "{}\n\n{}",
                             COOKLANG_CONVERTER_PROMPT,
-                            ingredients,
-                            instructions
+                            content
                         )
                     }]
                 }],
@@ -93,7 +88,7 @@ mod tests {
     async fn test_provider_name() {
         let config = ProviderConfig {
             enabled: true,
-            model: "gemini-pro".to_string(),
+            model: "gemini-2.5-flash".to_string(),
             temperature: 0.7,
             max_tokens: 2000,
             api_key: Some("test-key".to_string()),
