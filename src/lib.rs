@@ -3,6 +3,7 @@ pub mod config;
 pub mod error;
 pub mod extractors;
 pub mod model;
+pub mod ocr;
 pub mod providers;
 
 // Public API exports
