@@ -67,11 +67,7 @@ pub async fn ocr_image_data(image_data: &[u8]) -> Result<String, Box<dyn Error>>
 
     debug!("Sending OCR request to Google Vision API");
 
-    let response = client
-        .post(&url)
-        .json(&request_body)
-        .send()
-        .await?;
+    let response = client.post(&url).json(&request_body).send().await?;
 
     // Check for HTTP errors
     if !response.status().is_success() {
@@ -118,10 +114,7 @@ mod tests {
 
         let result = ocr_image_data(b"fake image data").await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("GOOGLE_API_KEY"));
+        assert!(result.unwrap_err().to_string().contains("GOOGLE_API_KEY"));
 
         // Restore original key if it existed
         if let Some(key) = original_key {
