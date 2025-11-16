@@ -122,6 +122,24 @@ impl JsonLdExtractor {
             }
         }
 
+        // Map image (use the first image if multiple are available)
+        if let Some(ref img) = json_ld_recipe.image {
+            let image_url = match img {
+                ImageType::String(i) => Some(decode_html_symbols(i)),
+                ImageType::MultipleStrings(imgs) if !imgs.is_empty() => {
+                    Some(decode_html_symbols(&imgs[0]))
+                }
+                ImageType::Object(i) => Some(i.url.clone()),
+                ImageType::MultipleObjects(imgs) if !imgs.is_empty() => Some(imgs[0].url.clone()),
+                _ => None,
+            };
+            if let Some(url) = image_url {
+                if !url.is_empty() {
+                    metadata.insert("image".to_string(), url);
+                }
+            }
+        }
+
         // Combine ingredients and instructions into a single content field
         let ingredients = match json_ld_recipe.recipe_ingredient {
             Some(RecipeIngredients::Strings(ingredients)) => ingredients
