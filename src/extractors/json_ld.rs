@@ -130,9 +130,7 @@ impl JsonLdExtractor {
                     Some(decode_html_symbols(&imgs[0]))
                 }
                 ImageType::Object(i) => Some(i.url.clone()),
-                ImageType::MultipleObjects(imgs) if !imgs.is_empty() => {
-                    Some(imgs[0].url.clone())
-                }
+                ImageType::MultipleObjects(imgs) if !imgs.is_empty() => Some(imgs[0].url.clone()),
                 _ => None,
             };
             if let Some(url) = image_url {
