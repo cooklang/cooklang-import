@@ -1,8 +1,9 @@
+use std::path::Path;
 use std::time::Duration;
 
 use crate::{
     convert_recipe_with_config, convert_recipe_with_provider, fetch_recipe_with_timeout,
-    ImportError, Recipe,
+    ocr::ocr_image_file, ImportError, Recipe,
 };
 
 /// Represents the input source for a recipe
@@ -12,6 +13,8 @@ pub enum InputSource {
     Url(String),
     /// Use plain text content
     Text(String),
+    /// Use image file (will be OCR'd using Google Vision)
+    Image(String),
 }
 
 /// Represents the desired output format
@@ -97,6 +100,26 @@ impl RecipeImporterBuilder {
     /// ```
     pub fn text(mut self, text: impl Into<String>) -> Self {
         self.source = Some(InputSource::Text(text.into()));
+        self
+    }
+
+    /// Set the input source to an image file
+    ///
+    /// Use this when you have a recipe image that needs to be OCR'd first.
+    /// The image will be processed using Google Cloud Vision API to extract text,
+    /// then the text will be converted to Cooklang format.
+    ///
+    /// Requires GOOGLE_API_KEY environment variable to be set.
+    ///
+    /// # Example
+    /// ```
+    /// use cooklang_import::RecipeImporter;
+    ///
+    /// let builder = RecipeImporter::builder()
+    ///     .image("/path/to/recipe-image.jpg");
+    /// ```
+    pub fn image(mut self, image_path: impl Into<String>) -> Self {
+        self.source = Some(InputSource::Image(image_path.into()));
         self
     }
 
@@ -265,6 +288,44 @@ impl RecipeImporterBuilder {
             // Invalid: Text → Recipe (no-op)
             (InputSource::Text { .. }, OutputMode::Recipe) => Err(ImportError::BuilderError(
                 "Cannot use extract_only() with text input. Text needs to be parsed first."
+                    .to_string(),
+            )),
+
+            // Use Case 4: Image → Cooklang (OCR then convert)
+            (InputSource::Image(image_path), OutputMode::Cooklang) => {
+                // Perform OCR on the image
+                let text = ocr_image_file(Path::new(&image_path))
+                    .await
+                    .map_err(|e| {
+                        ImportError::BuilderError(format!("Failed to OCR image: {}", e))
+                    })?;
+
+                // Validate OCR result
+                if text.trim().is_empty() {
+                    return Err(ImportError::BuilderError(
+                        "No text detected in image".to_string(),
+                    ));
+                }
+
+                // Create Recipe struct from OCR'd text
+                let recipe = Recipe {
+                    content: text,
+                    ..Default::default()
+                };
+
+                // Convert to Cooklang
+                let cooklang = if self.api_key.is_some() || self.model.is_some() {
+                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
+                        .await?
+                } else {
+                    convert_recipe_with_provider(&recipe, provider_name).await?
+                };
+                Ok(ImportResult::Cooklang(cooklang))
+            }
+
+            // Invalid: Image → Recipe (OCR needs conversion)
+            (InputSource::Image { .. }, OutputMode::Recipe) => Err(ImportError::BuilderError(
+                "Cannot use extract_only() with image input. Images need to be OCR'd and parsed first."
                     .to_string(),
             )),
         }

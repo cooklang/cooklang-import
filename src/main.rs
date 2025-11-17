@@ -21,10 +21,16 @@ USE CASES:
     3. Text → Cooklang (convert plain text):
        cooklang-import --text "Take 2 eggs and 1 cup flour. Mix and bake at 350F."
 
+    4. Image → Cooklang (OCR then convert):
+       cooklang-import --image /path/to/recipe-image.jpg
+
 OPTIONS:
     --extract-only      Extract recipe without converting to Cooklang format
 
     --text TEXT         Convert plain text recipe to Cooklang
+
+    --image PATH        Convert recipe image to Cooklang (uses Google Vision OCR)
+                        Requires GOOGLE_API_KEY environment variable
 
     --provider NAME     LLM provider to use (openai, anthropic, google, azure_openai, ollama)
                         Requires config.toml with provider configuration
@@ -42,6 +48,9 @@ EXAMPLES:
     # Convert plain text
     cooklang-import --text "2 eggs, 1 cup flour. Mix and bake"
 
+    # Convert recipe image
+    cooklang-import --image recipe-photo.jpg
+
     # Use custom provider (requires config.toml)
     cooklang-import https://example.com/recipe --provider anthropic
 
@@ -51,6 +60,7 @@ EXAMPLES:
 ENVIRONMENT VARIABLES:
     OPENAI_API_KEY      OpenAI API key (required for default provider)
     OPENAI_MODEL        OpenAI model to use (default: gpt-4)
+    GOOGLE_API_KEY      Google Cloud Vision API key (required for --image)
     RUST_LOG            Set log level (debug, info, warn, error)
 
 For more information, see: https://github.com/cooklang/cooklang-import
@@ -76,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let extract_only = args.contains(&"--extract-only".to_string())
         || args.contains(&"--download-only".to_string());
     let text_mode = args.contains(&"--text".to_string());
+    let image_mode = args.contains(&"--image".to_string());
 
     // Parse provider option
     let provider = if let Some(idx) = args.iter().position(|arg| arg == "--provider") {
@@ -112,7 +123,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Build and execute based on use case
-    let result = if text_mode {
+    let result = if image_mode {
+        // Use Case 5: Image → Cooklang (OCR then convert)
+        let image_path = if let Some(idx) = args.iter().position(|arg| arg == "--image") {
+            args.get(idx + 1)
+                .ok_or("--image requires a file path")?
+                .clone()
+        } else {
+            return Err("--image mode requires a file path".into());
+        };
+
+        info!(
+            "Converting image to Cooklang (image: {}, provider: {:?})",
+            image_path, provider
+        );
+
+        let mut builder = RecipeImporter::builder().image(&image_path);
+
+        if let Some(p) = provider {
+            builder = builder.provider(p);
+        }
+
+        builder.build().await?
+    } else if text_mode {
         // Use Case 4: Text → Cooklang
         let text = if let Some(idx) = args.iter().position(|arg| arg == "--text") {
             args.get(idx + 1).ok_or("--text requires a value")?.clone()
