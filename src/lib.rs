@@ -88,6 +88,7 @@ pub async fn fetch_recipe_with_timeout(
 
     let extractors_list: Vec<Box<dyn Extractor>> = vec![
         Box::new(extractors::JsonLdExtractor),
+        Box::new(extractors::MicroDataExtractor),
         Box::new(extractors::HtmlClassExtractor),
         Box::new(extractors::PlainTextLlmExtractor),
     ];
