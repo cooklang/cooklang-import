@@ -3,10 +3,12 @@ use scraper::Html;
 
 mod html_class;
 mod json_ld;
+mod microdata;
 mod plain_text_llm;
 
 pub use self::html_class::HtmlClassExtractor;
 pub use self::json_ld::JsonLdExtractor;
+pub use self::microdata::MicroDataExtractor;
 pub use self::plain_text_llm::PlainTextLlmExtractor;
 
 pub struct ParsingContext {
