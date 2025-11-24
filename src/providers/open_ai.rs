@@ -1,5 +1,5 @@
 use crate::config::ProviderConfig;
-use crate::providers::{LlmProvider, COOKLANG_CONVERTER_PROMPT};
+use crate::providers::{build_converter_prompt, LlmProvider};
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
@@ -78,7 +78,13 @@ impl LlmProvider for OpenAIProvider {
         "openai"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
+        let system_prompt = build_converter_prompt(recipe_language);
+
         let response = self
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
@@ -86,7 +92,7 @@ impl LlmProvider for OpenAIProvider {
             .json(&json!({
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
@@ -136,7 +142,7 @@ mod tests {
         );
         let content = "pasta\nsauce\n\nCook pasta with sauce";
 
-        let result = converter.convert(content).await.unwrap();
+        let result = converter.convert(content, None).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();
@@ -159,7 +165,7 @@ mod tests {
         );
         let content = "ingredient\n\nstep";
 
-        let result = converter.convert(content).await;
+        let result = converter.convert(content, None).await;
         assert!(result.is_err());
         mock.assert();
     }

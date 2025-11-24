@@ -128,3 +128,74 @@ async fn test_download_mode_without_metadata() {
     assert!(stdout.contains("ingredient 1"));
     assert!(stdout.contains("Simple instructions."));
 }
+
+#[tokio::test]
+async fn test_download_mode_with_recipe_language_option() {
+    env::set_var("OPENAI_API_KEY", "test_key");
+
+    let mut server = mockito::Server::new_async().await;
+    let json_ld = r#"
+    {
+        "@context": "https://schema.org/",
+        "@type": "Recipe",
+        "name": "Language Test",
+        "recipeIngredient": ["ingredient 1"],
+        "recipeInstructions": "instruction 1"
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html_with_metadata(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            &url,
+            "--download-only",
+            "--recipe-language",
+            "Italian",
+        ])
+        .env("RUST_LOG", "info")
+        .output()
+        .expect("Failed to execute command");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr: {}", stderr);
+    assert!(
+        stderr.contains("recipe_language: Some(\"Italian\")"),
+        "stderr: {}",
+        stderr
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# Language Test"));
+    assert!(stdout.contains("source:"));
+}
+
+#[test]
+fn test_recipe_language_option_requires_value() {
+    let output = Command::new("cargo")
+        .args(["run", "--", "https://example.com", "--recipe-language"])
+        .env("RUST_LOG", "error")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        !output.status.success(),
+        "Expected failure but command succeeded"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--recipe-language requires a language value"),
+        "stderr: {}",
+        stderr
+    );
+}

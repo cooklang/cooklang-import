@@ -14,7 +14,7 @@ pub use fallback::FallbackProvider;
 pub use google::GoogleProvider;
 pub use ollama::OllamaProvider;
 pub use open_ai::OpenAIProvider;
-pub use prompt::COOKLANG_CONVERTER_PROMPT;
+pub use prompt::{build_converter_prompt, COOKLANG_CONVERTER_PROMPT};
 
 use async_trait::async_trait;
 use std::error::Error;
@@ -26,5 +26,9 @@ pub trait LlmProvider: Send + Sync {
     fn provider_name(&self) -> &str;
 
     /// Convert recipe content to Cooklang format
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>>;
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>>;
 }
