@@ -1,5 +1,5 @@
 use crate::config::ProviderConfig;
-use crate::providers::{LlmProvider, COOKLANG_CONVERTER_PROMPT};
+use crate::providers::{build_converter_prompt, LlmProvider};
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
@@ -40,12 +40,18 @@ impl LlmProvider for GoogleProvider {
         "google"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
         // Google Gemini API endpoint
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
             self.model, self.api_key
         );
+
+        let system_prompt = build_converter_prompt(recipe_language);
 
         let response = self
             .client
@@ -55,7 +61,7 @@ impl LlmProvider for GoogleProvider {
                     "parts": [{
                         "text": format!(
                             "{}\n\n{}",
-                            COOKLANG_CONVERTER_PROMPT,
+                            system_prompt,
                             content
                         )
                     }]

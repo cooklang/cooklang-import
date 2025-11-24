@@ -34,6 +34,8 @@ OPTIONS:
 
     --provider NAME     LLM provider to use (openai, anthropic, google, azure_openai, ollama)
                         Requires config.toml with provider configuration
+    --recipe-language   LANG (English, Italian, French, etc.)
+                        Language the recipe is written in when using LLM parsing
     --timeout SECONDS   Timeout for HTTP requests in seconds (default: no timeout)
 
     --help, -h          Show this help message
@@ -111,6 +113,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
+    // Parse recipe language option
+    let recipe_language =
+        if let Some(idx) = args.iter().position(|arg| arg == "--recipe-language") {
+            Some(
+                args.get(idx + 1)
+                    .ok_or("--recipe-language requires a language value")?
+                    .clone(),
+            )
+        } else {
+            None
+        };
+
     // Parse timeout option
     let timeout = if let Some(idx) = args.iter().position(|arg| arg == "--timeout") {
         let timeout_str = args.get(idx + 1).ok_or("--timeout requires a number")?;
@@ -134,14 +148,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         info!(
-            "Converting image to Cooklang (image: {}, provider: {:?})",
-            image_path, provider
+            "Converting image to Cooklang (image: {}, provider: {:?}, recipe_language: {:?})",
+            image_path, provider, recipe_language
         );
 
         let mut builder = RecipeImporter::builder().image(&image_path);
 
         if let Some(p) = provider {
             builder = builder.provider(p);
+        }
+
+        if let Some(lang) = recipe_language.as_deref() {
+            builder = builder.recipe_language(lang);
         }
 
         builder.build().await?
@@ -153,12 +171,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("--text mode requires a text value".into());
         };
 
-        info!("Converting text to Cooklang (provider: {:?})", provider);
+        info!(
+            "Converting text to Cooklang (provider: {:?}, recipe_language: {:?})",
+            provider, recipe_language
+        );
 
         let mut builder = RecipeImporter::builder().text(&text);
 
         if let Some(p) = provider {
             builder = builder.provider(p);
+        }
+
+        if let Some(lang) = recipe_language.as_deref() {
+            builder = builder.recipe_language(lang);
         }
 
         builder.build().await?
@@ -170,8 +195,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("Please provide a URL as the first argument")?;
 
         info!(
-            "Importing recipe from URL: {}, extract_only: {}, provider: {:?}, timeout: {:?}",
-            url, extract_only, provider, timeout
+            "Importing recipe from URL: {}, extract_only: {}, provider: {:?}, timeout: {:?}, recipe_language: {:?}",
+            url, extract_only, provider, timeout, recipe_language
         );
 
         let mut builder = RecipeImporter::builder().url(url);
@@ -182,6 +207,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Some(p) = provider {
             builder = builder.provider(p);
+        }
+
+        if let Some(lang) = recipe_language.as_deref() {
+            builder = builder.recipe_language(lang);
         }
 
         if let Some(t) = timeout {

@@ -15,6 +15,7 @@ pub struct ParsingContext {
     pub url: String,
     pub document: Html,
     pub texts: Option<String>,
+    pub recipe_language: Option<String>,
 }
 
 pub trait Extractor {

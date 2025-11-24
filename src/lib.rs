@@ -39,6 +39,17 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, ImportError> {
     fetch_recipe_with_timeout(url, None).await
 }
 
+/// Fetches and extracts a recipe from a URL with an explicit language hint.
+///
+/// This is identical to `fetch_recipe` but allows specifying the language
+/// the recipe is written in for LLM-based extraction fallbacks.
+pub async fn fetch_recipe_with_language(
+    url: &str,
+    recipe_language: Option<&str>,
+) -> Result<model::Recipe, ImportError> {
+    fetch_recipe_with_timeout_and_language(url, None, recipe_language).await
+}
+
 /// Fetches and extracts a recipe from a URL.
 ///
 /// This function performs the following steps:
@@ -59,6 +70,15 @@ pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, ImportError> {
 pub async fn fetch_recipe_with_timeout(
     url: &str,
     timeout: Option<std::time::Duration>,
+) -> Result<model::Recipe, ImportError> {
+    fetch_recipe_with_timeout_and_language(url, timeout, None).await
+}
+
+/// Fetches and extracts a recipe from a URL with an optional timeout and language hint.
+pub async fn fetch_recipe_with_timeout_and_language(
+    url: &str,
+    timeout: Option<std::time::Duration>,
+    recipe_language: Option<&str>,
 ) -> Result<model::Recipe, ImportError> {
     // Set up headers with a user agent
     let mut headers = HeaderMap::new();
@@ -84,6 +104,7 @@ pub async fn fetch_recipe_with_timeout(
         url: url.to_string(),
         document: Html::parse_document(&body),
         texts: None,
+        recipe_language: recipe_language.map(|lang| lang.to_string()),
     };
 
     let extractors_list: Vec<Box<dyn Extractor>> = vec![
@@ -156,6 +177,17 @@ pub async fn convert_recipe_with_config(
     api_key: Option<String>,
     model: Option<String>,
 ) -> Result<String, ImportError> {
+    convert_recipe_with_config_and_language(recipe, provider_name, api_key, model, None).await
+}
+
+/// Converts a recipe to Cooklang format with explicit configuration and an optional language hint.
+pub async fn convert_recipe_with_config_and_language(
+    recipe: &model::Recipe,
+    provider_name: Option<&str>,
+    api_key: Option<String>,
+    model: Option<String>,
+    recipe_language: Option<&str>,
+) -> Result<String, ImportError> {
     use crate::config::ProviderConfig;
     use crate::providers::{AnthropicProvider, OpenAIProvider};
 
@@ -214,7 +246,7 @@ pub async fn convert_recipe_with_config(
 
     // Convert using the provider
     let mut cooklang_recipe = converter
-        .convert(&recipe.content)
+        .convert(&recipe.content, recipe_language)
         .await
         .map_err(|e| ImportError::ConversionError(e.to_string()))?;
 
@@ -246,6 +278,15 @@ pub async fn convert_recipe_with_config(
 pub async fn convert_recipe_with_provider(
     recipe: &model::Recipe,
     provider_name: Option<&str>,
+) -> Result<String, ImportError> {
+    convert_recipe_with_provider_and_language(recipe, provider_name, None).await
+}
+
+/// Converts a recipe to Cooklang format using a custom provider with an optional language hint.
+pub async fn convert_recipe_with_provider_and_language(
+    recipe: &model::Recipe,
+    provider_name: Option<&str>,
+    recipe_language: Option<&str>,
 ) -> Result<String, ImportError> {
     use crate::config::AiConfig;
     use crate::providers::{OpenAIProvider, ProviderFactory};
@@ -314,7 +355,7 @@ pub async fn convert_recipe_with_provider(
 
     // Convert using the provider
     let mut cooklang_recipe = converter
-        .convert(&recipe.content)
+        .convert(&recipe.content, recipe_language)
         .await
         .map_err(|e| ImportError::ConversionError(e.to_string()))?;
 

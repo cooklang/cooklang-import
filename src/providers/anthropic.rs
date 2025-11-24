@@ -1,5 +1,5 @@
 use crate::config::ProviderConfig;
-use crate::providers::{LlmProvider, COOKLANG_CONVERTER_PROMPT};
+use crate::providers::{build_converter_prompt, LlmProvider};
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
@@ -51,7 +51,13 @@ impl LlmProvider for AnthropicProvider {
         "anthropic"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
+        let system_prompt = build_converter_prompt(recipe_language);
+
         let response = self
             .client
             .post("https://api.anthropic.com/v1/messages")
@@ -61,7 +67,7 @@ impl LlmProvider for AnthropicProvider {
                 "model": self.model,
                 "max_tokens": self.max_tokens,
                 "temperature": self.temperature,
-                "system": COOKLANG_CONVERTER_PROMPT,
+                "system": system_prompt,
                 "messages": [
                     {
                         "role": "user",

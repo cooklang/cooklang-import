@@ -1,5 +1,5 @@
 use crate::config::ProviderConfig;
-use crate::providers::{LlmProvider, COOKLANG_CONVERTER_PROMPT};
+use crate::providers::{build_converter_prompt, LlmProvider};
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
@@ -49,15 +49,21 @@ impl LlmProvider for OllamaProvider {
         "ollama"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
         // Ollama uses OpenAI-compatible API
+        let system_prompt = build_converter_prompt(recipe_language);
+
         let response = self
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .json(&json!({
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
@@ -104,7 +110,7 @@ mod tests {
         let provider = OllamaProvider::with_base_url(server.url(), "llama3".to_string());
         let content = "pasta\nsauce\n\nCook pasta with sauce";
 
-        let result = provider.convert(content).await.unwrap();
+        let result = provider.convert(content, None).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();

@@ -71,6 +71,7 @@ mod tests {
             url: "https://www.cookingdivine.com/recipes/banana-bread/".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = MicroDataExtractor;

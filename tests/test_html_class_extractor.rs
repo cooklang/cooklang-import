@@ -45,6 +45,7 @@ mod tests {
             url: "https://example.com/recipe".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;
@@ -110,6 +111,7 @@ mod tests {
             url: "https://example.com/banana-bread".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;
@@ -163,6 +165,7 @@ mod tests {
             url: "https://example.com/carbonara".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;
@@ -206,6 +209,7 @@ mod tests {
             url: "https://example.com/salad".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;
@@ -242,6 +246,7 @@ mod tests {
             url: "https://example.com/not-recipe".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;

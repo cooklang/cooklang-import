@@ -127,6 +127,7 @@ mod tests {
             url: "https://natashaskitchen.com/chickpea-salad-recipe/".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;
@@ -220,6 +221,7 @@ mod tests {
             url: "https://example.com/test".to_string(),
             document: Html::parse_document(html),
             texts: None,
+            recipe_language: None,
         };
 
         let extractor = HtmlClassExtractor;

@@ -65,6 +65,7 @@ impl FallbackProvider {
         &self,
         provider: &dyn LlmProvider,
         content: &str,
+        recipe_language: Option<&str>,
     ) -> Result<String, String> {
         let mut last_error = None;
 
@@ -77,7 +78,7 @@ impl FallbackProvider {
             );
 
             let should_retry = {
-                let result = provider.convert(content).await;
+                let result = provider.convert(content, recipe_language).await;
 
                 match result {
                     Ok(result) => {
@@ -123,12 +124,16 @@ impl LlmProvider for FallbackProvider {
         "fallback"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
         let mut all_errors: Vec<String> = Vec::new();
 
         for provider in &self.providers {
             match self
-                .try_provider_with_retry(provider.as_ref(), content)
+                .try_provider_with_retry(provider.as_ref(), content, recipe_language)
                 .await
             {
                 Ok(result) => return Ok(result),
