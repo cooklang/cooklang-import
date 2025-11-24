@@ -23,7 +23,7 @@ flowchart TB
     CONFIG[Configuration<br/>config.toml + env vars]
 
     %% LLM Conversion
-    LLM[LLM Conversion<br/>OpenAI | Anthropic | Google<br/>Azure OpenAI | Ollama]
+    LLM[LLM Conversion<br/>OpenAI, Anthropic, Google<br/>Azure OpenAI, Ollama]
 
     %% Output Modes
     RECIPE_OUT[Recipe Struct<br/>Markdown Format]
