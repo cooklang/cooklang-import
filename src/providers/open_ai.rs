@@ -83,6 +83,7 @@ impl LlmProvider for OpenAIProvider {
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Accept-Encoding", "identity")
             .json(&json!({
                 "model": self.model,
                 "messages": [
