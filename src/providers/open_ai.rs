@@ -96,27 +96,35 @@ impl LlmProvider for OpenAIProvider {
             .await?;
 
         let status = response.status();
-        let response_text = response.text().await
+        let response_text = response
+            .text()
+            .await
             .map_err(|e| format!("Failed to read response body (status {}): {}", status, e))?;
         debug!("Raw response: {}", response_text);
 
-        let response_body: Value = serde_json::from_str(&response_text)
-            .map_err(|e| format!("Failed to parse JSON: {}. Raw response: {}", e, &response_text[..response_text.len().min(500)]))?;
+        let response_body: Value = serde_json::from_str(&response_text).map_err(|e| {
+            format!(
+                "Failed to parse JSON: {}. Raw response: {}",
+                e,
+                &response_text[..response_text.len().min(500)]
+            )
+        })?;
 
         // Check for API error response
         if let Some(error) = response_body.get("error") {
-            let error_msg = error["message"]
-                .as_str()
-                .unwrap_or("Unknown API error");
+            let error_msg = error["message"].as_str().unwrap_or("Unknown API error");
             return Err(format!("OpenAI API error: {}", error_msg).into());
         }
 
         let cooklang_recipe = response_body["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| format!(
-                "Failed to extract content from response. Response: {}",
-                serde_json::to_string_pretty(&response_body).unwrap_or_else(|_| "unparseable".to_string())
-            ))?
+            .ok_or_else(|| {
+                format!(
+                    "Failed to extract content from response. Response: {}",
+                    serde_json::to_string_pretty(&response_body)
+                        .unwrap_or_else(|_| "unparseable".to_string())
+                )
+            })?
             .to_string();
 
         Ok(cooklang_recipe)
