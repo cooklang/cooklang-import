@@ -90,7 +90,8 @@ impl LlmProvider for OpenAIProvider {
                     {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
-                "max_tokens": self.max_tokens
+                "max_tokens": self.max_tokens,
+                "stream": false
             }))
             .send()
             .await?;
