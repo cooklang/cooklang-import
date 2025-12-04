@@ -787,6 +787,7 @@ mod tests {
             url: "http://example.com".to_string(),
             document,
             texts: None,
+            recipe_language: None,
         };
         let extractor = JsonLdExtractor;
         // Just verify that parse returns an error for invalid input
@@ -821,6 +822,7 @@ mod tests {
             url: "http://example.com".to_string(),
             document,
             texts: None,
+            recipe_language: None,
         };
 
         let result = extractor.parse(&context).unwrap();
@@ -894,6 +896,7 @@ mod tests {
             url: "http://example.com".to_string(),
             document,
             texts: None,
+            recipe_language: None,
         };
 
         let result = extractor.parse(&context).unwrap();
@@ -940,6 +943,7 @@ mod tests {
             url: "http://example.com".to_string(),
             document,
             texts: None,
+            recipe_language: None,
         };
 
         let result = extractor.parse(&context).unwrap();

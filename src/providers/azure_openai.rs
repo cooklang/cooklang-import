@@ -1,5 +1,5 @@
 use crate::config::ProviderConfig;
-use crate::providers::{LlmProvider, COOKLANG_CONVERTER_PROMPT};
+use crate::providers::{build_converter_prompt, LlmProvider};
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
@@ -59,7 +59,11 @@ impl LlmProvider for AzureOpenAIProvider {
         "azure_openai"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(
+        &self,
+        content: &str,
+        recipe_language: Option<&str>,
+    ) -> Result<String, Box<dyn Error>> {
         // Azure OpenAI URL format:
         // https://{endpoint}/openai/deployments/{deployment-name}/chat/completions?api-version={api-version}
         let url = format!(
@@ -69,13 +73,15 @@ impl LlmProvider for AzureOpenAIProvider {
             self.api_version
         );
 
+        let system_prompt = build_converter_prompt(recipe_language);
+
         let response = self
             .client
             .post(&url)
             .header("api-key", &self.api_key)
             .json(&json!({
                 "messages": [
-                    {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": content}
                 ],
                 "temperature": self.temperature,
@@ -156,7 +162,7 @@ mod tests {
         let provider = AzureOpenAIProvider::new(&config).unwrap();
         let content = "pasta\nsauce\n\nCook pasta with sauce";
 
-        let result = provider.convert(content).await.unwrap();
+        let result = provider.convert(content, None).await.unwrap();
         assert!(result.contains("@pasta"));
         assert!(result.contains("@sauce"));
         mock.assert();

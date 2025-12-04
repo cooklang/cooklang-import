@@ -24,6 +24,23 @@ const MODEL: &str = "gpt-4o-mini";
 
 pub struct PlainTextLlmExtractor;
 
+fn build_plaintext_prompt(language: Option<&str>) -> String {
+    match language.and_then(|lang| {
+        let trimmed = lang.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    }) {
+        Some(lang) => format!(
+            "{}\nThe text you receive is written in {lang}. Extract ingredients and instructions that are written in {lang} while keeping their wording in that language.",
+            PROMPT
+        ),
+        None => PROMPT.to_string(),
+    }
+}
+
 #[async_trait::async_trait]
 impl Extractor for PlainTextLlmExtractor {
     fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn std::error::Error>> {
@@ -45,8 +62,9 @@ impl Extractor for PlainTextLlmExtractor {
             .map(|el| el.inner_html().trim().to_string())
             .unwrap_or_else(|| "Untitled Recipe".to_string());
 
+        let prompt = build_plaintext_prompt(context.recipe_language.as_deref());
         let json = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(fetch_json(texts))
+            tokio::runtime::Handle::current().block_on(fetch_json(texts, &prompt))
         })?;
 
         if let Some(error) = json["error"].as_str() {
@@ -117,7 +135,7 @@ async fn fetch_inner_text(url: &str) -> Result<String, Box<dyn Error>> {
     Ok(content.content)
 }
 
-async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error>> {
+async fn fetch_json(texts: String, prompt: &str) -> Result<Value, Box<dyn Error>> {
     let api_key = std::env::var("OPENAI_API_KEY")?;
 
     // For testing environment, return mock data
@@ -137,7 +155,7 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error>> {
             "messages": [
                 {
                     "role": "system",
-                    "content": PROMPT
+                    "content": prompt
                 },
                 {
                     "role": "user",
@@ -330,6 +348,7 @@ mod tests {
             url: "http://example.com".to_string(),
             document,
             texts: None,
+            recipe_language: None,
         };
         let extractor = PlainTextLlmExtractor;
         // Set up environment for test
@@ -361,6 +380,7 @@ mod tests {
             url: "http://example.com".to_string(),
             document,
             texts: None,
+            recipe_language: None,
         };
         let extractor = PlainTextLlmExtractor;
 

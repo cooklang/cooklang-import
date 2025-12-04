@@ -2,8 +2,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::{
-    convert_recipe_with_config, convert_recipe_with_provider, fetch_recipe_with_timeout,
-    ocr::ocr_image_file, ImportError, Recipe,
+    convert_recipe_with_config_and_language, convert_recipe_with_provider_and_language,
+    fetch_recipe_with_timeout_and_language, ocr::ocr_image_file, ImportError, Recipe,
 };
 
 /// Represents the input source for a recipe
@@ -68,6 +68,7 @@ pub struct RecipeImporterBuilder {
     timeout: Option<Duration>,
     api_key: Option<String>,
     model: Option<String>,
+    recipe_language: Option<String>,
 }
 
 impl RecipeImporterBuilder {
@@ -206,6 +207,17 @@ impl RecipeImporterBuilder {
         self
     }
 
+    /// Hint the language the recipe text is written in when using LLM parsing.
+    ///
+    /// If not set, the existing prompts are used unchanged.
+    pub fn recipe_language(mut self, language: impl Into<String>) -> Self {
+        let lang = language.into().trim().to_string();
+        if !lang.is_empty() {
+            self.recipe_language = Some(lang);
+        }
+        self
+    }
+
     /// Build and execute the recipe import operation
     ///
     /// # Returns
@@ -245,19 +257,40 @@ impl RecipeImporterBuilder {
         match (source, self.mode) {
             // Use Case 1: URL → Cooklang
             (InputSource::Url(url), OutputMode::Cooklang) => {
-                let recipe = fetch_recipe_with_timeout(&url, self.timeout).await?;
+                let recipe = fetch_recipe_with_timeout_and_language(
+                    &url,
+                    self.timeout,
+                    self.recipe_language.as_deref(),
+                )
+                .await?;
                 let cooklang = if self.api_key.is_some() || self.model.is_some() {
-                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
-                        .await?
+                    convert_recipe_with_config_and_language(
+                        &recipe,
+                        provider_name,
+                        self.api_key,
+                        self.model,
+                        self.recipe_language.as_deref(),
+                    )
+                    .await?
                 } else {
-                    convert_recipe_with_provider(&recipe, provider_name).await?
+                    convert_recipe_with_provider_and_language(
+                        &recipe,
+                        provider_name,
+                        self.recipe_language.as_deref(),
+                    )
+                    .await?
                 };
                 Ok(ImportResult::Cooklang(cooklang))
             }
 
             // Use Case 2: URL → Recipe (extract only)
             (InputSource::Url(url), OutputMode::Recipe) => {
-                let recipe = fetch_recipe_with_timeout(&url, self.timeout).await?;
+                let recipe = fetch_recipe_with_timeout_and_language(
+                    &url,
+                    self.timeout,
+                    self.recipe_language.as_deref(),
+                )
+                .await?;
                 Ok(ImportResult::Recipe(recipe))
             }
 
@@ -277,10 +310,21 @@ impl RecipeImporterBuilder {
                 };
 
                 let cooklang = if self.api_key.is_some() || self.model.is_some() {
-                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
-                        .await?
+                    convert_recipe_with_config_and_language(
+                        &recipe,
+                        provider_name,
+                        self.api_key,
+                        self.model,
+                        self.recipe_language.as_deref(),
+                    )
+                    .await?
                 } else {
-                    convert_recipe_with_provider(&recipe, provider_name).await?
+                    convert_recipe_with_provider_and_language(
+                        &recipe,
+                        provider_name,
+                        self.recipe_language.as_deref(),
+                    )
+                    .await?
                 };
                 Ok(ImportResult::Cooklang(cooklang))
             }
@@ -315,10 +359,21 @@ impl RecipeImporterBuilder {
 
                 // Convert to Cooklang
                 let cooklang = if self.api_key.is_some() || self.model.is_some() {
-                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
-                        .await?
+                    convert_recipe_with_config_and_language(
+                        &recipe,
+                        provider_name,
+                        self.api_key,
+                        self.model,
+                        self.recipe_language.as_deref(),
+                    )
+                    .await?
                 } else {
-                    convert_recipe_with_provider(&recipe, provider_name).await?
+                    convert_recipe_with_provider_and_language(
+                        &recipe,
+                        provider_name,
+                        self.recipe_language.as_deref(),
+                    )
+                    .await?
                 };
                 Ok(ImportResult::Cooklang(cooklang))
             }
