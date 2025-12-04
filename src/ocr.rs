@@ -67,7 +67,12 @@ pub async fn ocr_image_data(image_data: &[u8]) -> Result<String, Box<dyn Error>>
 
     debug!("Sending OCR request to Google Vision API");
 
-    let response = client.post(&url).json(&request_body).send().await?;
+    let response = client
+        .post(&url)
+        .header("Accept-Encoding", "identity")
+        .json(&request_body)
+        .send()
+        .await?;
 
     // Check for HTTP errors
     if !response.status().is_success() {
