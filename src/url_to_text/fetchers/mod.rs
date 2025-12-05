@@ -1,1 +1,3 @@
-// Fetchers: request.rs, chrome.rs
+mod request;
+
+pub use request::RequestFetcher;
