@@ -1,3 +1,4 @@
 pub mod url;
+pub mod text;
 
-// TODO: text.rs, image.rs
+// TODO: image.rs
