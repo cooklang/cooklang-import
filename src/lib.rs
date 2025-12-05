@@ -2,13 +2,15 @@ pub mod builder;
 pub mod config;
 pub mod converters;
 pub mod error;
-pub mod extractors;
 pub mod images_to_text;
 pub mod model;
-pub mod ocr;
 pub mod pipelines;
-pub mod providers;
 pub mod url_to_text;
+
+// Keep old modules for backward compatibility (will be removed in next task)
+pub mod extractors;
+pub mod ocr;
+pub mod providers;
 
 #[cfg(feature = "uniffi")]
 pub mod uniffi_bindings;
@@ -17,109 +19,16 @@ pub mod uniffi_bindings;
 #[cfg(feature = "uniffi")]
 pub use uniffi_bindings::*;
 
-// Public API exports
-// Builder API (primary interface)
-pub use builder::{ImportResult, LlmProvider, RecipeImporter};
-// Error types
+// Re-exports for convenience
+pub use builder::{ImportResult, LlmProvider, RecipeImporter, RecipeImporterBuilder};
+pub use config::AiConfig;
 pub use error::ImportError;
-// Types
 pub use images_to_text::ImageSource;
 pub use model::Recipe;
-// Convenience functions (secondary interface) - exported at module level below
-// Low-level API (for advanced users) - exported at module level below
 
-use log::debug;
-use reqwest::header::{HeaderMap, USER_AGENT};
-use scraper::Html;
+// Convenience functions using the new architecture
 
-use crate::extractors::{Extractor, ParsingContext};
-
-/// Fetches and extracts a recipe from a URL (convenience function).
-///
-/// This is a convenience wrapper around `fetch_recipe_with_timeout` with no timeout.
-///
-/// # Arguments
-/// * `url` - The URL of the recipe webpage to fetch
-///
-/// # Returns
-/// A `Recipe` struct containing the extracted recipe data
-///
-/// # Errors
-/// Returns `ImportError::FetchError` if the URL cannot be fetched
-/// Returns `ImportError::NoExtractorMatched` if no extractor can parse the recipe
-pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, ImportError> {
-    fetch_recipe_with_timeout(url, None).await
-}
-
-/// Fetches and extracts a recipe from a URL.
-///
-/// This function performs the following steps:
-/// 1. Fetches the webpage content with appropriate headers
-/// 2. Attempts to extract recipe data using multiple extractors in sequence
-/// 3. Returns the first successful extraction
-///
-/// # Arguments
-/// * `url` - The URL of the recipe webpage to fetch
-/// * `timeout` - Optional timeout for the HTTP request
-///
-/// # Returns
-/// A `Recipe` struct containing the extracted recipe data
-///
-/// # Errors
-/// Returns `ImportError::FetchError` if the URL cannot be fetched
-/// Returns `ImportError::NoExtractorMatched` if no extractor can parse the recipe
-pub async fn fetch_recipe_with_timeout(
-    url: &str,
-    timeout: Option<std::time::Duration>,
-) -> Result<model::Recipe, ImportError> {
-    // Set up headers with a user agent
-    let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse()?);
-
-    // Create client with optional timeout
-    let mut client_builder = reqwest::Client::builder();
-    if let Some(timeout_duration) = timeout {
-        client_builder = client_builder.timeout(timeout_duration);
-    }
-    let client = client_builder.build()?;
-
-    // Fetch the webpage content with headers
-    let body = client
-        .get(url)
-        .headers(headers.clone())
-        .send()
-        .await?
-        .text()
-        .await?;
-
-    let context = ParsingContext {
-        url: url.to_string(),
-        document: Html::parse_document(&body),
-        texts: None,
-    };
-
-    let extractors_list: Vec<Box<dyn Extractor>> = vec![
-        Box::new(extractors::JsonLdExtractor),
-        Box::new(extractors::MicroDataExtractor),
-        Box::new(extractors::HtmlClassExtractor),
-        Box::new(extractors::PlainTextLlmExtractor),
-    ];
-
-    for extractor in extractors_list {
-        match extractor.parse(&context) {
-            Ok(recipe) => {
-                debug!("{:#?}", recipe);
-                return Ok(recipe);
-            }
-            Err(e) => {
-                debug!("Extractor failed: {}", e);
-            }
-        }
-    }
-
-    Err(ImportError::NoExtractorMatched)
-}
-
+/// Helper function to generate YAML frontmatter from metadata
 pub fn generate_frontmatter(metadata: &std::collections::HashMap<String, String>) -> String {
     if metadata.is_empty() {
         return String::new();
@@ -146,10 +55,57 @@ pub fn generate_frontmatter(metadata: &std::collections::HashMap<String, String>
     frontmatter
 }
 
+/// Fetches and extracts a recipe from a URL (convenience function).
+///
+/// This is a simplified wrapper that uses the new pipeline architecture.
+/// For more control, use `RecipeImporter::builder()` directly.
+///
+/// # Arguments
+/// * `url` - The URL of the recipe webpage to fetch
+///
+/// # Returns
+/// A `Recipe` struct containing the extracted recipe data
+///
+/// # Errors
+/// Returns `ImportError` if the URL cannot be fetched or parsed
+pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, ImportError> {
+    extract_recipe_from_url(url).await
+}
+
+/// Fetches and extracts a recipe from a URL with timeout.
+///
+/// This is a wrapper that uses the new pipeline architecture.
+/// For more control, use `RecipeImporter::builder()` directly.
+///
+/// # Arguments
+/// * `url` - The URL of the recipe webpage to fetch
+/// * `timeout` - Optional timeout for the HTTP request
+///
+/// # Returns
+/// A `Recipe` struct containing the extracted recipe data
+///
+/// # Errors
+/// Returns `ImportError` if the URL cannot be fetched or parsed
+pub async fn fetch_recipe_with_timeout(
+    url: &str,
+    timeout: Option<std::time::Duration>,
+) -> Result<model::Recipe, ImportError> {
+    let mut builder = RecipeImporter::builder().url(url).extract_only();
+
+    if let Some(t) = timeout {
+        builder = builder.timeout(t);
+    }
+
+    match builder.build().await? {
+        builder::ImportResult::Recipe(r) => Ok(r),
+        builder::ImportResult::Cooklang(_) => unreachable!("extract_only sets Recipe mode"),
+    }
+}
+
 /// Converts a recipe to Cooklang format with explicit configuration.
 ///
-/// This function allows passing API key and model directly instead of relying on
-/// config files or environment variables.
+/// This is a simplified wrapper that uses the new pipeline architecture.
+/// For more control, use `RecipeImporter::builder()` directly.
 ///
 /// # Arguments
 /// * `recipe` - The recipe to convert
@@ -168,90 +124,42 @@ pub async fn convert_recipe_with_config(
     api_key: Option<String>,
     model: Option<String>,
 ) -> Result<String, ImportError> {
-    use crate::config::ProviderConfig;
-    use crate::providers::{AnthropicProvider, OpenAIProvider};
+    // Convert recipe to text format
+    let text = recipe.to_text_with_metadata();
 
-    let name = provider_name.unwrap_or("anthropic");
+    // Use builder with provider configuration
+    let mut builder = RecipeImporter::builder().text(&text);
 
-    // Create provider based on name
-    let converter: Box<dyn crate::providers::LlmProvider> = match name {
-        "openai" => {
-            if let Some(key) = api_key {
-                // Create config with provided key
-                let config = ProviderConfig {
-                    enabled: true,
-                    model: model.unwrap_or_else(|| "gpt-4".to_string()),
-                    temperature: 0.7,
-                    max_tokens: 4000,
-                    api_key: Some(key),
-                    base_url: None,
-                    endpoint: None,
-                    deployment_name: None,
-                    api_version: None,
-                    project_id: None,
-                };
-                Box::new(OpenAIProvider::new(&config).map_err(|e| {
-                    ImportError::ConversionError(format!("Failed to create OpenAI provider: {}", e))
-                })?)
-            } else {
-                Box::new(OpenAIProvider::from_env().map_err(|e| {
-                    ImportError::ConversionError(format!("Failed to create OpenAI provider: {}", e))
-                })?)
-            }
-        }
-        "anthropic" => {
-            // Create config with provided key or None (will fall back to env)
-            let config = ProviderConfig {
-                enabled: true,
-                model: model.unwrap_or_else(|| "claude-sonnet-4-20250514".to_string()),
-                temperature: 0.7,
-                max_tokens: 4000,
-                api_key,
-                base_url: None,
-                endpoint: None,
-                deployment_name: None,
-                api_version: None,
-                project_id: None,
-            };
-            Box::new(AnthropicProvider::new(&config)
-                .map_err(|e| ImportError::ConversionError(format!("Failed to create Anthropic provider: {}. Make sure ANTHROPIC_API_KEY is set or pass api_key to builder.", e)))?)
-        }
-        _ => {
-            return Err(ImportError::ConversionError(format!(
-                "Provider '{}' requires a config.toml file or use convert_recipe_with_provider",
-                name
-            )));
-        }
-    };
-
-    // Combine ingredients and instructions for conversion
-    let content = if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
-        format!("{}\n\n{}", recipe.ingredients.join("\n"), recipe.instructions)
-    } else if !recipe.ingredients.is_empty() {
-        recipe.ingredients.join("\n")
-    } else {
-        recipe.instructions.clone()
-    };
-
-    // Convert using the provider
-    let mut cooklang_recipe = converter
-        .convert(&content)
-        .await
-        .map_err(|e| ImportError::ConversionError(e.to_string()))?;
-
-    // Prepend frontmatter if there's metadata
-    let frontmatter = generate_frontmatter(&recipe.metadata);
-    if !frontmatter.is_empty() {
-        cooklang_recipe = format!("{}{}", frontmatter, cooklang_recipe);
+    if let Some(name) = provider_name {
+        let provider = match name {
+            "openai" => LlmProvider::OpenAI,
+            "anthropic" => LlmProvider::Anthropic,
+            "google" => LlmProvider::Google,
+            "ollama" => LlmProvider::Ollama,
+            "azure_openai" => LlmProvider::AzureOpenAI,
+            _ => return Err(ImportError::ConversionError(format!("Unknown provider: {}", name))),
+        };
+        builder = builder.provider(provider);
     }
 
-    Ok(cooklang_recipe)
+    if let Some(key) = api_key {
+        builder = builder.api_key(&key);
+    }
+
+    if let Some(m) = model {
+        builder = builder.model(&m);
+    }
+
+    match builder.build().await? {
+        builder::ImportResult::Cooklang(s) => Ok(s),
+        builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
+    }
 }
 
 /// Converts a recipe to Cooklang format using a custom provider.
 ///
-/// This function converts recipe ingredients and instructions from markdown
-/// format to Cooklang format using the specified LLM provider.
+/// This is a simplified wrapper that uses the new pipeline architecture.
+/// For more control, use `RecipeImporter::builder()` directly.
 ///
 /// # Arguments
 /// * `recipe` - The recipe to convert
@@ -268,93 +176,28 @@ pub async fn convert_recipe_with_provider(
     recipe: &model::Recipe,
     provider_name: Option<&str>,
 ) -> Result<String, ImportError> {
-    use crate::config::AiConfig;
-    use crate::providers::{OpenAIProvider, ProviderFactory};
+    // Convert recipe to text format
+    let text = recipe.to_text_with_metadata();
 
-    // Try to load config, but continue if it fails (will use env vars)
-    let config_result = AiConfig::load();
+    // Use builder with provider name
+    let mut builder = RecipeImporter::builder().text(&text);
 
-    let converter: Box<dyn crate::providers::LlmProvider> = match config_result {
-        Ok(config) => {
-            // Use provided name or fall back to default provider from config
-            let name = provider_name.unwrap_or(&config.default_provider);
-
-            // Get provider config
-            let provider_config = config.providers.get(name).ok_or_else(|| {
-                ImportError::ConversionError(format!(
-                    "Provider '{}' not found in configuration",
-                    name
-                ))
-            })?;
-
-            // Create provider from factory
-            ProviderFactory::create(name, provider_config)
-                .map_err(|e| ImportError::ConversionError(e.to_string()))?
-        }
-        Err(_) => {
-            // No config file - fall back to environment variables
-            let name = provider_name.unwrap_or("openai");
-
-            match name {
-                "openai" => Box::new(OpenAIProvider::from_env().map_err(|e| {
-                    ImportError::ConversionError(format!(
-                        "Failed to create OpenAI provider from environment: {}",
-                        e
-                    ))
-                })?),
-                "anthropic" => {
-                    use crate::providers::AnthropicProvider;
-                    // Create a minimal config that will use environment variables
-                    let config = crate::config::ProviderConfig {
-                        enabled: true,
-                        model: "claude-sonnet-4-20250514".to_string(),
-                        temperature: 0.7,
-                        max_tokens: 4000,
-                        api_key: None, // Will fall back to ANTHROPIC_API_KEY env var
-                        base_url: None,
-                        endpoint: None,
-                        deployment_name: None,
-                        api_version: None,
-                        project_id: None,
-                    };
-                    Box::new(AnthropicProvider::new(&config)
-                        .map_err(|e| ImportError::ConversionError(format!("Failed to create Anthropic provider from environment: {}. Make sure ANTHROPIC_API_KEY is set.", e)))?)
-                }
-                _ => {
-                    return Err(ImportError::ConversionError(
-                        format!(
-                            "No configuration file found. Provider '{}' requires a config.toml file. \
-                            For OpenAI and Anthropic, you can use environment variables (OPENAI_API_KEY or ANTHROPIC_API_KEY).",
-                            name
-                        )
-                    ));
-                }
-            }
-        }
-    };
-
-    // Combine ingredients and instructions for conversion
-    let content = if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
-        format!("{}\n\n{}", recipe.ingredients.join("\n"), recipe.instructions)
-    } else if !recipe.ingredients.is_empty() {
-        recipe.ingredients.join("\n")
-    } else {
-        recipe.instructions.clone()
-    };
-
-    // Convert using the provider
-    let mut cooklang_recipe = converter
-        .convert(&content)
-        .await
-        .map_err(|e| ImportError::ConversionError(e.to_string()))?;
-
-    // Prepend frontmatter if there's metadata
-    let frontmatter = generate_frontmatter(&recipe.metadata);
-    if !frontmatter.is_empty() {
-        cooklang_recipe = frontmatter + &cooklang_recipe;
+    if let Some(name) = provider_name {
+        let provider = match name {
+            "openai" => LlmProvider::OpenAI,
+            "anthropic" => LlmProvider::Anthropic,
+            "google" => LlmProvider::Google,
+            "ollama" => LlmProvider::Ollama,
+            "azure_openai" => LlmProvider::AzureOpenAI,
+            _ => return Err(ImportError::ConversionError(format!("Unknown provider: {}", name))),
+        };
+        builder = builder.provider(provider);
     }
 
-    Ok(cooklang_recipe)
+    match builder.build().await? {
+        builder::ImportResult::Cooklang(s) => Ok(s),
+        builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
+    }
 }
 
 /// Fetches a recipe from a URL and converts it to Cooklang format.
