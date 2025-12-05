@@ -1,10 +1,14 @@
 pub mod builder;
 pub mod config;
+pub mod converters;
 pub mod error;
 pub mod extractors;
+pub mod images_to_text;
 pub mod model;
 pub mod ocr;
+pub mod pipelines;
 pub mod providers;
+pub mod url_to_text;
 
 #[cfg(feature = "uniffi")]
 pub mod uniffi_bindings;
@@ -19,6 +23,7 @@ pub use builder::{ImportResult, LlmProvider, RecipeImporter};
 // Error types
 pub use error::ImportError;
 // Types
+pub use images_to_text::ImageSource;
 pub use model::Recipe;
 // Convenience functions (secondary interface) - exported at module level below
 // Low-level API (for advanced users) - exported at module level below

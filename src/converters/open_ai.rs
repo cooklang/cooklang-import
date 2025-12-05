@@ -78,7 +78,7 @@ impl Converter for OpenAiConverter {
         "open_ai"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error>> {
+    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
         let response = self
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))

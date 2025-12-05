@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             image_path, provider
         );
 
-        let mut builder = RecipeImporter::builder().image(&image_path);
+        let mut builder = RecipeImporter::builder().image_path(&image_path);
 
         if let Some(p) = provider {
             builder = builder.provider(p);

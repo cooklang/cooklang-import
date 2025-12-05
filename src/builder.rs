@@ -1,20 +1,16 @@
-use std::path::Path;
 use std::time::Duration;
 
-use crate::{
-    convert_recipe_with_config, convert_recipe_with_provider, fetch_recipe_with_timeout,
-    ocr::ocr_image_file, ImportError, Recipe,
-};
+use crate::{images_to_text::ImageSource, ImportError, Recipe};
 
 /// Represents the input source for a recipe
 #[derive(Debug, Clone)]
 pub enum InputSource {
     /// Fetch recipe from a URL
     Url(String),
-    /// Use plain text content
-    Text(String),
-    /// Use image file (will be OCR'd using Google Vision)
-    Image(String),
+    /// Use text content (pre-formatted or requiring extraction)
+    Text { content: String, extract: bool },
+    /// Use images (paths or base64)
+    Images(Vec<ImageSource>),
 }
 
 /// Represents the desired output format
@@ -85,7 +81,28 @@ impl RecipeImporterBuilder {
         self
     }
 
-    /// Set the input source to plain text
+    /// Set the input source to pre-formatted text (no extraction needed)
+    ///
+    /// Use this when you have a recipe already formatted with ingredients and instructions.
+    /// The text will be converted directly to Cooklang without LLM extraction.
+    ///
+    /// # Example
+    /// ```
+    /// use cooklang_import::RecipeImporter;
+    ///
+    /// let recipe_text = "2 eggs\n1 cup flour\n\nMix together and bake at 350F for 30 minutes.";
+    /// let builder = RecipeImporter::builder()
+    ///     .text(recipe_text);
+    /// ```
+    pub fn text(mut self, text: impl Into<String>) -> Self {
+        self.source = Some(InputSource::Text {
+            content: text.into(),
+            extract: false,
+        });
+        self
+    }
+
+    /// Set the input source to plain text that needs extraction
     ///
     /// Use this when you have a recipe in plain text format that needs to be parsed.
     /// The LLM will extract ingredients and instructions from the text.
@@ -96,18 +113,20 @@ impl RecipeImporterBuilder {
     ///
     /// let recipe_text = "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350F for 30 minutes.";
     /// let builder = RecipeImporter::builder()
-    ///     .text(recipe_text);
+    ///     .text_with_extraction(recipe_text);
     /// ```
-    pub fn text(mut self, text: impl Into<String>) -> Self {
-        self.source = Some(InputSource::Text(text.into()));
+    pub fn text_with_extraction(mut self, text: impl Into<String>) -> Self {
+        self.source = Some(InputSource::Text {
+            content: text.into(),
+            extract: true,
+        });
         self
     }
 
-    /// Set the input source to an image file
+    /// Add an image file path to the input sources
     ///
-    /// Use this when you have a recipe image that needs to be OCR'd first.
-    /// The image will be processed using Google Cloud Vision API to extract text,
-    /// then the text will be converted to Cooklang format.
+    /// Use this when you have a recipe image that needs to be OCR'd.
+    /// Multiple images can be added by calling this method multiple times.
     ///
     /// Requires GOOGLE_API_KEY environment variable to be set.
     ///
@@ -116,10 +135,63 @@ impl RecipeImporterBuilder {
     /// use cooklang_import::RecipeImporter;
     ///
     /// let builder = RecipeImporter::builder()
-    ///     .image("/path/to/recipe-image.jpg");
+    ///     .image_path("/path/to/recipe-image.jpg");
     /// ```
-    pub fn image(mut self, image_path: impl Into<String>) -> Self {
-        self.source = Some(InputSource::Image(image_path.into()));
+    pub fn image_path(mut self, path: impl Into<String>) -> Self {
+        match &mut self.source {
+            Some(InputSource::Images(images)) => {
+                images.push(ImageSource::Path(path.into()));
+            }
+            _ => {
+                self.source = Some(InputSource::Images(vec![ImageSource::Path(path.into())]));
+            }
+        }
+        self
+    }
+
+    /// Add a base64-encoded image to the input sources
+    ///
+    /// Use this when you have a recipe image as base64 data.
+    /// Multiple images can be added by calling this method multiple times.
+    ///
+    /// Requires GOOGLE_API_KEY environment variable to be set.
+    ///
+    /// # Example
+    /// ```
+    /// use cooklang_import::RecipeImporter;
+    ///
+    /// let builder = RecipeImporter::builder()
+    ///     .image_base64("base64encodeddata...");
+    /// ```
+    pub fn image_base64(mut self, data: impl Into<String>) -> Self {
+        match &mut self.source {
+            Some(InputSource::Images(images)) => {
+                images.push(ImageSource::Base64(data.into()));
+            }
+            _ => {
+                self.source = Some(InputSource::Images(vec![ImageSource::Base64(data.into())]));
+            }
+        }
+        self
+    }
+
+    /// Set multiple images at once
+    ///
+    /// Use this to set all images in one call instead of using image_path or image_base64 multiple times.
+    ///
+    /// # Example
+    /// ```
+    /// use cooklang_import::{RecipeImporter, ImageSource};
+    ///
+    /// let images = vec![
+    ///     ImageSource::Path("/path/to/image1.jpg".to_string()),
+    ///     ImageSource::Path("/path/to/image2.jpg".to_string()),
+    /// ];
+    /// let builder = RecipeImporter::builder()
+    ///     .images(images);
+    /// ```
+    pub fn images(mut self, images: Vec<ImageSource>) -> Self {
+        self.source = Some(InputSource::Images(images));
         self
     }
 
@@ -235,101 +307,45 @@ impl RecipeImporterBuilder {
         // Validate that source is set
         let source = self.source.ok_or_else(|| {
             ImportError::BuilderError(
-                "No input source specified. Use .url() or .markdown()".to_string(),
+                "No input source specified. Use .url(), .text(), or .image_path()".to_string(),
             )
         })?;
 
-        // Convert provider enum to string name if provided
-        let provider_name = self.provider.as_ref().map(|p| p.as_str());
-
-        match (source, self.mode) {
-            // Use Case 1: URL → Cooklang
-            (InputSource::Url(url), OutputMode::Cooklang) => {
-                let recipe = fetch_recipe_with_timeout(&url, self.timeout).await?;
-                let cooklang = if self.api_key.is_some() || self.model.is_some() {
-                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
-                        .await?
-                } else {
-                    convert_recipe_with_provider(&recipe, provider_name).await?
-                };
-                Ok(ImportResult::Cooklang(cooklang))
+        // Route to the appropriate pipeline based on input source
+        let result = match source {
+            InputSource::Url(url) => {
+                crate::pipelines::url::process(&url)
+                    .await
+                    .map_err(|e| ImportError::BuilderError(e.to_string()))?
             }
+            InputSource::Text { content, extract } => {
+                crate::pipelines::text::process(&content, extract)
+                    .await
+                    .map_err(|e| ImportError::BuilderError(e.to_string()))?
+            }
+            InputSource::Images(images) => {
+                crate::pipelines::image::process(&images)
+                    .await
+                    .map_err(|e| ImportError::BuilderError(e.to_string()))?
+            }
+        };
 
-            // Use Case 2: URL → Recipe (extract only)
-            (InputSource::Url(url), OutputMode::Recipe) => {
-                let recipe = fetch_recipe_with_timeout(&url, self.timeout).await?;
+        // Return based on output mode
+        match self.mode {
+            OutputMode::Cooklang => Ok(ImportResult::Cooklang(result)),
+            OutputMode::Recipe => {
+                // Parse the result back into a Recipe struct
+                let (metadata, body) = Recipe::parse_text_format(&result);
+                let recipe = Recipe {
+                    name: metadata.get("title").cloned().unwrap_or_default(),
+                    description: metadata.get("description").cloned(),
+                    metadata,
+                    ingredients: vec![], // Pipelines return already formatted text
+                    instructions: body,
+                    ..Default::default()
+                };
                 Ok(ImportResult::Recipe(recipe))
             }
-
-            // Use Case 3: Text → Cooklang
-            (InputSource::Text(text), OutputMode::Cooklang) => {
-                // Validate input
-                if text.trim().is_empty() {
-                    return Err(ImportError::InvalidMarkdown(
-                        "Recipe text cannot be empty".to_string(),
-                    ));
-                }
-
-                // Create Recipe struct
-                let recipe = Recipe {
-                    ingredients: vec![],
-                    instructions: text,
-                    ..Default::default()
-                };
-
-                let cooklang = if self.api_key.is_some() || self.model.is_some() {
-                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
-                        .await?
-                } else {
-                    convert_recipe_with_provider(&recipe, provider_name).await?
-                };
-                Ok(ImportResult::Cooklang(cooklang))
-            }
-
-            // Invalid: Text → Recipe (no-op)
-            (InputSource::Text { .. }, OutputMode::Recipe) => Err(ImportError::BuilderError(
-                "Cannot use extract_only() with text input. Text needs to be parsed first."
-                    .to_string(),
-            )),
-
-            // Use Case 4: Image → Cooklang (OCR then convert)
-            (InputSource::Image(image_path), OutputMode::Cooklang) => {
-                // Perform OCR on the image
-                let text = ocr_image_file(Path::new(&image_path))
-                    .await
-                    .map_err(|e| {
-                        ImportError::BuilderError(format!("Failed to OCR image: {}", e))
-                    })?;
-
-                // Validate OCR result
-                if text.trim().is_empty() {
-                    return Err(ImportError::BuilderError(
-                        "No text detected in image".to_string(),
-                    ));
-                }
-
-                // Create Recipe struct from OCR'd text
-                let recipe = Recipe {
-                    ingredients: vec![],
-                    instructions: text,
-                    ..Default::default()
-                };
-
-                // Convert to Cooklang
-                let cooklang = if self.api_key.is_some() || self.model.is_some() {
-                    convert_recipe_with_config(&recipe, provider_name, self.api_key, self.model)
-                        .await?
-                } else {
-                    convert_recipe_with_provider(&recipe, provider_name).await?
-                };
-                Ok(ImportResult::Cooklang(cooklang))
-            }
-
-            // Invalid: Image → Recipe (OCR needs conversion)
-            (InputSource::Image { .. }, OutputMode::Recipe) => Err(ImportError::BuilderError(
-                "Cannot use extract_only() with image input. Images need to be OCR'd and parsed first."
-                    .to_string(),
-            )),
         }
     }
 }

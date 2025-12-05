@@ -7,6 +7,7 @@ use std::path::Path;
 use tokio::fs;
 
 /// Represents the source of an image for OCR processing
+#[derive(Debug, Clone)]
 pub enum ImageSource {
     /// Image from a file path
     Path(String),
@@ -135,7 +136,7 @@ async fn call_google_vision(base64_image: &str) -> Result<String, Box<dyn Error 
 /// - The image file cannot be read
 /// - The Google Vision API request fails
 /// - The API key is not set
-pub async fn ocr_image_file(image_path: &Path) -> Result<String, Box<dyn Error>> {
+pub async fn ocr_image_file(image_path: &Path) -> Result<String, Box<dyn Error + Send + Sync>> {
     // Read the image file
     let image_data = fs::read(image_path).await?;
 
@@ -155,7 +156,7 @@ pub async fn ocr_image_file(image_path: &Path) -> Result<String, Box<dyn Error>>
 /// Returns an error if:
 /// - The Google Vision API request fails
 /// - The GOOGLE_API_KEY environment variable is not set
-pub async fn ocr_image_data(image_data: &[u8]) -> Result<String, Box<dyn Error>> {
+pub async fn ocr_image_data(image_data: &[u8]) -> Result<String, Box<dyn Error + Send + Sync>> {
     // Base64 encode the image
     let base64_image = STANDARD.encode(image_data);
 
