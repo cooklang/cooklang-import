@@ -28,6 +28,9 @@ jobs:
       - name: Run cargo check
         run: cargo check
 
+      - name: Run cargo check (with uniffi)
+        run: cargo check --features uniffi
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -52,6 +55,9 @@ jobs:
 
       - name: Run cargo test
         run: cargo test
+
+      - name: Run cargo test (with uniffi)
+        run: cargo test --features uniffi
 
   lints:
     name: Lints

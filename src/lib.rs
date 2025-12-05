@@ -6,6 +6,13 @@ pub mod model;
 pub mod ocr;
 pub mod providers;
 
+#[cfg(feature = "uniffi")]
+pub mod uniffi_bindings;
+
+// Re-export UniFFI types when feature is enabled
+#[cfg(feature = "uniffi")]
+pub use uniffi_bindings::*;
+
 // Public API exports
 // Builder API (primary interface)
 pub use builder::{ImportResult, LlmProvider, RecipeImporter};

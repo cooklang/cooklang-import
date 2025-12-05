@@ -11,10 +11,15 @@ homepage = "https://github.com/cooklang/cooklang-import"
 [lib]
 name = "cooklang_import"
 path = "src/lib.rs"
+crate-type = ["lib", "cdylib", "staticlib"]
 
 [[bin]]
 name = "cooklang-import"
 path = "src/main.rs"
+
+[features]
+default = []
+uniffi = ["dep:uniffi"]
 
 [dependencies]
 async-trait = "0.1.83"
@@ -30,7 +35,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
+uniffi = { version = "0.28", optional = true }
 
 [dev-dependencies]
 mockito = "1.5.0"
 tokio = { version = "1.0", features = ["full", "rt", "macros", "test-util"] }
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
