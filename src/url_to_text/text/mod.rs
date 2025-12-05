@@ -1,1 +1,3 @@
-// Plain text extraction: extractor.rs
+mod extractor;
+
+pub use extractor::TextExtractor;
