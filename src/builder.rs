@@ -272,7 +272,8 @@ impl RecipeImporterBuilder {
 
                 // Create Recipe struct
                 let recipe = Recipe {
-                    content: text,
+                    ingredients: vec![],
+                    instructions: text,
                     ..Default::default()
                 };
 
@@ -309,7 +310,8 @@ impl RecipeImporterBuilder {
 
                 // Create Recipe struct from OCR'd text
                 let recipe = Recipe {
-                    content: text,
+                    ingredients: vec![],
+                    instructions: text,
                     ..Default::default()
                 };
 

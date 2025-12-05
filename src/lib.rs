@@ -219,9 +219,18 @@ pub async fn convert_recipe_with_config(
         }
     };
 
+    // Combine ingredients and instructions for conversion
+    let content = if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
+        format!("{}\n\n{}", recipe.ingredients.join("\n"), recipe.instructions)
+    } else if !recipe.ingredients.is_empty() {
+        recipe.ingredients.join("\n")
+    } else {
+        recipe.instructions.clone()
+    };
+
     // Convert using the provider
     let mut cooklang_recipe = converter
-        .convert(&recipe.content)
+        .convert(&content)
         .await
         .map_err(|e| ImportError::ConversionError(e.to_string()))?;
 
@@ -319,9 +328,18 @@ pub async fn convert_recipe_with_provider(
         }
     };
 
+    // Combine ingredients and instructions for conversion
+    let content = if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
+        format!("{}\n\n{}", recipe.ingredients.join("\n"), recipe.instructions)
+    } else if !recipe.ingredients.is_empty() {
+        recipe.ingredients.join("\n")
+    } else {
+        recipe.instructions.clone()
+    };
+
     // Convert using the provider
     let mut cooklang_recipe = converter
-        .convert(&recipe.content)
+        .convert(&content)
         .await
         .map_err(|e| ImportError::ConversionError(e.to_string()))?;
 
@@ -375,7 +393,7 @@ pub async fn import_from_url(url: &str) -> Result<String, ImportError> {
 /// * `url` - The URL of the recipe to fetch
 ///
 /// # Returns
-/// A `Recipe` struct containing the recipe content
+/// A `Recipe` struct containing the recipe ingredients and instructions
 ///
 /// # Errors
 /// Returns `ImportError` if the URL cannot be fetched or parsed
@@ -387,7 +405,8 @@ pub async fn import_from_url(url: &str) -> Result<String, ImportError> {
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let recipe = extract_recipe_from_url("https://example.com/recipe").await?;
-///     println!("Content: {}", recipe.content);
+///     println!("Ingredients: {:?}", recipe.ingredients);
+///     println!("Instructions: {}", recipe.instructions);
 ///     Ok(())
 /// }
 /// ```

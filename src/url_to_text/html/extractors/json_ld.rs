@@ -140,14 +140,13 @@ impl JsonLdExtractor {
             }
         }
 
-        // Combine ingredients and instructions into a single content field
+        // Extract ingredients as Vec<String>
         let ingredients = match json_ld_recipe.recipe_ingredient {
             Some(RecipeIngredients::Strings(ingredients)) => ingredients
                 .into_iter()
                 .filter(|ing| !ing.trim().is_empty())
                 .map(|ing| decode_html_symbols(&ing))
-                .collect::<Vec<String>>()
-                .join("\n"),
+                .collect::<Vec<String>>(),
             Some(RecipeIngredients::Objects(ingredients)) => ingredients
                 .into_iter()
                 .filter(|ing| !ing.name.trim().is_empty())
@@ -160,9 +159,8 @@ impl JsonLdExtractor {
                         format!("{amount} {name}")
                     }
                 })
-                .collect::<Vec<String>>()
-                .join("\n"),
-            None => String::new(),
+                .collect::<Vec<String>>(),
+            None => Vec::new(),
         };
 
         let instructions = match json_ld_recipe.recipe_instructions {
@@ -256,15 +254,6 @@ impl JsonLdExtractor {
             None => String::new(),
         };
 
-        // Combine into single content field
-        let content = if !ingredients.is_empty() && !instructions.is_empty() {
-            format!("{}\n\n{}", ingredients, instructions)
-        } else if !ingredients.is_empty() {
-            ingredients
-        } else {
-            instructions
-        };
-
         Recipe {
             name: decode_html_symbols(&json_ld_recipe.name),
             description: json_ld_recipe.description.and_then(|desc| match desc {
@@ -294,7 +283,8 @@ impl JsonLdExtractor {
                 ImageType::None => vec![],
                 ImageType::Object(i) => vec![i.url],
             }),
-            content,
+            ingredients,
+            instructions,
             metadata,
         }
     }

@@ -200,7 +200,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Build the output with frontmatter if metadata exists
             let mut output = generate_frontmatter(&recipe.metadata);
 
-            output.push_str(&format!("# {}\n\n{}", recipe.name, recipe.content));
+            output.push_str(&format!("# {}\n\n", recipe.name));
+
+            // Add ingredients
+            if !recipe.ingredients.is_empty() {
+                output.push_str(&recipe.ingredients.join("\n"));
+                output.push_str("\n\n");
+            }
+
+            // Add instructions
+            if !recipe.instructions.is_empty() {
+                output.push_str(&recipe.instructions);
+            }
 
             println!("{}", output);
         }

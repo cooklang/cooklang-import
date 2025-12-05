@@ -355,7 +355,7 @@ impl Extractor for HtmlClassExtractor {
         }
 
         // Extract ingredients
-        let ingredients_list = matchers.extract_list_items(&context.document, "ingredients");
+        let ingredients = matchers.extract_list_items(&context.document, "ingredients");
 
         // Extract instructions
         let instructions_list = matchers.extract_list_items(&context.document, "instructions");
@@ -389,42 +389,28 @@ impl Extractor for HtmlClassExtractor {
             return Err("Could not extract recipe title from HTML".into());
         }
 
-        if ingredients_list.is_empty() && instructions_list.is_empty() {
+        if ingredients.is_empty() && instructions_list.is_empty() {
             return Err("Could not extract recipe content from HTML".into());
         }
 
-        // Convert lists to plain text (no markdown formatting)
-        let ingredients_str = if !ingredients_list.is_empty() {
-            ingredients_list.join("\n")
-        } else {
-            String::new()
-        };
-
-        let instructions_str = if !instructions_list.is_empty() {
+        // Convert instructions list to single string
+        let instructions = if !instructions_list.is_empty() {
             instructions_list.join(" ")
         } else {
             String::new()
         };
 
-        // Combine ingredients and instructions into single content field
-        let content = if !ingredients_str.is_empty() && !instructions_str.is_empty() {
-            format!("{}\n\n{}", ingredients_str, instructions_str)
-        } else if !ingredients_str.is_empty() {
-            ingredients_str
-        } else {
-            instructions_str
-        };
-
         debug!("Successfully extracted recipe using HTML class matchers");
         debug!("Recipe name: {}", name);
-        debug!("Ingredients count: {}", ingredients_list.len());
+        debug!("Ingredients count: {}", ingredients.len());
         debug!("Instructions count: {}", instructions_list.len());
 
         Ok(Recipe {
             name,
             description,
             image: Vec::new(),
-            content,
+            ingredients,
+            instructions,
             metadata,
         })
     }

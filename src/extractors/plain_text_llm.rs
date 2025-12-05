@@ -60,8 +60,7 @@ impl Extractor for PlainTextLlmExtractor {
             .unwrap_or(&Vec::new())
             .iter()
             .filter_map(|i| i.as_str().map(String::from))
-            .collect::<Vec<String>>()
-            .join("\n");
+            .collect::<Vec<String>>();
 
         let instructions = json["instructions"]
             .as_array()
@@ -71,20 +70,12 @@ impl Extractor for PlainTextLlmExtractor {
             .collect::<Vec<String>>()
             .join(" ");
 
-        // Combine into single content field
-        let content = if !ingredients.is_empty() && !instructions.is_empty() {
-            format!("{}\n\n{}", ingredients, instructions)
-        } else if !ingredients.is_empty() {
-            ingredients
-        } else {
-            instructions
-        };
-
         Ok(Recipe {
             name: title,
             description: None,
             image: vec![],
-            content,
+            ingredients,
+            instructions,
             metadata: std::collections::HashMap::new(),
         })
     }
@@ -367,7 +358,7 @@ mod tests {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let result = extractor.parse(&context).unwrap();
             assert_eq!(result.name, "Test Recipe");
-            assert!(!result.content.is_empty());
+            assert!(!result.ingredients.is_empty() || !result.instructions.is_empty());
         });
     }
 

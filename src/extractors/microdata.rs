@@ -157,27 +157,18 @@ impl Extractor for MicroDataExtractor {
 
         // Instructions
         // Try 'recipeInstructions' and 'instructions'
-        let mut instructions = self.get_itemprop_list(container, "recipeInstructions");
-        if instructions.is_empty() {
-            instructions = self.get_itemprop_list(container, "instructions");
+        let mut instructions_list = self.get_itemprop_list(container, "recipeInstructions");
+        if instructions_list.is_empty() {
+            instructions_list = self.get_itemprop_list(container, "instructions");
         }
 
         // Validation
-        if ingredients.is_empty() && instructions.is_empty() {
+        if ingredients.is_empty() && instructions_list.is_empty() {
             return Err("Could not extract recipe content".into());
         }
 
-        // Combine content
-        let ingredients_str = ingredients.join("\n");
-        let instructions_str = instructions.join("\n");
-
-        let content = if !ingredients_str.is_empty() && !instructions_str.is_empty() {
-            format!("{}\n\n{}", ingredients_str, instructions_str)
-        } else if !ingredients_str.is_empty() {
-            ingredients_str
-        } else {
-            instructions_str
-        };
+        // Combine instructions into a single string
+        let instructions = instructions_list.join("\n");
 
         // Add source URL
         metadata.insert("source_url".to_string(), context.url.clone());
@@ -186,7 +177,8 @@ impl Extractor for MicroDataExtractor {
             name,
             description,
             image: Vec::new(),
-            content,
+            ingredients,
+            instructions,
             metadata,
         })
     }
