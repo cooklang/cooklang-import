@@ -7,11 +7,6 @@ pub mod model;
 pub mod pipelines;
 pub mod url_to_text;
 
-// Keep old modules for backward compatibility (will be removed in next task)
-pub mod extractors;
-pub mod ocr;
-pub mod providers;
-
 #[cfg(feature = "uniffi")]
 pub mod uniffi_bindings;
 
