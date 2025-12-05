@@ -1,6 +1,8 @@
 mod prompt;
+mod open_ai;
 
 pub use prompt::COOKLANG_CONVERTER_PROMPT;
+pub use open_ai::OpenAiConverter;
 
 use async_trait::async_trait;
 use std::error::Error;
@@ -25,10 +27,11 @@ pub trait Converter: Send + Sync {
 /// * `Some(Box<dyn Converter>)` if the converter exists
 /// * `None` if the converter name is not recognized
 pub fn create_converter(
-    _name: &str,
-    _config: &crate::config::ProviderConfig,
+    name: &str,
+    config: &crate::config::ProviderConfig,
 ) -> Option<Box<dyn Converter>> {
-    // TODO: Implement converter creation in subsequent tasks
-    // This is a placeholder for now
-    None
+    match name {
+        "open_ai" => OpenAiConverter::new(config).ok().map(|c| Box::new(c) as Box<dyn Converter>),
+        _ => None,
+    }
 }
