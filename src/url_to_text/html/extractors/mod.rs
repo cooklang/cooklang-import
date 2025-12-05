@@ -2,8 +2,10 @@ use crate::model::Recipe;
 use scraper::Html;
 
 mod json_ld;
+mod microdata;
 
 pub use json_ld::JsonLdExtractor;
+pub use microdata::MicroDataExtractor;
 
 pub struct ParsingContext {
     pub url: String,
