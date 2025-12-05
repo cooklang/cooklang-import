@@ -1,8 +1,10 @@
 mod prompt;
 mod open_ai;
+mod anthropic;
 
 pub use prompt::COOKLANG_CONVERTER_PROMPT;
 pub use open_ai::OpenAiConverter;
+pub use anthropic::AnthropicConverter;
 
 use async_trait::async_trait;
 use std::error::Error;
@@ -32,6 +34,7 @@ pub fn create_converter(
 ) -> Option<Box<dyn Converter>> {
     match name {
         "open_ai" => OpenAiConverter::new(config).ok().map(|c| Box::new(c) as Box<dyn Converter>),
+        "anthropic" => AnthropicConverter::new(config).ok().map(|c| Box::new(c) as Box<dyn Converter>),
         _ => None,
     }
 }
