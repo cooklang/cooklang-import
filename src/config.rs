@@ -13,6 +13,15 @@ pub struct AiConfig {
     /// Fallback configuration for automatic provider switching
     #[serde(default)]
     pub fallback: FallbackConfig,
+    /// Extractors configuration
+    #[serde(default)]
+    pub extractors: ExtractorsConfig,
+    /// Converters configuration
+    #[serde(default)]
+    pub converters: ConvertersConfig,
+    /// Request timeout in seconds
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
 }
 
 /// Configuration for a specific AI provider
@@ -72,6 +81,31 @@ impl Default for FallbackConfig {
     }
 }
 
+/// Configuration for recipe extractors
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ExtractorsConfig {
+    /// List of enabled extractors
+    #[serde(default = "default_extractors")]
+    pub enabled: Vec<String>,
+    /// Order in which extractors should be tried
+    #[serde(default = "default_extractors")]
+    pub order: Vec<String>,
+}
+
+/// Configuration for recipe converters
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ConvertersConfig {
+    /// List of enabled converters
+    #[serde(default)]
+    pub enabled: Vec<String>,
+    /// Order in which converters should be tried
+    #[serde(default)]
+    pub order: Vec<String>,
+    /// Default converter to use
+    #[serde(default)]
+    pub default: String,
+}
+
 // Default value functions
 fn default_provider() -> String {
     "openai".to_string()
@@ -91,6 +125,18 @@ fn default_retry_attempts() -> u32 {
 
 fn default_retry_delay_ms() -> u64 {
     1000
+}
+
+fn default_extractors() -> Vec<String> {
+    vec![
+        "json_ld".to_string(),
+        "microdata".to_string(),
+        "html_class".to_string(),
+    ]
+}
+
+fn default_timeout() -> u64 {
+    30
 }
 
 impl AiConfig {
@@ -219,6 +265,9 @@ mod tests {
             default_provider: "openai".to_string(),
             providers,
             fallback: FallbackConfig::default(),
+            extractors: ExtractorsConfig::default(),
+            converters: ConvertersConfig::default(),
+            timeout: default_timeout(),
         };
 
         assert_eq!(config.default_provider, "openai");
