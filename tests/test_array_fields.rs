@@ -104,12 +104,13 @@ async fn test_recipe_with_array_fields_and_empty_strings() {
     assert_eq!(result.metadata.get("author").unwrap(), "amateurprochef");
 
     // Check that ingredients were parsed
-    assert!(result.content.contains("300g paneer"));
-    assert!(result.content.contains("4 roma tomatoes"));
+    let ingredients_text = result.ingredients.join("\n");
+    assert!(ingredients_text.contains("300g paneer"));
+    assert!(ingredients_text.contains("4 roma tomatoes"));
 
     // Check that instructions were parsed
-    assert!(result.content.contains("Step 1: Chop vegetables"));
-    assert!(result.content.contains("Step 2: Cook the dish"));
+    assert!(result.instructions.contains("Step 1: Chop vegetables"));
+    assert!(result.instructions.contains("Step 2: Cook the dish"));
 }
 
 #[tokio::test]

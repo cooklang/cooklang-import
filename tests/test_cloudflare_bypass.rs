@@ -19,11 +19,12 @@ async fn test_acouplecooks_cloudflare_bypass() {
 
             // Verify we got the correct recipe
             assert_eq!(recipe.name, "Apple Cranberry Crisp");
-            assert!(!recipe.content.is_empty());
+            assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
 
             // Verify some specific content to ensure we didn't just get a title from metadata
-            assert!(recipe.content.contains("cranberries"));
-            assert!(recipe.content.contains("sugar"));
+            let all_content = format!("{}\n{}", recipe.ingredients.join("\n"), recipe.instructions);
+            assert!(all_content.contains("cranberries"));
+            assert!(all_content.contains("sugar"));
 
             // Check metadata
             assert_eq!(recipe.metadata.get("author").unwrap(), "Sonja Overhiser");

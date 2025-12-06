@@ -16,8 +16,7 @@ async fn test_shahi_paneer_recipe() {
 
             // Verify the recipe was parsed
             assert!(recipe.name.contains("Shahi Paneer"));
-            assert!(!recipe.content.is_empty());
-            assert!(!recipe.content.is_empty());
+            assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
 
             // Check metadata
             assert_eq!(recipe.metadata.get("author").unwrap(), "amateurprochef");

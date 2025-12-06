@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use cooklang_import::extractors::{Extractor, HtmlClassExtractor, ParsingContext};
+    use cooklang_import::url_to_text::html::extractors::{Extractor, HtmlClassExtractor, ParsingContext};
     use scraper::Html;
 
     #[test]
@@ -145,23 +145,24 @@ mod tests {
         );
 
         // Verify ingredients extraction (checking for key ingredients)
-        assert!(recipe.content.contains("chickpeas"));
-        assert!(recipe.content.contains("cucumber"));
-        assert!(recipe.content.contains("bell pepper"));
-        assert!(recipe.content.contains("cherry tomatoes"));
-        assert!(recipe.content.contains("red onion"));
-        assert!(recipe.content.contains("feta cheese"));
-        assert!(recipe.content.contains("olive oil"));
-        assert!(recipe.content.contains("lemon juice"));
-        assert!(recipe.content.contains("fresh dill"));
+        let ingredients_text = recipe.ingredients.join("\n");
+        assert!(ingredients_text.contains("chickpeas"));
+        assert!(ingredients_text.contains("cucumber"));
+        assert!(ingredients_text.contains("bell pepper"));
+        assert!(ingredients_text.contains("cherry tomatoes"));
+        assert!(ingredients_text.contains("red onion"));
+        assert!(ingredients_text.contains("feta cheese"));
+        assert!(ingredients_text.contains("olive oil"));
+        assert!(ingredients_text.contains("lemon juice"));
+        assert!(ingredients_text.contains("fresh dill"));
 
         // Verify instructions extraction
-        assert!(recipe.content.contains("In a large mixing bowl"));
+        assert!(recipe.instructions.contains("In a large mixing bowl"));
         assert!(recipe
-            .content
+            .instructions
             .contains("whisk together all of the lemon dressing"));
         assert!(recipe
-            .content
+            .instructions
             .contains("Drizzle the dressing over the salad"));
 
         // Verify metadata extraction
@@ -180,15 +181,14 @@ mod tests {
         assert!(recipe.metadata.get("notes").unwrap().contains("Make Ahead"));
 
         // Verify ingredients are properly formatted (multiple ingredients on separate lines)
-        let ingredient_lines: Vec<&str> = recipe.content.lines().collect();
         assert!(
-            ingredient_lines.len() > 10,
+            recipe.ingredients.len() > 10,
             "Should have multiple ingredient lines"
         );
 
         // Verify we have content
         assert!(
-            !recipe.content.is_empty(),
+            !recipe.ingredients.is_empty(),
             "Recipe content should not be empty"
         );
     }
@@ -229,9 +229,10 @@ mod tests {
         let recipe = result.unwrap();
 
         // Should extract ingredients from both groups
-        assert!(recipe.content.contains("lettuce"));
-        assert!(recipe.content.contains("tomatoes"));
-        assert!(recipe.content.contains("olive oil"));
-        assert!(recipe.content.contains("vinegar"));
+        let ingredients_text = recipe.ingredients.join("\n");
+        assert!(ingredients_text.contains("lettuce"));
+        assert!(ingredients_text.contains("tomatoes"));
+        assert!(ingredients_text.contains("olive oil"));
+        assert!(ingredients_text.contains("vinegar"));
     }
 }

@@ -821,8 +821,12 @@ mod tests {
         );
         assert_eq!(result.image, vec!["https://example.com/cookie.jpg"]);
         assert_eq!(
-            result.content,
-            "flour\nsugar\nchocolate chips\n\nMix ingredients. Bake at 350F for 10 minutes."
+            result.ingredients,
+            vec!["flour", "sugar", "chocolate chips"]
+        );
+        assert_eq!(
+            result.instructions,
+            "Mix ingredients. Bake at 350F for 10 minutes."
         );
 
         // Test metadata mappings
@@ -946,8 +950,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            result.content,
-            "spaghetti\neggs\nbacon\ncheese\n\nCook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
+            result.ingredients,
+            vec!["spaghetti", "eggs", "bacon", "cheese"]
+        );
+        assert_eq!(
+            result.instructions,
+            "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
         );
 
         // Test metadata extraction for complex types

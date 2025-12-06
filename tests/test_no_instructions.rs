@@ -71,10 +71,11 @@ async fn test_recipe_without_instructions() {
     // Verify the recipe was parsed successfully (ingredients only, no instructions)
     assert_eq!(result.name, "Dishoom's House Black Daal");
 
-    // Verify ingredients were parsed (content contains ingredients only)
-    assert!(result.content.contains("300g whole black urad daal"));
-    assert!(result.content.contains("12g garlic paste"));
-    assert!(result.content.contains("90ml double cream"));
+    // Verify ingredients were parsed
+    let ingredients_text = result.ingredients.join("\n");
+    assert!(ingredients_text.contains("300g whole black urad daal"));
+    assert!(ingredients_text.contains("12g garlic paste"));
+    assert!(ingredients_text.contains("90ml double cream"));
 
     // Verify metadata
     assert_eq!(result.metadata.get("author").unwrap(), "HotCooking");
@@ -118,8 +119,8 @@ async fn test_recipe_with_neither_ingredients_nor_instructions() {
 
     // Verify the recipe was parsed successfully
     assert_eq!(result.name, "Minimal Recipe");
-    assert_eq!(result.content, "");
-    assert_eq!(result.content, "");
+    assert_eq!(result.ingredients, Vec::<String>::new());
+    assert_eq!(result.instructions, "");
     assert_eq!(result.metadata.get("author").unwrap(), "Test Chef");
 }
 
@@ -194,8 +195,8 @@ async fn test_recipe_with_empty_ingredients_array() {
 
     // Verify the recipe was parsed successfully with empty ingredients
     assert_eq!(result.name, "Syltad ingefära");
-    assert_eq!(result.content, ""); // Should be empty string
-    assert_eq!(result.content, ""); // Should be empty string
+    assert_eq!(result.ingredients, Vec::<String>::new()); // Should be empty
+    assert_eq!(result.instructions, ""); // Should be empty string
 
     // Verify metadata
     assert_eq!(result.metadata.get("author").unwrap(), "Hemköp");

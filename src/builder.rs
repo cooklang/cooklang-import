@@ -335,14 +335,38 @@ impl RecipeImporterBuilder {
             OutputMode::Cooklang => Ok(ImportResult::Cooklang(result)),
             OutputMode::Recipe => {
                 // Parse the result back into a Recipe struct
-                let (metadata, body) = Recipe::parse_text_format(&result);
+                let (mut metadata, body) = Recipe::parse_text_format(&result);
+
+                // Split body into ingredients and instructions
+                // The format is: ingredients (one per line) + blank line + instructions
+                let parts: Vec<&str> = body.splitn(2, "\n\n").collect();
+                let (ingredients, instructions) = if parts.len() == 2 {
+                    let ingredients = parts[0]
+                        .lines()
+                        .filter(|l| !l.trim().is_empty())
+                        .map(|l| l.to_string())
+                        .collect();
+                    (ingredients, parts[1].to_string())
+                } else {
+                    // If no blank line separator, treat everything as instructions
+                    (vec![], body)
+                };
+
+                // Extract image array from metadata if present
+                let image = if let Some(img_str) = metadata.remove("__image__") {
+                    // Images are stored as comma-separated string
+                    img_str.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                } else {
+                    vec![]
+                };
+
                 let recipe = Recipe {
-                    name: metadata.get("title").cloned().unwrap_or_default(),
-                    description: metadata.get("description").cloned(),
+                    name: metadata.remove("title").unwrap_or_default(),
+                    description: metadata.remove("description"),
+                    image,
                     metadata,
-                    ingredients: vec![], // Pipelines return already formatted text
-                    instructions: body,
-                    ..Default::default()
+                    ingredients,
+                    instructions,
                 };
                 Ok(ImportResult::Recipe(recipe))
             }

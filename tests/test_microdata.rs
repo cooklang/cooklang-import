@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use cooklang_import::extractors::MicroDataExtractor;
-    use cooklang_import::extractors::{Extractor, ParsingContext};
+    use cooklang_import::url_to_text::html::extractors::MicroDataExtractor;
+    use cooklang_import::url_to_text::html::extractors::{Extractor, ParsingContext};
     use scraper::Html;
 
     #[test]
@@ -87,9 +87,9 @@ mod tests {
             )
         );
 
-        assert!(recipe.content.contains("5 Tablespoons Butter"));
-        assert!(recipe.content.contains("1 Cup White Sugar"));
-        assert!(recipe.content.contains("Preheat oven to 350 degrees"));
+        assert!(recipe.ingredients.iter().any(|i| i.contains("5 Tablespoons Butter")));
+        assert!(recipe.ingredients.iter().any(|i| i.contains("1 Cup White Sugar")));
+        assert!(recipe.instructions.contains("Preheat oven to 350 degrees"));
 
         assert_eq!(
             recipe.metadata.get("prep_time"),

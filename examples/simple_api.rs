@@ -19,8 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let recipe =
         extract_recipe_from_url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await?;
     println!("Recipe name: {}", recipe.name);
-    println!("Has {} ingredients", recipe.content.lines().count());
-    println!("Has {} instruction steps", recipe.content.lines().count());
+    println!("Has {} ingredients", recipe.ingredients.len());
+    println!("Has instructions: {}", !recipe.instructions.is_empty());
 
     // Convert markdown: Markdown → Cooklang
     println!("\n=== Convert Markdown ===");

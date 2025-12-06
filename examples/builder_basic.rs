@@ -34,7 +34,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match result {
         ImportResult::Recipe(recipe) => {
             println!("Recipe name: {}", recipe.name);
-            println!("Content:\n{}", recipe.content);
+            println!("Ingredients:");
+            for ingredient in &recipe.ingredients {
+                println!("  - {}", ingredient);
+            }
+            println!("\nInstructions:\n{}", recipe.instructions);
         }
         ImportResult::Cooklang(_) => unreachable!(),
     }

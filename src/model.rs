@@ -24,6 +24,10 @@ impl Recipe {
         if let Some(desc) = &self.description {
             metadata.insert("description".to_string(), desc.clone());
         }
+        // Preserve image array as comma-separated string
+        if !self.image.is_empty() {
+            metadata.insert("__image__".to_string(), self.image.join(", "));
+        }
 
         // YAML frontmatter
         if !metadata.is_empty() {

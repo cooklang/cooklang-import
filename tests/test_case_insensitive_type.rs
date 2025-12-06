@@ -79,12 +79,13 @@ async fn test_lowercase_recipe_type() {
     );
 
     // Verify ingredients
-    assert!(result.content.contains("2 cans black beans"));
-    assert!(result.content.contains("1 onion, diced"));
+    let ingredients_text = result.ingredients.join("\n");
+    assert!(ingredients_text.contains("2 cans black beans"));
+    assert!(ingredients_text.contains("1 onion, diced"));
 
     // Verify instructions
-    assert!(result.content.contains("Sauté onion and garlic"));
-    assert!(result.content.contains("simmer for 20 minutes"));
+    assert!(result.instructions.contains("Sauté onion and garlic"));
+    assert!(result.instructions.contains("simmer for 20 minutes"));
 
     // Verify metadata
     assert_eq!(result.metadata.get("author").unwrap(), "Chef Maria");
@@ -128,8 +129,9 @@ async fn test_mixed_case_recipe_type() {
 
     // Verify the recipe was parsed successfully despite uppercase @type
     assert_eq!(result.name, "Quick Pasta");
-    assert!(result.content.contains("pasta"));
-    assert!(result.content.contains("Cook pasta"));
+    let all_content = format!("{}\n{}", result.ingredients.join("\n"), result.instructions);
+    assert!(all_content.contains("pasta"));
+    assert!(all_content.contains("Cook pasta"));
 }
 
 #[tokio::test]
@@ -168,8 +170,9 @@ async fn test_graph_with_lowercase_type() {
 
     // Verify the recipe was parsed from @graph despite lowercase type
     assert_eq!(result.name, "Grilled Cheese");
-    assert!(result.content.contains("cheese"));
-    assert!(result.content.contains("grill until golden"));
+    let all_content = format!("{}\n{}", result.ingredients.join("\n"), result.instructions);
+    assert!(all_content.contains("cheese"));
+    assert!(all_content.contains("grill until golden"));
 }
 
 #[tokio::test]
@@ -205,5 +208,6 @@ async fn test_array_with_mixed_case_types() {
 
     // Verify the recipe was parsed from array despite mixed case type
     assert_eq!(result.name, "Mixed Case Recipe");
-    assert_eq!(result.content, "ingredient\n\nInstructions here");
+    assert_eq!(result.ingredients, vec!["ingredient"]);
+    assert_eq!(result.instructions, "Instructions here");
 }
