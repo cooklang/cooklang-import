@@ -1,6 +1,11 @@
 use std::time::Duration;
 
-use crate::{images_to_text::ImageSource, ImportError, Recipe};
+use crate::{
+    config::{load_config, ProviderConfig},
+    converters::{self, Converter},
+    images_to_text::ImageSource,
+    ImportError, Recipe,
+};
 
 /// Represents the input source for a recipe
 #[derive(Debug, Clone)]
@@ -296,7 +301,7 @@ impl RecipeImporterBuilder {
     /// ```
     pub async fn build(self) -> Result<ImportResult, ImportError> {
         // Validate that source is set
-        let source = self.source.ok_or_else(|| {
+        let source = self.source.clone().ok_or_else(|| {
             ImportError::BuilderError(
                 "No input source specified. Use .url(), .text(), or .image_path()".to_string(),
             )
@@ -323,7 +328,11 @@ impl RecipeImporterBuilder {
 
         // Return based on output mode
         match self.mode {
-            OutputMode::Cooklang => Ok(ImportResult::Cooklang(result)),
+            OutputMode::Cooklang => {
+                // Convert to Cooklang format using a converter
+                let cooklang_result = self.convert_to_cooklang(&result).await?;
+                Ok(ImportResult::Cooklang(cooklang_result))
+            }
             OutputMode::Recipe => {
                 // Parse the result back into a Recipe struct
                 let (mut metadata, body) = Recipe::parse_text_format(&result);
@@ -362,6 +371,107 @@ impl RecipeImporterBuilder {
                 Ok(ImportResult::Recipe(recipe))
             }
         }
+    }
+
+    /// Convert intermediate text format to Cooklang using configured converter
+    async fn convert_to_cooklang(&self, text: &str) -> Result<String, ImportError> {
+        // Parse the text to separate metadata and body
+        let (metadata, body) = Recipe::parse_text_format(text);
+
+        // Get converter configuration
+        let converter = self.get_converter().await?;
+
+        // Convert the body (ingredients + instructions) to Cooklang
+        let cooklang_body = converter
+            .convert(&body)
+            .await
+            .map_err(|e| ImportError::ConversionError(e.to_string()))?;
+
+        // Reassemble with YAML frontmatter
+        let mut output = String::new();
+        if !metadata.is_empty() {
+            output.push_str("---\n");
+            for (key, value) in &metadata {
+                // Skip internal metadata fields
+                if !key.starts_with("__") {
+                    output.push_str(&format!("{}: {}\n", key, value));
+                }
+            }
+            output.push_str("---\n\n");
+        }
+        output.push_str(&cooklang_body);
+
+        Ok(output)
+    }
+
+    /// Get the appropriate converter based on configuration
+    async fn get_converter(&self) -> Result<Box<dyn Converter>, ImportError> {
+        // Determine which provider to use
+        let provider_name: String = match &self.provider {
+            Some(LlmProvider::OpenAI) => "open_ai".to_string(),
+            Some(LlmProvider::Anthropic) => "anthropic".to_string(),
+            Some(LlmProvider::Google) => "google".to_string(),
+            Some(LlmProvider::AzureOpenAI) => "azure_openai".to_string(),
+            Some(LlmProvider::Ollama) => "ollama".to_string(),
+            None => {
+                // Try to load from config, or default to open_ai
+                load_config()
+                    .map(|c| c.default_provider)
+                    .unwrap_or_else(|_| "open_ai".to_string())
+            }
+        };
+
+        // Build provider config
+        let provider_config = self.build_provider_config(&provider_name);
+
+        // Create the converter
+        converters::create_converter(&provider_name, &provider_config).ok_or_else(|| {
+            ImportError::ConversionError(format!(
+                "Failed to create converter '{}'. Check API key and configuration.",
+                provider_name
+            ))
+        })
+    }
+
+    /// Build provider configuration from builder settings and environment
+    fn build_provider_config(&self, provider_name: &str) -> ProviderConfig {
+        // Try to load config from file first
+        let base_config = load_config()
+            .ok()
+            .and_then(|c| c.providers.get(provider_name).cloned());
+
+        // Build config with overrides from builder
+        ProviderConfig {
+            enabled: true,
+            model: self.model.clone().unwrap_or_else(|| {
+                base_config
+                    .as_ref()
+                    .map(|c| c.model.clone())
+                    .unwrap_or_else(|| default_model_for_provider(provider_name).to_string())
+            }),
+            temperature: base_config.as_ref().map(|c| c.temperature).unwrap_or(0.7),
+            max_tokens: base_config.as_ref().map(|c| c.max_tokens).unwrap_or(4000),
+            api_key: self.api_key.clone().or_else(|| {
+                base_config.as_ref().and_then(|c| c.api_key.clone())
+            }),
+            base_url: base_config.as_ref().and_then(|c| c.base_url.clone()),
+            endpoint: base_config.as_ref().and_then(|c| c.endpoint.clone()),
+            deployment_name: base_config.as_ref().and_then(|c| c.deployment_name.clone()),
+            api_version: base_config.as_ref().and_then(|c| c.api_version.clone()),
+            project_id: base_config.as_ref().and_then(|c| c.project_id.clone()),
+        }
+    }
+}
+
+/// Get default model for a given provider
+fn default_model_for_provider(provider: &str) -> &'static str {
+    match provider {
+        "open_ai" => "gpt-4o-mini",
+        "anthropic" => "claude-3-5-sonnet-20241022",
+        "google" => "gemini-1.5-flash",
+        "azure_openai" => "gpt-4",
+        "ollama" => "llama2",
+        _ => "gpt-4o-mini",
     }
 }
 
