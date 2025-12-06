@@ -197,10 +197,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", cooklang);
         }
         ImportResult::Recipe(recipe) => {
-            // Build the output with frontmatter if metadata exists
-            let mut output = generate_frontmatter(&recipe.metadata);
+            // Build metadata including title
+            let mut metadata = recipe.metadata.clone();
+            if !recipe.name.is_empty() {
+                metadata.insert("title".to_string(), recipe.name.clone());
+            }
 
-            output.push_str(&format!("# {}\n\n", recipe.name));
+            // Build the output with frontmatter
+            let mut output = generate_frontmatter(&metadata);
 
             // Add ingredients
             if !recipe.ingredients.is_empty() {

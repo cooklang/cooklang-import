@@ -109,6 +109,10 @@ Conversion Guidelines
 User will give you a classical recipe representation when ingredients listed first
 and then method text.
 
+IMPORTANT: Do NOT include a title or header in your output. The recipe title is
+stored separately in metadata. Your output should start directly with the recipe
+steps (or sections if needed).
+
 Final result shouldn't have original ingredient list, you need to
 incorporate each ingredient and quantities into method's text following
 Cooklang conventions.
