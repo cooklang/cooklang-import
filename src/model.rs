@@ -58,15 +58,15 @@ impl Recipe {
         let mut metadata = HashMap::new();
         let body;
 
-        if text.starts_with("---\n") {
-            if let Some(end) = text[4..].find("\n---\n") {
-                let frontmatter = &text[4..4 + end];
+        if let Some(stripped) = text.strip_prefix("---\n") {
+            if let Some(end) = stripped.find("\n---\n") {
+                let frontmatter = &stripped[..end];
                 for line in frontmatter.lines() {
                     if let Some((key, value)) = line.split_once(": ") {
                         metadata.insert(key.to_string(), value.to_string());
                     }
                 }
-                body = text[4 + end + 5..].to_string();
+                body = stripped[end + 5..].to_string();
             } else {
                 body = text.to_string();
             }

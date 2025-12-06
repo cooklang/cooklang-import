@@ -4,7 +4,6 @@ use std::time::Duration;
 
 pub struct RequestFetcher {
     client: Client,
-    timeout: Duration,
 }
 
 impl RequestFetcher {
@@ -16,7 +15,7 @@ impl RequestFetcher {
             .build()
             .expect("Failed to create HTTP client");
 
-        Self { client, timeout }
+        Self { client }
     }
 
     pub async fn fetch(&self, url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {

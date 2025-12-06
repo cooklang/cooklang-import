@@ -43,16 +43,7 @@ pub enum LlmProvider {
 }
 
 impl LlmProvider {
-    /// Convert to provider name string used by the factory
-    fn as_str(&self) -> &str {
-        match self {
-            LlmProvider::OpenAI => "openai",
-            LlmProvider::Anthropic => "anthropic",
-            LlmProvider::Google => "google",
-            LlmProvider::AzureOpenAI => "azure_openai",
-            LlmProvider::Ollama => "ollama",
-        }
-    }
+    // Note: Conversion to string is handled directly in the converter factory
 }
 
 /// Builder for configuring and executing recipe imports

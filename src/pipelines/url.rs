@@ -1,4 +1,3 @@
-use crate::model::Recipe;
 use crate::url_to_text::fetchers::{ChromeFetcher, RequestFetcher};
 use crate::url_to_text::html::extractors::{
     Extractor, HtmlClassExtractor, JsonLdExtractor, MicroDataExtractor, ParsingContext,

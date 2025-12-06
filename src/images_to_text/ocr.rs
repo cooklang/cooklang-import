@@ -3,8 +3,9 @@ use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::error::Error;
-use std::path::Path;
-use tokio::fs;
+// Note: Path and fs imports commented out as the functions using them are currently unused
+// use std::path::Path;
+// use tokio::fs;
 
 /// Represents the source of an image for OCR processing
 #[derive(Debug, Clone)]
@@ -123,6 +124,9 @@ async fn call_google_vision(base64_image: &str) -> Result<String, Box<dyn Error 
     Ok(text)
 }
 
+// Note: These functions are currently unused but may be needed for future direct OCR support
+// They have been commented out to avoid dead code warnings
+/*
 /// Performs OCR on an image file using Google Cloud Vision API
 ///
 /// # Arguments
@@ -163,6 +167,7 @@ pub async fn ocr_image_data(image_data: &[u8]) -> Result<String, Box<dyn Error +
     // Use the common implementation
     call_google_vision(&base64_image).await
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -181,7 +186,9 @@ mod tests {
         let original_key = std::env::var("GOOGLE_API_KEY").ok();
         std::env::remove_var("GOOGLE_API_KEY");
 
-        let result = ocr_image_data(b"fake image data").await;
+        // Test using call_google_vision directly
+        let fake_base64_image = STANDARD.encode(b"fake image data");
+        let result = call_google_vision(&fake_base64_image).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("GOOGLE_API_KEY"));
 
