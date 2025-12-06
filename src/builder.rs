@@ -309,21 +309,17 @@ impl RecipeImporterBuilder {
 
         // Route to the appropriate pipeline based on input source
         let result = match source {
-            InputSource::Url(url) => {
-                crate::pipelines::url::process(&url)
-                    .await
-                    .map_err(|e| ImportError::BuilderError(e.to_string()))?
-            }
+            InputSource::Url(url) => crate::pipelines::url::process(&url)
+                .await
+                .map_err(|e| ImportError::BuilderError(e.to_string()))?,
             InputSource::Text { content, extract } => {
                 crate::pipelines::text::process(&content, extract)
                     .await
                     .map_err(|e| ImportError::BuilderError(e.to_string()))?
             }
-            InputSource::Images(images) => {
-                crate::pipelines::image::process(&images)
-                    .await
-                    .map_err(|e| ImportError::BuilderError(e.to_string()))?
-            }
+            InputSource::Images(images) => crate::pipelines::image::process(&images)
+                .await
+                .map_err(|e| ImportError::BuilderError(e.to_string()))?,
         };
 
         // Return based on output mode
@@ -355,7 +351,11 @@ impl RecipeImporterBuilder {
                 // Extract image array from metadata if present
                 let image = if let Some(img_str) = metadata.remove("__image__") {
                     // Images are stored as comma-separated string
-                    img_str.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+                    img_str
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
                 } else {
                     vec![]
                 };
@@ -451,9 +451,10 @@ impl RecipeImporterBuilder {
             }),
             temperature: base_config.as_ref().map(|c| c.temperature).unwrap_or(0.7),
             max_tokens: base_config.as_ref().map(|c| c.max_tokens).unwrap_or(4000),
-            api_key: self.api_key.clone().or_else(|| {
-                base_config.as_ref().and_then(|c| c.api_key.clone())
-            }),
+            api_key: self
+                .api_key
+                .clone()
+                .or_else(|| base_config.as_ref().and_then(|c| c.api_key.clone())),
             base_url: base_config.as_ref().and_then(|c| c.base_url.clone()),
             endpoint: base_config.as_ref().and_then(|c| c.endpoint.clone()),
             deployment_name: base_config.as_ref().and_then(|c| c.deployment_name.clone()),

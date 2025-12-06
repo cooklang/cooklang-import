@@ -1,3 +1,3 @@
-pub mod url;
-pub mod text;
 pub mod image;
+pub mod text;
+pub mod url;

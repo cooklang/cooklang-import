@@ -132,7 +132,12 @@ pub async fn convert_recipe_with_config(
             "google" => LlmProvider::Google,
             "ollama" => LlmProvider::Ollama,
             "azure_openai" => LlmProvider::AzureOpenAI,
-            _ => return Err(ImportError::ConversionError(format!("Unknown provider: {}", name))),
+            _ => {
+                return Err(ImportError::ConversionError(format!(
+                    "Unknown provider: {}",
+                    name
+                )))
+            }
         };
         builder = builder.provider(provider);
     }
@@ -184,7 +189,12 @@ pub async fn convert_recipe_with_provider(
             "google" => LlmProvider::Google,
             "ollama" => LlmProvider::Ollama,
             "azure_openai" => LlmProvider::AzureOpenAI,
-            _ => return Err(ImportError::ConversionError(format!("Unknown provider: {}", name))),
+            _ => {
+                return Err(ImportError::ConversionError(format!(
+                    "Unknown provider: {}",
+                    name
+                )))
+            }
         };
         builder = builder.provider(provider);
     }

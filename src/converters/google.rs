@@ -1,5 +1,5 @@
-use crate::config::ProviderConfig;
 use super::{Converter, COOKLANG_CONVERTER_PROMPT};
+use crate::config::ProviderConfig;
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;

@@ -1,5 +1,5 @@
-mod request;
 mod chrome;
+mod request;
 
-pub use request::RequestFetcher;
 pub use chrome::ChromeFetcher;
+pub use request::RequestFetcher;

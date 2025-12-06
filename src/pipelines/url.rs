@@ -50,8 +50,8 @@ pub async fn process(url: &str) -> Result<String, Box<dyn Error + Send + Sync>> 
     // 3. Fallback: plain text path
     let plain_text = if ChromeFetcher::is_available() {
         // Use ChromeFetcher if PAGE_SCRIBER_URL is configured
-        let chrome = ChromeFetcher::new()
-            .ok_or("ChromeFetcher is available but failed to initialize")?;
+        let chrome =
+            ChromeFetcher::new().ok_or("ChromeFetcher is available but failed to initialize")?;
         chrome.fetch(url).await?
     } else {
         // Extract text directly from HTML

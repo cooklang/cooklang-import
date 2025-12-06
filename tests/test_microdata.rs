@@ -87,8 +87,14 @@ mod tests {
             )
         );
 
-        assert!(recipe.ingredients.iter().any(|i| i.contains("5 Tablespoons Butter")));
-        assert!(recipe.ingredients.iter().any(|i| i.contains("1 Cup White Sugar")));
+        assert!(recipe
+            .ingredients
+            .iter()
+            .any(|i| i.contains("5 Tablespoons Butter")));
+        assert!(recipe
+            .ingredients
+            .iter()
+            .any(|i| i.contains("1 Cup White Sugar")));
         assert!(recipe.instructions.contains("Preheat oven to 350 degrees"));
 
         assert_eq!(

@@ -41,11 +41,7 @@ impl ChromeFetcher {
             .await?;
 
         if !response.status().is_success() {
-            return Err(format!(
-                "Chrome fetch failed with status: {}",
-                response.status()
-            )
-            .into());
+            return Err(format!("Chrome fetch failed with status: {}", response.status()).into());
         }
 
         let content: ContentResponse = response.json().await?;

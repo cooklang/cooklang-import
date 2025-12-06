@@ -140,8 +140,12 @@ async fn test_german_recipe_with_sections_and_array_yield() {
 
     // Check that instructions from sections were parsed
     assert!(result.instructions.contains("Den Backofen auf 180 °C"));
-    assert!(result.instructions.contains("Vegane Butter mit der Schokolade"));
-    assert!(result.instructions.contains("Mehl, Salz, Backpulver und Zucker"));
+    assert!(result
+        .instructions
+        .contains("Vegane Butter mit der Schokolade"));
+    assert!(result
+        .instructions
+        .contains("Mehl, Salz, Backpulver und Zucker"));
 }
 
 #[tokio::test]

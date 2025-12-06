@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use cooklang_import::url_to_text::html::extractors::{Extractor, HtmlClassExtractor, ParsingContext};
+    use cooklang_import::url_to_text::html::extractors::{
+        Extractor, HtmlClassExtractor, ParsingContext,
+    };
     use scraper::Html;
 
     #[test]

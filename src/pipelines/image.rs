@@ -1,9 +1,7 @@
 use crate::images_to_text::{self, ImageSource};
 use std::error::Error;
 
-pub async fn process(
-    images: &[ImageSource],
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub async fn process(images: &[ImageSource]) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut all_text = Vec::new();
     let mut sources = Vec::new();
 
