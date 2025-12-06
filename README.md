@@ -6,9 +6,12 @@ A command-line tool to import recipes into [Cooklang](https://cooklang.org/) for
 - **Multi-provider AI support**: OpenAI, Anthropic Claude, Azure OpenAI, Google Gemini, and Ollama (local Llama models)
 - **Automatic fallback**: Seamlessly switch between providers on failure
 - **Flexible configuration**: TOML-based config with environment variable overrides
-- **Smart extraction**: Supports JSON-LD, HTML class-based, and plain-text extraction
-- **Metadata preservation**: Automatically extracts and includes recipe metadata
+- **Smart extraction**: Modular pipeline with JSON-LD, MicroData, HTML class extractors, and LLM fallback
+- **Multiple input types**: URLs, plain text, and images (via OCR)
+- **Metadata preservation**: Automatically extracts and includes recipe metadata as YAML frontmatter
 - **Local AI support**: Run completely offline with Ollama
+
+See [architecture.md](architecture.md) for detailed system design and project structure.
 
 ## Getting started
 
@@ -119,25 +122,25 @@ cooklang-import https://www.bbcgoodfood.com/recipes/next-level-tikka-masala --ex
 
 This outputs the raw ingredients and instructions in markdown format without Cooklang markup.
 
-### Use Case 3: Markdown → Cooklang
+### Use Case 3: Text → Cooklang
 
-Convert structured markdown recipes to Cooklang format (when you have pre-separated ingredients and instructions):
-
-```sh
-cooklang-import --markdown \
-  --ingredients "2 eggs\n1 cup flour\n1/2 cup milk" \
-  --instructions "Mix dry ingredients. Add eggs and milk. Bake at 350°F for 30 minutes."
-```
-
-### Use Case 4: Text → Cooklang (NEW!)
-
-Convert plain text recipes to Cooklang format (LLM will parse and structure the recipe):
+Convert plain text recipes to Cooklang format:
 
 ```sh
 cooklang-import --text "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350°F for 30 minutes."
 ```
 
-This is useful for unstructured recipe text where ingredients and instructions are not clearly separated.
+This uses LLM to parse unstructured recipe text into Cooklang format.
+
+### Use Case 4: Image → Cooklang
+
+Convert recipe images to Cooklang format using OCR:
+
+```sh
+cooklang-import --image /path/to/recipe-photo.jpg
+```
+
+Requires `GOOGLE_API_KEY` for Google Cloud Vision OCR. Multiple images can be processed together.
 
 ### Advanced Options
 
@@ -147,7 +150,7 @@ Use a different LLM provider (requires config.toml):
 
 ```sh
 cooklang-import https://example.com/recipe --provider anthropic
-cooklang-import --markdown --ingredients "..." --instructions "..." --provider ollama
+cooklang-import --text "..." --provider ollama
 ```
 
 Available providers: `openai`, `anthropic`, `google`, `azure_openai`, `ollama`
@@ -312,22 +315,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match result {
         ImportResult::Recipe(recipe) => {
-            println!("Ingredients: {}", recipe.ingredients);
+            println!("Title: {}", recipe.name);
+            println!("Ingredients: {:?}", recipe.ingredients);
             println!("Instructions: {}", recipe.instructions);
         }
         ImportResult::Cooklang(_) => unreachable!(),
     }
 
-    // Use Case 3: Markdown → Cooklang (structured)
-    let result = RecipeImporter::builder()
-        .markdown("2 eggs\n1 cup flour", "Mix and bake")
-        .build()
-        .await?;
-
-    // Use Case 4: Text → Cooklang (unstructured)
+    // Use Case 3: Text → Cooklang
     let recipe_text = "Take 2 eggs and 1 cup of flour. Mix and bake at 350F.";
     let result = RecipeImporter::builder()
         .text(recipe_text)
+        .build()
+        .await?;
+
+    // Use Case 4: Image → Cooklang (requires GOOGLE_API_KEY)
+    let result = RecipeImporter::builder()
+        .image_path("/path/to/recipe.jpg")
         .build()
         .await?;
 
@@ -343,7 +347,6 @@ For simple use cases, use the convenience functions:
 use cooklang_import::{
     import_from_url,
     extract_recipe_from_url,
-    convert_markdown_to_cooklang,
     convert_text_to_cooklang,
 };
 
@@ -355,13 +358,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Extract without conversion
     let recipe = extract_recipe_from_url("https://example.com/recipe").await?;
 
-    // Convert markdown to Cooklang (structured)
-    let cooklang = convert_markdown_to_cooklang(
-        "2 eggs\n1 cup flour",
-        "Mix and bake"
-    ).await?;
-
-    // Convert plain text to Cooklang (unstructured)
+    // Convert plain text to Cooklang
     let recipe_text = "Take 2 eggs and 1 cup of flour. Mix and bake at 350F.";
     let cooklang = convert_text_to_cooklang(recipe_text).await?;
 
