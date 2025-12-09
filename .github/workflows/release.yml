@@ -41,12 +41,6 @@ jobs:
           key: ${{ runner.os }}-ios-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-ios-cargo-
 
-      - name: Install uniffi-bindgen
-        run: |
-          if ! command -v uniffi-bindgen &> /dev/null; then
-            cargo install uniffi --features cli --version "^0.28"
-          fi
-
       - name: Build iOS targets
         run: |
           cargo build --release --target aarch64-apple-ios --features uniffi
@@ -56,7 +50,7 @@ jobs:
       - name: Generate Swift bindings
         run: |
           mkdir -p target/ios/swift
-          uniffi-bindgen generate \
+          cargo run --features uniffi-cli --bin uniffi-bindgen -- generate \
             --library target/aarch64-apple-ios/release/libcooklang_import.a \
             --language swift \
             --out-dir target/ios/swift
@@ -171,10 +165,8 @@ jobs:
           sdkmanager --install "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: Install cargo-ndk and uniffi-bindgen
-        run: |
-          cargo install cargo-ndk --locked || cargo install cargo-ndk
-          cargo install uniffi --features cli --version "^0.28"
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked || cargo install cargo-ndk
 
       - name: Build Android targets
         run: |
@@ -185,7 +177,7 @@ jobs:
       - name: Generate Kotlin bindings
         run: |
           mkdir -p target/android/kotlin
-          uniffi-bindgen generate \
+          cargo run --features uniffi-cli --bin uniffi-bindgen -- generate \
             --library target/aarch64-linux-android/release/libcooklang_import.so \
             --language kotlin \
             --out-dir target/android/kotlin

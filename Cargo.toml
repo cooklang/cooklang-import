@@ -17,7 +17,13 @@ crate-type = ["lib", "cdylib", "staticlib"]
 name = "cooklang-import"
 path = "src/main.rs"
 
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["uniffi-cli"]
+
 [features]
+uniffi-cli = ["dep:uniffi", "uniffi/cli"]
 default = []
 uniffi = ["dep:uniffi"]
 
