@@ -23,8 +23,10 @@ pub struct FfiRecipe {
     pub description: String,
     /// List of image URLs
     pub images: Vec<String>,
-    /// Recipe content in markdown format
-    pub content: String,
+    /// List of ingredients
+    pub ingredients: Vec<String>,
+    /// Recipe instructions
+    pub instructions: String,
     /// Metadata as key-value pairs
     pub metadata: Vec<FfiKeyValue>,
 }
@@ -43,7 +45,8 @@ impl From<Recipe> for FfiRecipe {
             name: recipe.name,
             description: recipe.description.unwrap_or_default(),
             images: recipe.image,
-            content: recipe.content,
+            ingredients: recipe.ingredients,
+            instructions: recipe.instructions,
             metadata: recipe
                 .metadata
                 .into_iter()
@@ -63,7 +66,8 @@ impl From<FfiRecipe> for Recipe {
                 Some(ffi.description)
             },
             image: ffi.images,
-            content: ffi.content,
+            ingredients: ffi.ingredients,
+            instructions: ffi.instructions,
             metadata: ffi
                 .metadata
                 .into_iter()
@@ -323,7 +327,7 @@ async fn convert_image_async(
 ) -> Result<String, FfiImportError> {
     let config = config.unwrap_or_default();
 
-    let mut builder = crate::RecipeImporter::builder().image(image_path);
+    let mut builder = crate::RecipeImporter::builder().image_path(image_path);
 
     if let Some(provider) = config.provider {
         builder = builder.provider(provider.into());
@@ -395,7 +399,7 @@ pub fn generate_frontmatter(metadata: Vec<FfiKeyValue>) -> String {
 pub fn simple_import(url: String) -> Result<String, FfiImportError> {
     import_from_url(url, None).map(|result| match result {
         FfiImportResult::Cooklang { content } => content,
-        FfiImportResult::Recipe { recipe } => recipe.content,
+        FfiImportResult::Recipe { recipe } => recipe.instructions,
     })
 }
 
@@ -433,7 +437,8 @@ mod tests {
             name: "Test Recipe".to_string(),
             description: Some("A test".to_string()),
             image: vec!["http://example.com/image.jpg".to_string()],
-            content: "# Test\nContent here".to_string(),
+            ingredients: vec!["2 eggs".to_string(), "1 cup flour".to_string()],
+            instructions: "Mix together and bake.".to_string(),
             metadata: [("author".to_string(), "Chef".to_string())]
                 .into_iter()
                 .collect(),
@@ -443,11 +448,14 @@ mod tests {
         assert_eq!(ffi_recipe.name, "Test Recipe");
         assert_eq!(ffi_recipe.description, "A test");
         assert_eq!(ffi_recipe.images.len(), 1);
+        assert_eq!(ffi_recipe.ingredients.len(), 2);
         assert_eq!(ffi_recipe.metadata.len(), 1);
 
         let back: Recipe = ffi_recipe.into();
         assert_eq!(back.name, recipe.name);
         assert_eq!(back.description, recipe.description);
+        assert_eq!(back.ingredients, recipe.ingredients);
+        assert_eq!(back.instructions, recipe.instructions);
     }
 
     #[test]
