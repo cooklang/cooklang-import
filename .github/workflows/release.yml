@@ -44,7 +44,7 @@ jobs:
       - name: Install uniffi-bindgen
         run: |
           if ! command -v uniffi-bindgen &> /dev/null; then
-            cargo install uniffi-bindgen-cli --version 0.28
+            cargo install uniffi-bindgen-cli --version "^0.28"
           fi
 
       - name: Build iOS targets
@@ -173,8 +173,8 @@ jobs:
 
       - name: Install cargo-ndk and uniffi-bindgen
         run: |
-          cargo install cargo-ndk || true
-          cargo install uniffi-bindgen-cli --version 0.28 || true
+          cargo install cargo-ndk --locked || cargo install cargo-ndk
+          cargo install uniffi-bindgen-cli --version "^0.28"
 
       - name: Build Android targets
         run: |
