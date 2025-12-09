@@ -149,7 +149,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -181,7 +181,6 @@ jobs:
           cargo ndk --target aarch64-linux-android --platform 21 build --release --features uniffi
           cargo ndk --target armv7-linux-androideabi --platform 21 build --release --features uniffi
           cargo ndk --target x86_64-linux-android --platform 21 build --release --features uniffi
-          cargo ndk --target i686-linux-android --platform 21 build --release --features uniffi
 
       - name: Generate Kotlin bindings
         run: |
@@ -193,11 +192,10 @@ jobs:
 
       - name: Organize JNI libraries
         run: |
-          mkdir -p target/android/jniLibs/{arm64-v8a,armeabi-v7a,x86_64,x86}
+          mkdir -p target/android/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}
           cp target/aarch64-linux-android/release/libcooklang_import.so target/android/jniLibs/arm64-v8a/
           cp target/armv7-linux-androideabi/release/libcooklang_import.so target/android/jniLibs/armeabi-v7a/
           cp target/x86_64-linux-android/release/libcooklang_import.so target/android/jniLibs/x86_64/
-          cp target/i686-linux-android/release/libcooklang_import.so target/android/jniLibs/x86/
 
       - name: Create Android library module
         run: |
@@ -351,6 +349,5 @@ jobs:
             - arm64-v8a
             - armeabi-v7a
             - x86_64
-            - x86
 
             See the README for integration instructions.
