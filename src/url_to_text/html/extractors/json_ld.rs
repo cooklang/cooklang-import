@@ -170,86 +170,94 @@ impl JsonLdExtractor {
                     .into_iter()
                     .map(|step| decode_html_symbols(&step))
                     .collect::<Vec<String>>()
-                    .join(" "),
+                    .join("\n\n"),
                 RecipeInstructions::MultipleObject(instructions) => instructions
                     .iter()
                     .map(|obj| decode_html_symbols(&obj.text))
                     .collect::<Vec<String>>()
-                    .join(" "),
-                RecipeInstructions::HowTo(sections) => sections
-                    .into_iter()
-                    .flat_map(|section| match section {
-                        HowTo::HowToStep(step) => {
-                            let mut texts = Vec::new();
-                            // Prefer text over name
-                            if let Some(text) = step.text {
-                                texts.push(text);
-                            } else if let Some(name) = step.name {
-                                texts.push(name);
-                            }
-                            if let Some(desc) = step.description {
-                                texts.push(desc);
-                            }
-                            texts
-                        }
-                        HowTo::HowToSection(section) => section
-                            .item_list_element
-                            .into_iter()
-                            .flat_map(|step| {
-                                let mut texts = Vec::new();
+                    .join("\n\n"),
+                RecipeInstructions::HowTo(sections) => {
+                    let mut texts = Vec::new();
+                    for howto in sections {
+                        match howto {
+                            HowTo::HowToStep(step) => {
                                 // Prefer text over name
                                 if let Some(text) = step.text {
-                                    texts.push(text);
+                                    texts.push(decode_html_symbols(&text));
                                 } else if let Some(name) = step.name {
-                                    texts.push(name);
+                                    texts.push(decode_html_symbols(&name));
                                 }
                                 if let Some(desc) = step.description {
-                                    texts.push(desc);
+                                    texts.push(decode_html_symbols(&desc));
                                 }
-                                texts
-                            })
-                            .collect(),
-                    })
-                    .map(|text| decode_html_symbols(&text))
-                    .collect::<Vec<String>>()
-                    .join(" "),
-                RecipeInstructions::NestedSections(sections) => sections
-                    .into_iter()
-                    .flat_map(|section| {
-                        section.into_iter().flat_map(|howto| match howto {
-                            HowTo::HowToStep(step) => {
-                                let mut texts = Vec::new();
-                                if let Some(text) = step.text {
-                                    texts.push(text);
-                                } else if let Some(name) = step.name {
-                                    texts.push(name);
-                                }
-                                if let Some(desc) = step.description {
-                                    texts.push(desc);
-                                }
-                                texts
                             }
-                            HowTo::HowToSection(section) => section
-                                .item_list_element
-                                .into_iter()
-                                .flat_map(|step| {
-                                    let mut texts = Vec::new();
+                            HowTo::HowToSection(section) => {
+                                // Add section header if present (with extra blank line before)
+                                if let Some(section_name) = section.name {
+                                    let header = format!(
+                                        "\n## {}",
+                                        decode_html_symbols(&section_name).trim_end_matches(':')
+                                    );
+                                    texts.push(header);
+                                }
+                                // Add steps from section
+                                for step in section.item_list_element {
                                     if let Some(text) = step.text {
-                                        texts.push(text);
+                                        texts.push(decode_html_symbols(&text));
                                     } else if let Some(name) = step.name {
-                                        texts.push(name);
+                                        texts.push(decode_html_symbols(&name));
                                     }
                                     if let Some(desc) = step.description {
-                                        texts.push(desc);
+                                        texts.push(decode_html_symbols(&desc));
                                     }
-                                    texts
-                                })
-                                .collect(),
-                        })
-                    })
-                    .map(|text| decode_html_symbols(&text))
-                    .collect::<Vec<String>>()
-                    .join(" "),
+                                }
+                            }
+                        }
+                    }
+                    texts.join("\n\n")
+                }
+                RecipeInstructions::NestedSections(sections) => {
+                    let mut texts = Vec::new();
+                    for outer_section in sections {
+                        for howto in outer_section {
+                            match howto {
+                                HowTo::HowToStep(step) => {
+                                    if let Some(text) = step.text {
+                                        texts.push(decode_html_symbols(&text));
+                                    } else if let Some(name) = step.name {
+                                        texts.push(decode_html_symbols(&name));
+                                    }
+                                    if let Some(desc) = step.description {
+                                        texts.push(decode_html_symbols(&desc));
+                                    }
+                                }
+                                HowTo::HowToSection(section) => {
+                                    // Add section header if present
+                                    if let Some(section_name) = section.name {
+                                        let header = format!(
+                                            "## {}",
+                                            decode_html_symbols(&section_name)
+                                                .trim_end_matches(':')
+                                        );
+                                        texts.push(header);
+                                    }
+                                    // Add steps from section
+                                    for step in section.item_list_element {
+                                        if let Some(text) = step.text {
+                                            texts.push(decode_html_symbols(&text));
+                                        } else if let Some(name) = step.name {
+                                            texts.push(decode_html_symbols(&name));
+                                        }
+                                        if let Some(desc) = step.description {
+                                            texts.push(decode_html_symbols(&desc));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    texts.join("\n\n")
+                }
             },
             None => String::new(),
         };
@@ -391,6 +399,8 @@ struct HowToStep {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "@type")]
 struct HowToSection {
+    /// Section name/title (e.g., "How to Make Meat Sauce")
+    name: Option<String>,
     #[serde(rename = "itemListElement")]
     item_list_element: Vec<HowToStep>,
 }
@@ -955,7 +965,7 @@ mod tests {
         );
         assert_eq!(
             result.instructions,
-            "Cook pasta Fry bacon Mix eggs and cheese Combine all ingredients"
+            "Cook pasta\n\nFry bacon\n\nMix eggs and cheese\n\nCombine all ingredients"
         );
 
         // Test metadata extraction for complex types

@@ -17,6 +17,7 @@ pub use uniffi_bindings::*;
 // Re-exports for convenience
 pub use builder::{ImportResult, LlmProvider, RecipeImporter, RecipeImporterBuilder};
 pub use config::AiConfig;
+pub use converters::{ConversionMetadata, ConversionResult, TokenUsage};
 pub use error::ImportError;
 pub use images_to_text::ImageSource;
 pub use model::Recipe;
@@ -93,7 +94,7 @@ pub async fn fetch_recipe_with_timeout(
 
     match builder.build().await? {
         builder::ImportResult::Recipe(r) => Ok(r),
-        builder::ImportResult::Cooklang(_) => unreachable!("extract_only sets Recipe mode"),
+        builder::ImportResult::Cooklang { .. } => unreachable!("extract_only sets Recipe mode"),
     }
 }
 
@@ -151,7 +152,7 @@ pub async fn convert_recipe_with_config(
     }
 
     match builder.build().await? {
-        builder::ImportResult::Cooklang(s) => Ok(s),
+        builder::ImportResult::Cooklang { content, .. } => Ok(content),
         builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
     }
 }
@@ -200,7 +201,7 @@ pub async fn convert_recipe_with_provider(
     }
 
     match builder.build().await? {
-        builder::ImportResult::Cooklang(s) => Ok(s),
+        builder::ImportResult::Cooklang { content, .. } => Ok(content),
         builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
     }
 }
@@ -232,7 +233,7 @@ pub async fn convert_recipe_with_provider(
 /// ```
 pub async fn import_from_url(url: &str) -> Result<String, ImportError> {
     match RecipeImporter::builder().url(url).build().await? {
-        builder::ImportResult::Cooklang(s) => Ok(s),
+        builder::ImportResult::Cooklang { content, .. } => Ok(content),
         builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
     }
 }
@@ -271,7 +272,7 @@ pub async fn extract_recipe_from_url(url: &str) -> Result<Recipe, ImportError> {
         .await?
     {
         builder::ImportResult::Recipe(r) => Ok(r),
-        builder::ImportResult::Cooklang(_) => unreachable!("extract_only sets Recipe mode"),
+        builder::ImportResult::Cooklang { .. } => unreachable!("extract_only sets Recipe mode"),
     }
 }
 
@@ -305,7 +306,7 @@ pub async fn extract_recipe_from_url(url: &str) -> Result<Recipe, ImportError> {
 /// ```
 pub async fn convert_text_to_cooklang(text: &str) -> Result<String, ImportError> {
     match RecipeImporter::builder().text(text).build().await? {
-        builder::ImportResult::Cooklang(s) => Ok(s),
+        builder::ImportResult::Cooklang { content, .. } => Ok(content),
         builder::ImportResult::Recipe(_) => unreachable!("Text + Cooklang mode"),
     }
 }

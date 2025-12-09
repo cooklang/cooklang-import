@@ -11,7 +11,7 @@ impl RequestFetcher {
         let timeout = timeout.unwrap_or(Duration::from_secs(30));
         let client = Client::builder()
             .timeout(timeout)
-            .user_agent("Mozilla/5.0 (compatible; CooklangBot/1.0)")
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
             .expect("Failed to create HTTP client");
 

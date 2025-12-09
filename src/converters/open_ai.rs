@@ -1,10 +1,11 @@
-use super::{Converter, COOKLANG_CONVERTER_PROMPT};
+use super::{inject_recipe, ConversionMetadata, ConversionResult, Converter, TokenUsage};
 use crate::config::ProviderConfig;
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::error::Error;
+use std::time::Instant;
 
 pub struct OpenAiConverter {
     client: Client,
@@ -78,7 +79,12 @@ impl Converter for OpenAiConverter {
         "open_ai"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+    async fn convert(
+        &self,
+        content: &str,
+    ) -> Result<ConversionResult, Box<dyn Error + Send + Sync>> {
+        let start = Instant::now();
+
         let response = self
             .client
             .post(format!("{}/v1/chat/completions", self.base_url))
@@ -87,8 +93,7 @@ impl Converter for OpenAiConverter {
             .json(&json!({
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
-                    {"role": "user", "content": content}
+                    {"role": "user", "content": inject_recipe(content)}
                 ],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
@@ -96,6 +101,8 @@ impl Converter for OpenAiConverter {
             }))
             .send()
             .await?;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
 
         let status = response.status();
         let response_text = response
@@ -129,7 +136,26 @@ impl Converter for OpenAiConverter {
             })?
             .to_string();
 
-        Ok(cooklang_recipe)
+        // Extract metadata from response
+        let model_version = response_body["model"].as_str().map(|s| s.to_string());
+        let input_tokens = response_body["usage"]["prompt_tokens"]
+            .as_u64()
+            .map(|v| v as u32);
+        let output_tokens = response_body["usage"]["completion_tokens"]
+            .as_u64()
+            .map(|v| v as u32);
+
+        Ok(ConversionResult {
+            content: cooklang_recipe,
+            metadata: ConversionMetadata {
+                model_version,
+                tokens_used: TokenUsage {
+                    input_tokens,
+                    output_tokens,
+                },
+                latency_ms,
+            },
+        })
     }
 }
 
@@ -164,8 +190,8 @@ mod tests {
         let content = "pasta\nsauce\n\nCook pasta with sauce";
 
         let result = converter.convert(content).await.unwrap();
-        assert!(result.contains("@pasta"));
-        assert!(result.contains("@sauce"));
+        assert!(result.content.contains("@pasta"));
+        assert!(result.content.contains("@sauce"));
         mock.assert();
     }
 

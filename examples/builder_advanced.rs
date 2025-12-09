@@ -26,9 +26,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     match result {
-        ImportResult::Cooklang(cooklang) => {
+        ImportResult::Cooklang {
+            content,
+            conversion_metadata,
+        } => {
             println!("Successfully imported recipe with custom timeout:");
-            println!("Recipe length: {} bytes", cooklang.len());
+            println!("Recipe length: {} bytes", content.len());
+            if let Some(meta) = conversion_metadata {
+                println!("Model: {:?}", meta.model_version);
+                println!("Latency: {}ms", meta.latency_ms);
+            }
         }
         ImportResult::Recipe(_) => unreachable!(),
     }
@@ -85,8 +92,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Successfully chained methods and imported recipe");
 
-    if let ImportResult::Cooklang(cooklang) = result {
-        println!("Recipe length: {} bytes", cooklang.len());
+    if let ImportResult::Cooklang { content, .. } = result {
+        println!("Recipe length: {} bytes", content.len());
     }
 
     // Example 4: Using Ollama (local LLM)

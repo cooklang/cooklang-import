@@ -167,8 +167,8 @@ impl Extractor for MicroDataExtractor {
             return Err("Could not extract recipe content".into());
         }
 
-        // Combine instructions into a single string
-        let instructions = instructions_list.join("\n");
+        // Combine instructions into a single string with paragraph breaks
+        let instructions = instructions_list.join("\n\n");
 
         // Add source URL
         metadata.insert("source_url".to_string(), context.url.clone());

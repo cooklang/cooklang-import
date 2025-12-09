@@ -1,10 +1,11 @@
-use super::{Converter, COOKLANG_CONVERTER_PROMPT};
+use super::{inject_recipe, ConversionMetadata, ConversionResult, Converter, TokenUsage};
 use crate::config::ProviderConfig;
 use async_trait::async_trait;
 use log::debug;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::error::Error;
+use std::time::Instant;
 
 pub struct AzureOpenAiConverter {
     client: Client,
@@ -59,7 +60,12 @@ impl Converter for AzureOpenAiConverter {
         "azure_openai"
     }
 
-    async fn convert(&self, content: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+    async fn convert(
+        &self,
+        content: &str,
+    ) -> Result<ConversionResult, Box<dyn Error + Send + Sync>> {
+        let start = Instant::now();
+
         // Azure OpenAI URL format:
         // https://{endpoint}/openai/deployments/{deployment-name}/chat/completions?api-version={api-version}
         let url = format!(
@@ -75,8 +81,7 @@ impl Converter for AzureOpenAiConverter {
             .header("api-key", &self.api_key)
             .json(&json!({
                 "messages": [
-                    {"role": "system", "content": COOKLANG_CONVERTER_PROMPT},
-                    {"role": "user", "content": content}
+                    {"role": "user", "content": inject_recipe(content)}
                 ],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens
@@ -84,14 +89,51 @@ impl Converter for AzureOpenAiConverter {
             .send()
             .await?;
 
+        let latency_ms = start.elapsed().as_millis() as u64;
+
         let response_body: Value = response.json().await?;
-        debug!("{:?}", response_body);
+        debug!("Azure OpenAI response: {:?}", response_body);
+
+        // Check for API error response
+        if let Some(error) = response_body.get("error") {
+            let error_code = error["code"].as_str().unwrap_or("unknown");
+            let error_message = error["message"].as_str().unwrap_or("Unknown error");
+            return Err(
+                format!("Azure OpenAI API error ({}): {}", error_code, error_message).into(),
+            );
+        }
+
         let cooklang_recipe = response_body["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or("Failed to extract content from response")?
+            .ok_or_else(|| {
+                format!(
+                    "Failed to extract content from Azure OpenAI response. Response: {}",
+                    serde_json::to_string_pretty(&response_body)
+                        .unwrap_or_else(|_| response_body.to_string())
+                )
+            })?
             .to_string();
 
-        Ok(cooklang_recipe)
+        // Extract metadata from response (OpenAI-compatible format)
+        let model_version = response_body["model"].as_str().map(|s| s.to_string());
+        let input_tokens = response_body["usage"]["prompt_tokens"]
+            .as_u64()
+            .map(|v| v as u32);
+        let output_tokens = response_body["usage"]["completion_tokens"]
+            .as_u64()
+            .map(|v| v as u32);
+
+        Ok(ConversionResult {
+            content: cooklang_recipe,
+            metadata: ConversionMetadata {
+                model_version,
+                tokens_used: TokenUsage {
+                    input_tokens,
+                    output_tokens,
+                },
+                latency_ms,
+            },
+        })
     }
 }
 
@@ -157,8 +199,8 @@ mod tests {
         let content = "pasta\nsauce\n\nCook pasta with sauce";
 
         let result = converter.convert(content).await.unwrap();
-        assert!(result.contains("@pasta"));
-        assert!(result.contains("@sauce"));
+        assert!(result.content.contains("@pasta"));
+        assert!(result.content.contains("@sauce"));
         mock.assert();
     }
 }

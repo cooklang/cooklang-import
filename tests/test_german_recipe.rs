@@ -146,6 +146,18 @@ async fn test_german_recipe_with_sections_and_array_yield() {
     assert!(result
         .instructions
         .contains("Mehl, Salz, Backpulver und Zucker"));
+
+    // Check that section names are preserved as markdown headers
+    assert!(
+        result.instructions.contains("## Brownie-Teig"),
+        "Section name 'Brownie-Teig' should be preserved. Got: {}",
+        result.instructions
+    );
+    assert!(
+        result.instructions.contains("## Cookie-Teig"),
+        "Section name 'Cookie-Teig' should be preserved. Got: {}",
+        result.instructions
+    );
 }
 
 #[tokio::test]

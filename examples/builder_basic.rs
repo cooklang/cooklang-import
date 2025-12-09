@@ -17,9 +17,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     match result {
-        ImportResult::Cooklang(cooklang) => {
+        ImportResult::Cooklang {
+            content,
+            conversion_metadata,
+        } => {
             println!("Recipe in Cooklang format:");
-            println!("{}", cooklang);
+            println!("{}", content);
+            if let Some(meta) = conversion_metadata {
+                println!("\n--- Conversion Metadata ---");
+                println!("Model: {:?}", meta.model_version);
+                println!("Input tokens: {:?}", meta.tokens_used.input_tokens);
+                println!("Output tokens: {:?}", meta.tokens_used.output_tokens);
+                println!("Latency: {}ms", meta.latency_ms);
+            }
         }
         ImportResult::Recipe(_) => unreachable!(),
     }
@@ -40,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!("\nInstructions:\n{}", recipe.instructions);
         }
-        ImportResult::Cooklang(_) => unreachable!(),
+        ImportResult::Cooklang { .. } => unreachable!(),
     }
 
     // Use Case 3: Markdown → Cooklang
@@ -67,9 +77,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     match result {
-        ImportResult::Cooklang(cooklang) => {
+        ImportResult::Cooklang { content, .. } => {
             println!("Converted to Cooklang:");
-            println!("{}", cooklang);
+            println!("{}", content);
         }
         ImportResult::Recipe(_) => unreachable!(),
     }

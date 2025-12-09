@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{
     config::{load_config, ProviderConfig},
-    converters::{self, Converter},
+    converters::{self, ConversionMetadata, Converter},
     images_to_text::ImageSource,
     ImportError, Recipe,
 };
@@ -31,9 +31,14 @@ pub enum OutputMode {
 /// Result of a recipe import operation
 #[derive(Debug, Clone)]
 pub enum ImportResult {
-    /// Cooklang-formatted recipe
-    Cooklang(String),
-    /// Recipe struct (markdown format)
+    /// Cooklang-formatted recipe with optional conversion metadata
+    Cooklang {
+        /// The converted Cooklang text
+        content: String,
+        /// Metadata about the LLM conversion (model, tokens, latency)
+        conversion_metadata: Option<ConversionMetadata>,
+    },
+    /// Recipe struct (markdown format) - no conversion metadata since no LLM was used
     Recipe(Recipe),
 }
 
@@ -326,8 +331,11 @@ impl RecipeImporterBuilder {
         match self.mode {
             OutputMode::Cooklang => {
                 // Convert to Cooklang format using a converter
-                let cooklang_result = self.convert_to_cooklang(&result).await?;
-                Ok(ImportResult::Cooklang(cooklang_result))
+                let (content, conversion_metadata) = self.convert_to_cooklang(&result).await?;
+                Ok(ImportResult::Cooklang {
+                    content,
+                    conversion_metadata: Some(conversion_metadata),
+                })
             }
             OutputMode::Recipe => {
                 // Parse the result back into a Recipe struct
@@ -374,7 +382,10 @@ impl RecipeImporterBuilder {
     }
 
     /// Convert intermediate text format to Cooklang using configured converter
-    async fn convert_to_cooklang(&self, text: &str) -> Result<String, ImportError> {
+    async fn convert_to_cooklang(
+        &self,
+        text: &str,
+    ) -> Result<(String, ConversionMetadata), ImportError> {
         // Parse the text to separate metadata and body
         let (metadata, body) = Recipe::parse_text_format(text);
 
@@ -382,7 +393,7 @@ impl RecipeImporterBuilder {
         let converter = self.get_converter().await?;
 
         // Convert the body (ingredients + instructions) to Cooklang
-        let cooklang_body = converter
+        let conversion_result = converter
             .convert(&body)
             .await
             .map_err(|e| ImportError::ConversionError(e.to_string()))?;
@@ -399,9 +410,9 @@ impl RecipeImporterBuilder {
             }
             output.push_str("---\n\n");
         }
-        output.push_str(&cooklang_body);
+        output.push_str(&conversion_result.content);
 
-        Ok(output)
+        Ok((output, conversion_result.metadata))
     }
 
     /// Get the appropriate converter based on configuration
@@ -468,7 +479,7 @@ impl RecipeImporterBuilder {
 fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {
         "open_ai" => "gpt-4o-mini",
-        "anthropic" => "claude-3-5-sonnet-20241022",
+        "anthropic" => "claude-haiku-4-5",
         "google" => "gemini-1.5-flash",
         "azure_openai" => "gpt-4",
         "ollama" => "llama2",

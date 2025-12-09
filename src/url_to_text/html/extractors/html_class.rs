@@ -321,6 +321,111 @@ impl ClassMatchers {
 
         items
     }
+
+    /// Extract instructions with section headers preserved
+    fn extract_instructions_with_sections(&self, document: &Html) -> Vec<String> {
+        let mut items = Vec::new();
+
+        // Try WPRM instruction groups first (they have explicit section headers)
+        if let Ok(group_selector) = Selector::parse(".wprm-recipe-instruction-group") {
+            let groups: Vec<_> = document.select(&group_selector).collect();
+            if !groups.is_empty() {
+                for group in groups {
+                    // Extract section header
+                    if let Ok(header_selector) = Selector::parse(".wprm-recipe-group-name") {
+                        if let Some(header) = group.select(&header_selector).next() {
+                            let header_text = header
+                                .text()
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                                .trim()
+                                .to_string();
+                            if !header_text.is_empty() {
+                                // Add section header as markdown heading
+                                items.push(format!("## {}", header_text.trim_end_matches(':')));
+                            }
+                        }
+                    }
+
+                    // Extract list items within this group
+                    if let Ok(li_selector) = Selector::parse("li") {
+                        for li in group.select(&li_selector) {
+                            let text = li.text().collect::<Vec<_>>().join(" ").trim().to_string();
+                            if !text.is_empty() {
+                                items.push(text);
+                            }
+                        }
+                    }
+                }
+
+                if !items.is_empty() {
+                    debug!(
+                        "Found {} instructions with sections using WPRM groups",
+                        items.len()
+                    );
+                    return items;
+                }
+            }
+        }
+
+        // Try other instruction group patterns
+        for group_class in &[
+            "recipe-instruction-group",
+            "tasty-recipes-instruction-group",
+            "mv-create-instruction-group",
+        ] {
+            if let Ok(group_selector) = Selector::parse(&format!(".{group_class}")) {
+                let groups: Vec<_> = document.select(&group_selector).collect();
+                if !groups.is_empty() {
+                    for group in groups {
+                        // Try to find a header (h3, h4, or specific class)
+                        for header_tag in &["h3", "h4", ".group-name", ".section-name"] {
+                            if let Ok(header_selector) = Selector::parse(header_tag) {
+                                if let Some(header) = group.select(&header_selector).next() {
+                                    let header_text = header
+                                        .text()
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                        .trim()
+                                        .to_string();
+                                    if !header_text.is_empty() && header_text.len() < 100 {
+                                        items.push(format!(
+                                            "## {}",
+                                            header_text.trim_end_matches(':')
+                                        ));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Extract list items within this group
+                        if let Ok(li_selector) = Selector::parse("li") {
+                            for li in group.select(&li_selector) {
+                                let text =
+                                    li.text().collect::<Vec<_>>().join(" ").trim().to_string();
+                                if !text.is_empty() {
+                                    items.push(text);
+                                }
+                            }
+                        }
+                    }
+
+                    if !items.is_empty() {
+                        debug!(
+                            "Found {} instructions with sections using {}",
+                            items.len(),
+                            group_class
+                        );
+                        return items;
+                    }
+                }
+            }
+        }
+
+        // Fall back to regular extraction without sections
+        self.extract_list_items(document, "instructions")
+    }
 }
 
 impl Extractor for HtmlClassExtractor {
@@ -357,8 +462,8 @@ impl Extractor for HtmlClassExtractor {
         // Extract ingredients
         let ingredients = matchers.extract_list_items(&context.document, "ingredients");
 
-        // Extract instructions
-        let instructions_list = matchers.extract_list_items(&context.document, "instructions");
+        // Extract instructions (with section headers preserved)
+        let instructions_list = matchers.extract_instructions_with_sections(&context.document);
 
         // Extract metadata
         if let Some(prep_time) = matchers.find_by_class(&context.document, "prep_time") {
@@ -393,9 +498,9 @@ impl Extractor for HtmlClassExtractor {
             return Err("Could not extract recipe content from HTML".into());
         }
 
-        // Convert instructions list to single string
+        // Convert instructions list to single string with paragraph breaks
         let instructions = if !instructions_list.is_empty() {
-            instructions_list.join(" ")
+            instructions_list.join("\n\n")
         } else {
             String::new()
         };

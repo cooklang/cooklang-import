@@ -15,9 +15,9 @@ async fn test_builder_url_to_cooklang() {
 
     assert!(result.is_ok());
     match result.unwrap() {
-        ImportResult::Cooklang(cooklang) => {
-            assert!(!cooklang.is_empty());
-            assert!(cooklang.contains(">>"));
+        ImportResult::Cooklang { content, .. } => {
+            assert!(!content.is_empty());
+            assert!(content.contains(">>"));
         }
         ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
     }
@@ -39,7 +39,7 @@ async fn test_builder_url_to_recipe() {
         ImportResult::Recipe(recipe) => {
             assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
         }
-        ImportResult::Cooklang(_) => panic!("Expected Recipe result"),
+        ImportResult::Cooklang { .. } => panic!("Expected Recipe result"),
     }
 }
 
@@ -54,9 +54,9 @@ async fn test_builder_content_to_cooklang() {
 
     assert!(result.is_ok());
     match result.unwrap() {
-        ImportResult::Cooklang(cooklang) => {
-            assert!(!cooklang.is_empty());
-            assert!(cooklang.contains(">>"));
+        ImportResult::Cooklang { content, .. } => {
+            assert!(!content.is_empty());
+            assert!(content.contains(">>"));
         }
         ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
     }
@@ -115,9 +115,9 @@ async fn test_builder_text_to_cooklang() {
 
     assert!(result.is_ok());
     match result.unwrap() {
-        ImportResult::Cooklang(cooklang) => {
-            assert!(!cooklang.is_empty());
-            assert!(cooklang.contains(">>"));
+        ImportResult::Cooklang { content, .. } => {
+            assert!(!content.is_empty());
+            assert!(content.contains(">>"));
         }
         ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
     }
@@ -240,9 +240,9 @@ async fn test_builder_with_anthropic_provider() {
 
     assert!(result.is_ok());
     match result.unwrap() {
-        ImportResult::Cooklang(cooklang) => {
-            assert!(!cooklang.is_empty());
-            assert!(cooklang.contains(">>"));
+        ImportResult::Cooklang { content, .. } => {
+            assert!(!content.is_empty());
+            assert!(content.contains(">>"));
         }
         ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
     }

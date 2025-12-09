@@ -193,8 +193,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Format and print output
     match result {
-        ImportResult::Cooklang(cooklang) => {
-            println!("{}", cooklang);
+        ImportResult::Cooklang {
+            content,
+            conversion_metadata,
+        } => {
+            println!("{}", content);
+            // Log conversion metadata if available
+            if let Some(meta) = conversion_metadata {
+                eprintln!("\n--- Conversion Metadata ---");
+                if let Some(model) = &meta.model_version {
+                    eprintln!("Model: {}", model);
+                }
+                if let Some(input) = meta.tokens_used.input_tokens {
+                    eprintln!("Input tokens: {}", input);
+                }
+                if let Some(output) = meta.tokens_used.output_tokens {
+                    eprintln!("Output tokens: {}", output);
+                }
+                eprintln!("Latency: {}ms", meta.latency_ms);
+            }
         }
         ImportResult::Recipe(recipe) => {
             // Build metadata including title

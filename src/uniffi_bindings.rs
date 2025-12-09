@@ -246,7 +246,7 @@ async fn import_from_url_async(
     let result = builder.build().await?;
 
     Ok(match result {
-        crate::ImportResult::Cooklang(content) => FfiImportResult::Cooklang { content },
+        crate::ImportResult::Cooklang { content, .. } => FfiImportResult::Cooklang { content },
         crate::ImportResult::Recipe(recipe) => FfiImportResult::Recipe {
             recipe: recipe.into(),
         },
@@ -293,7 +293,7 @@ async fn convert_text_async(
     let result = builder.build().await?;
 
     match result {
-        crate::ImportResult::Cooklang(content) => Ok(content),
+        crate::ImportResult::Cooklang { content, .. } => Ok(content),
         crate::ImportResult::Recipe(_) => Err(FfiImportError::BuilderError {
             message: "Unexpected recipe result when converting text".to_string(),
         }),
@@ -340,7 +340,7 @@ async fn convert_image_async(
     let result = builder.build().await?;
 
     match result {
-        crate::ImportResult::Cooklang(content) => Ok(content),
+        crate::ImportResult::Cooklang { content, .. } => Ok(content),
         crate::ImportResult::Recipe(_) => Err(FfiImportError::BuilderError {
             message: "Unexpected recipe result when converting image".to_string(),
         }),
