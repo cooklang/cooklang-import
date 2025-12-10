@@ -515,16 +515,30 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           ANDROID_DIR="target/android/cooklang-import-android"
 
-          # Create settings.gradle.kts
+          # Create settings.gradle.kts with plugin management
           cat > "${ANDROID_DIR}/settings.gradle.kts" << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
           rootProject.name = "cooklang-import-android"
           EOF
 
           # Create build.gradle.kts with publishing
           cat > "${ANDROID_DIR}/build.gradle.kts" << EOF
           plugins {
-              id("com.android.library")
-              id("org.jetbrains.kotlin.android")
+              id("com.android.library") version "8.2.0"
+              id("org.jetbrains.kotlin.android") version "1.9.22"
               id("maven-publish")
           }
 
