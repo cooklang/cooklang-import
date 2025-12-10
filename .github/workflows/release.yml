@@ -169,7 +169,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked || cargo install cargo-ndk
+        run: command -v cargo-ndk || cargo install cargo-ndk --locked
 
       - name: Build uniffi-bindgen for host
         run: cargo build --features uniffi-cli --bin uniffi-bindgen --release
