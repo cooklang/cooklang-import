@@ -470,9 +470,9 @@ Add the package to your Xcode project:
 
 #### Manual Installation
 
-1. Download `cooklang-import-ios.zip` from the [latest release](https://github.com/cooklang/cooklang-import/releases)
+1. Download `CooklangImport-ios.zip` from the [latest release](https://github.com/cooklang/cooklang-import/releases)
 2. Extract and add `CooklangImportFFI.xcframework` to your Xcode project
-3. Add the Swift bindings file to your project
+3. Add the Swift bindings file from `swift/` to your project
 
 #### Usage in Swift
 

@@ -127,13 +127,18 @@ jobs:
       - name: Package iOS artifacts
         run: |
           cd target/ios
-          zip -r ../../cooklang-import-ios.zip CooklangImport CooklangImportFFI.xcframework swift
+          # Create xcframework zip (main artifact, like cooklang-rs)
+          zip -r ../../CooklangImportFFI.xcframework.zip CooklangImportFFI.xcframework
+          # Also create full package with Swift sources for manual integration
+          zip -r ../../CooklangImport-ios.zip CooklangImport CooklangImportFFI.xcframework swift
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ios-artifacts
-          path: cooklang-import-ios.zip
+          path: |
+            CooklangImportFFI.xcframework.zip
+            CooklangImport-ios.zip
 
   # Build Android artifacts on Linux
   build-android:
@@ -324,7 +329,8 @@ jobs:
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
           generate_release_notes: true
           files: |
-            cooklang-import-ios.zip
+            CooklangImportFFI.xcframework.zip
+            CooklangImport-ios.zip
             cooklang-import-android.zip
           body: |
             ## Mobile SDK Release ${{ steps.version.outputs.VERSION }}
@@ -336,10 +342,9 @@ jobs:
             .package(url: "https://github.com/cooklang/cooklang-import.git", from: "${{ steps.version.outputs.VERSION }}")
             ```
 
-            Or download `cooklang-import-ios.zip` which contains:
-            - `CooklangImport/` - Swift Package ready to use
-            - `CooklangImportFFI.xcframework` - XCFramework for manual integration
-            - `swift/` - Swift bindings source files
+            **Downloads:**
+            - `CooklangImportFFI.xcframework.zip` - XCFramework binary (used by Package.swift)
+            - `CooklangImport-ios.zip` - Full package with Swift sources for manual integration
 
             ### Android (GitHub Packages Maven)
 
@@ -405,12 +410,12 @@ jobs:
         id: checksum
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/cooklang-import-ios.zip"
+          URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportFFI.xcframework.zip"
 
           echo "Downloading from: ${URL}"
-          curl -fsSL "$URL" -o ios.zip
+          curl -fsSL "$URL" -o CooklangImportFFI.xcframework.zip
 
-          CHECKSUM=$(swift package compute-checksum ios.zip)
+          CHECKSUM=$(swift package compute-checksum CooklangImportFFI.xcframework.zip)
           echo "Checksum: ${CHECKSUM}"
           echo "CHECKSUM=${CHECKSUM}" >> $GITHUB_OUTPUT
 
@@ -445,7 +450,7 @@ jobs:
                   ),
                   .binaryTarget(
                       name: "CooklangImportFFI",
-                      url: "https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/cooklang-import-ios.zip",
+                      url: "https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportFFI.xcframework.zip",
                       checksum: "${CHECKSUM}"
                   ),
               ]

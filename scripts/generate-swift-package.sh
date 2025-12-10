@@ -17,7 +17,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PACKAGE_NAME="CooklangImport"
 REPO_OWNER="cooklang"
 REPO_NAME="cooklang-import"
-XCFRAMEWORK_ZIP="cooklang-import-ios.zip"
+XCFRAMEWORK_ZIP="CooklangImportFFI.xcframework.zip"
 
 usage() {
     echo "Usage: $0 <version> [--checksum <checksum>]"
