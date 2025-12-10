@@ -199,7 +199,9 @@ async fn test_recipe_with_ingredient_objects() {
 
     // Check ingredients formatting in text
     assert!(result.text.contains("For the cheesecake:")); // No amount
-    assert!(result.text.contains("600g full-fat cream cheese, at room temperature"));
+    assert!(result
+        .text
+        .contains("600g full-fat cream cheese, at room temperature"));
     assert!(result.text.contains("175g caster sugar"));
     assert!(result.text.contains("3 large eggs, at room temperature"));
     assert!(result.text.contains("¼ tsp fine sea salt"));

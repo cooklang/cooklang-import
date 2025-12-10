@@ -332,8 +332,7 @@ impl RecipeImporterBuilder {
         match self.mode {
             OutputMode::Cooklang => {
                 // Convert to Cooklang format using a converter
-                let (content, conversion_metadata) =
-                    self.convert_to_cooklang(&components).await?;
+                let (content, conversion_metadata) = self.convert_to_cooklang(&components).await?;
                 Ok(ImportResult::Cooklang {
                     content,
                     conversion_metadata: Some(conversion_metadata),

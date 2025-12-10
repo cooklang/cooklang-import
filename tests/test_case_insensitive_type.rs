@@ -73,7 +73,9 @@ async fn test_lowercase_recipe_type() {
 
     // Verify the recipe was parsed successfully despite lowercase @type
     assert_eq!(result.name, "Easy Black Bean Soup");
-    assert!(result.metadata.contains("description: This black bean soup recipe is easy to make and full of flavor."));
+    assert!(result
+        .metadata
+        .contains("description: This black bean soup recipe is easy to make and full of flavor."));
 
     // Verify ingredients
     assert!(result.text.contains("2 cans black beans"));
@@ -91,7 +93,9 @@ async fn test_lowercase_recipe_type() {
     assert!(result.metadata.contains("servings: 6"));
     assert!(result.metadata.contains("course: Soup"));
     assert!(result.metadata.contains("cuisine: Mexican"));
-    assert!(result.metadata.contains("tags: black bean soup, vegetarian, easy"));
+    assert!(result
+        .metadata
+        .contains("tags: black bean soup, vegetarian, easy"));
 }
 
 #[tokio::test]

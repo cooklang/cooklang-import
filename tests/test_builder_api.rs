@@ -119,7 +119,8 @@ async fn test_builder_text_to_cooklang() {
 #[ignore]
 async fn test_convenience_text_to_cooklang() {
     let components = RecipeComponents {
-        text: "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350°F for 30 minutes.".to_string(),
+        text: "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350°F for 30 minutes."
+            .to_string(),
         metadata: String::new(),
         name: String::new(),
     };

@@ -127,7 +127,9 @@ async fn test_german_recipe_with_sections_and_array_yield() {
     assert!(result.metadata.contains("time required: 45 minutes"));
 
     // Check keywords
-    assert!(result.metadata.contains("tags: Brookies, Brownies, Chocolate Chip Cookies, Cookie Bars, Cookies, Kekse"));
+    assert!(result
+        .metadata
+        .contains("tags: Brookies, Brownies, Chocolate Chip Cookies, Cookie Bars, Cookies, Kekse"));
 
     // Check author
     assert!(result.metadata.contains("author: Bianca Zapatka"));

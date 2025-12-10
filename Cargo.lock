@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "cooklang-import"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

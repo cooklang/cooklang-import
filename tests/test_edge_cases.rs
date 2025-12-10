@@ -256,7 +256,9 @@ async fn test_diet_restrictions_handling() {
     let result = url_to_recipe(&url).await.unwrap();
 
     // Should clean up schema.org URLs and "Diet" suffix
-    assert!(result.metadata.contains("diet: GlutenFree, Vegan, Vegetarian"));
+    assert!(result
+        .metadata
+        .contains("diet: GlutenFree, Vegan, Vegetarian"));
 }
 
 #[tokio::test]

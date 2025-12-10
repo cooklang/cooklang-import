@@ -76,7 +76,9 @@ async fn test_comprehensive_metadata_extraction() {
     assert!(result.metadata.contains("course: Dessert"));
     assert!(result.metadata.contains("cuisine: French"));
     assert!(result.metadata.contains("diet: GlutenFree, Vegetarian"));
-    assert!(result.metadata.contains("tags: chocolate, cake, dessert, baking"));
+    assert!(result
+        .metadata
+        .contains("tags: chocolate, cake, dessert, baking"));
 }
 
 #[tokio::test]

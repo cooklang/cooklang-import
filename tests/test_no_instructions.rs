@@ -80,7 +80,9 @@ async fn test_recipe_without_instructions() {
     assert!(result.metadata.contains("author: HotCooking"));
     assert!(result.metadata.contains("cook time: 5 hours"));
     assert!(result.metadata.contains("prep time: 15 minutes"));
-    assert!(result.metadata.contains("time required: 5 hours 30 minutes"));
+    assert!(result
+        .metadata
+        .contains("time required: 5 hours 30 minutes"));
     assert!(result.metadata.contains("servings: 8"));
 }
 
@@ -146,7 +148,9 @@ async fn test_long_cook_time() {
 
     assert!(result.metadata.contains("prep time: 15 minutes"));
     assert!(result.metadata.contains("cook time: 5 hours"));
-    assert!(result.metadata.contains("time required: 5 hours 15 minutes"));
+    assert!(result
+        .metadata
+        .contains("time required: 5 hours 15 minutes"));
 }
 
 #[tokio::test]
@@ -188,7 +192,11 @@ async fn test_recipe_with_empty_ingredients_array() {
 
     // Verify metadata
     assert!(result.metadata.contains("author: Hemköp"));
-    assert!(result.metadata.contains("time required: 2 hours 30 minutes"));
+    assert!(result
+        .metadata
+        .contains("time required: 2 hours 30 minutes"));
     assert!(result.metadata.contains("servings: 4"));
-    assert!(result.metadata.contains("tags: Asiatiskt, Tillbehör, Grönsaker, Frukt"));
+    assert!(result
+        .metadata
+        .contains("tags: Asiatiskt, Tillbehör, Grönsaker, Frukt"));
 }

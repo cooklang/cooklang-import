@@ -489,6 +489,7 @@ jobs:
 
       - name: Extract Android artifacts
         run: |
+          mkdir -p target/android
           unzip cooklang-import-android.zip -d target/android/
 
       - name: Get version from tag
