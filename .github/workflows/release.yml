@@ -168,6 +168,9 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked || cargo install cargo-ndk
 
+      - name: Build uniffi-bindgen for host
+        run: cargo build --features uniffi-cli --bin uniffi-bindgen --release
+
       - name: Build Android targets
         run: |
           cargo ndk --target aarch64-linux-android --platform 21 build --release --features uniffi
@@ -177,7 +180,7 @@ jobs:
       - name: Generate Kotlin bindings
         run: |
           mkdir -p target/android/kotlin
-          cargo run --features uniffi-cli --bin uniffi-bindgen -- generate \
+          ./target/release/uniffi-bindgen generate \
             --library target/aarch64-linux-android/release/libcooklang_import.so \
             --language kotlin \
             --out-dir target/android/kotlin
