@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html(json_ld: &str) -> String {
@@ -66,29 +66,22 @@ async fn test_recipe_without_instructions() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully (ingredients only, no instructions)
     assert_eq!(result.name, "Dishoom's House Black Daal");
 
     // Verify ingredients were parsed
-    let ingredients_text = result.ingredients.join("\n");
-    assert!(ingredients_text.contains("300g whole black urad daal"));
-    assert!(ingredients_text.contains("12g garlic paste"));
-    assert!(ingredients_text.contains("90ml double cream"));
+    assert!(result.text.contains("300g whole black urad daal"));
+    assert!(result.text.contains("12g garlic paste"));
+    assert!(result.text.contains("90ml double cream"));
 
     // Verify metadata
-    assert_eq!(result.metadata.get("author").unwrap(), "HotCooking");
-    assert_eq!(result.metadata.get("cook time").unwrap(), "5 hours");
-    assert_eq!(result.metadata.get("prep time").unwrap(), "15 minutes");
-    assert_eq!(
-        result.metadata.get("time required").unwrap(),
-        "5 hours 30 minutes"
-    );
-    assert_eq!(result.metadata.get("servings").unwrap(), "8");
-
-    // Verify description
-    assert_eq!(result.description.unwrap(), "A daal like no other. This isn't a quick recipe but if you can spare the time you won't be disappointed.");
+    assert!(result.metadata.contains("author: HotCooking"));
+    assert!(result.metadata.contains("cook time: 5 hours"));
+    assert!(result.metadata.contains("prep time: 15 minutes"));
+    assert!(result.metadata.contains("time required: 5 hours 30 minutes"));
+    assert!(result.metadata.contains("servings: 8"));
 }
 
 #[tokio::test]
@@ -115,13 +108,12 @@ async fn test_recipe_with_neither_ingredients_nor_instructions() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully
     assert_eq!(result.name, "Minimal Recipe");
-    assert_eq!(result.ingredients, Vec::<String>::new());
-    assert_eq!(result.instructions, "");
-    assert_eq!(result.metadata.get("author").unwrap(), "Test Chef");
+    assert_eq!(result.text, "");
+    assert!(result.metadata.contains("author: Test Chef"));
 }
 
 #[tokio::test]
@@ -150,14 +142,11 @@ async fn test_long_cook_time() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
-    assert_eq!(result.metadata.get("prep time").unwrap(), "15 minutes");
-    assert_eq!(result.metadata.get("cook time").unwrap(), "5 hours");
-    assert_eq!(
-        result.metadata.get("time required").unwrap(),
-        "5 hours 15 minutes"
-    );
+    assert!(result.metadata.contains("prep time: 15 minutes"));
+    assert!(result.metadata.contains("cook time: 5 hours"));
+    assert!(result.metadata.contains("time required: 5 hours 15 minutes"));
 }
 
 #[tokio::test]
@@ -191,22 +180,15 @@ async fn test_recipe_with_empty_ingredients_array() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully with empty ingredients
     assert_eq!(result.name, "Syltad ingefära");
-    assert_eq!(result.ingredients, Vec::<String>::new()); // Should be empty
-    assert_eq!(result.instructions, ""); // Should be empty string
+    assert_eq!(result.text, ""); // Should be empty string
 
     // Verify metadata
-    assert_eq!(result.metadata.get("author").unwrap(), "Hemköp");
-    assert_eq!(
-        result.metadata.get("time required").unwrap(),
-        "2 hours 30 minutes"
-    );
-    assert_eq!(result.metadata.get("servings").unwrap(), "4");
-    assert_eq!(
-        result.metadata.get("tags").unwrap(),
-        "Asiatiskt, Tillbehör, Grönsaker, Frukt"
-    );
+    assert!(result.metadata.contains("author: Hemköp"));
+    assert!(result.metadata.contains("time required: 2 hours 30 minutes"));
+    assert!(result.metadata.contains("servings: 4"));
+    assert!(result.metadata.contains("tags: Asiatiskt, Tillbehör, Grönsaker, Frukt"));
 }

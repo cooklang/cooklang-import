@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html(json_ld: &str) -> String {
@@ -83,24 +83,23 @@ async fn test_author_with_only_id() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully
     assert_eq!(result.name, "BLT Pasta Salad");
 
     // Author should not be in metadata since it only had an @id
-    assert!(!result.metadata.contains_key("author"));
+    assert!(!result.metadata.contains("author:"));
 
     // Other metadata should be present
-    assert_eq!(result.metadata.get("prep time").unwrap(), "10 minutes");
-    assert_eq!(result.metadata.get("time required").unwrap(), "40 minutes");
-    assert_eq!(result.metadata.get("course").unwrap(), "Salad, Side Dish");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "American");
-    assert_eq!(result.metadata.get("servings").unwrap(), "10");
-    assert_eq!(
-        result.metadata.get("tags").unwrap(),
-        "Barbecue, BLT pasta salad, Food for a Crowd, pasta, pasta salad, Potluck"
-    );
+    assert!(result.metadata.contains("prep time: 10 minutes"));
+    assert!(result.metadata.contains("time required: 40 minutes"));
+    assert!(result.metadata.contains("course: Salad, Side Dish"));
+    assert!(result.metadata.contains("cuisine: American"));
+    assert!(result.metadata.contains("servings: 10"));
+    assert!(result
+        .metadata
+        .contains("tags: Barbecue, BLT pasta salad, Food for a Crowd, pasta, pasta salad, Potluck"));
 }
 
 #[tokio::test]
@@ -139,13 +138,10 @@ async fn test_mixed_authors_with_and_without_names() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Should only include authors with names
-    assert_eq!(
-        result.metadata.get("author").unwrap(),
-        "Chef One, Chef Three"
-    );
+    assert!(result.metadata.contains("author: Chef One, Chef Three"));
 }
 
 #[tokio::test]
@@ -176,8 +172,8 @@ async fn test_single_author_with_id_and_name() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Should use the name when both @id and name are present
-    assert_eq!(result.metadata.get("author").unwrap(), "Full Author Name");
+    assert!(result.metadata.contains("author: Full Author Name"));
 }

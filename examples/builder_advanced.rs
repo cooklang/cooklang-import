@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Latency: {}ms", meta.latency_ms);
             }
         }
-        ImportResult::Recipe(_) => unreachable!(),
+        ImportResult::Components(_) => unreachable!(),
     }
 
     // Example 2: Custom provider (requires config.toml)
@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //         println!("Successfully imported recipe with Anthropic:");
     //         println!("{}", cooklang);
     //     }
-    //     ImportResult::Recipe(_) => unreachable!(),
+    //     ImportResult::Components(_) => unreachable!(),
     // }
 
     // Example 2: Error handling

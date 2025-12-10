@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 #[tokio::test]
@@ -12,23 +12,22 @@ async fn test_acouplecooks_cloudflare_bypass() {
 
     println!("Attempting to fetch recipe from: {}", url);
 
-    match fetch_recipe(url).await {
-        Ok(recipe) => {
+    match url_to_recipe(url).await {
+        Ok(result) => {
             println!("Successfully bypassed Cloudflare and parsed recipe!");
-            println!("Name: {}", recipe.name);
+            println!("Name: {}", result.name);
 
             // Verify we got the correct recipe
-            assert_eq!(recipe.name, "Apple Cranberry Crisp");
-            assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
+            assert_eq!(result.name, "Apple Cranberry Crisp");
+            assert!(!result.text.is_empty());
 
             // Verify some specific content to ensure we didn't just get a title from metadata
-            let all_content = format!("{}\n{}", recipe.ingredients.join("\n"), recipe.instructions);
-            assert!(all_content.contains("cranberries"));
-            assert!(all_content.contains("sugar"));
+            assert!(result.text.contains("cranberries"));
+            assert!(result.text.contains("sugar"));
 
             // Check metadata
-            assert_eq!(recipe.metadata.get("author").unwrap(), "Sonja Overhiser");
-            assert!(recipe.metadata.contains_key("cook time"));
+            assert!(result.metadata.contains("author: Sonja Overhiser"));
+            assert!(result.metadata.contains("cook time:"));
         }
         Err(e) => {
             panic!("Failed to fetch recipe (Cloudflare bypass failed?): {}", e);

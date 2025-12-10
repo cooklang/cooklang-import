@@ -4,7 +4,8 @@ use crate::{
     config::{load_config, ProviderConfig},
     converters::{self, ConversionMetadata, Converter},
     images_to_text::ImageSource,
-    ImportError, Recipe,
+    pipelines::RecipeComponents,
+    ImportError,
 };
 
 /// Represents the input source for a recipe
@@ -38,8 +39,8 @@ pub enum ImportResult {
         /// Metadata about the LLM conversion (model, tokens, latency)
         conversion_metadata: Option<ConversionMetadata>,
     },
-    /// Recipe struct (markdown format) - no conversion metadata since no LLM was used
-    Recipe(Recipe),
+    /// Recipe components (text, metadata, name) - no conversion metadata since no LLM was used
+    Components(RecipeComponents),
 }
 
 /// Optional LLM provider configuration
@@ -313,7 +314,7 @@ impl RecipeImporterBuilder {
         })?;
 
         // Route to the appropriate pipeline based on input source
-        let result = match source {
+        let components = match source {
             InputSource::Url(url) => crate::pipelines::url::process(&url)
                 .await
                 .map_err(|e| ImportError::BuilderError(e.to_string()))?,
@@ -331,81 +332,45 @@ impl RecipeImporterBuilder {
         match self.mode {
             OutputMode::Cooklang => {
                 // Convert to Cooklang format using a converter
-                let (content, conversion_metadata) = self.convert_to_cooklang(&result).await?;
+                let (content, conversion_metadata) =
+                    self.convert_to_cooklang(&components).await?;
                 Ok(ImportResult::Cooklang {
                     content,
                     conversion_metadata: Some(conversion_metadata),
                 })
             }
-            OutputMode::Recipe => {
-                // Parse the result back into a Recipe struct
-                let (mut metadata, body) = Recipe::parse_text_format(&result);
-
-                // Split body into ingredients and instructions
-                // The format is: ingredients (one per line) + blank line + instructions
-                let parts: Vec<&str> = body.splitn(2, "\n\n").collect();
-                let (ingredients, instructions) = if parts.len() == 2 {
-                    let ingredients = parts[0]
-                        .lines()
-                        .filter(|l| !l.trim().is_empty())
-                        .map(|l| l.to_string())
-                        .collect();
-                    (ingredients, parts[1].to_string())
-                } else {
-                    // If no blank line separator, treat everything as instructions
-                    (vec![], body)
-                };
-
-                // Extract image array from metadata if present
-                let image = if let Some(img_str) = metadata.remove("__image__") {
-                    // Images are stored as comma-separated string
-                    img_str
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                } else {
-                    vec![]
-                };
-
-                let recipe = Recipe {
-                    name: metadata.remove("title").unwrap_or_default(),
-                    description: metadata.remove("description"),
-                    image,
-                    metadata,
-                    ingredients,
-                    instructions,
-                };
-                Ok(ImportResult::Recipe(recipe))
-            }
+            OutputMode::Recipe => Ok(ImportResult::Components(components)),
         }
     }
 
-    /// Convert intermediate text format to Cooklang using configured converter
+    /// Convert RecipeComponents to Cooklang using configured converter
     async fn convert_to_cooklang(
         &self,
-        text: &str,
+        components: &RecipeComponents,
     ) -> Result<(String, ConversionMetadata), ImportError> {
-        // Parse the text to separate metadata and body
-        let (metadata, body) = Recipe::parse_text_format(text);
-
         // Get converter configuration
         let converter = self.get_converter().await?;
 
-        // Convert the body (ingredients + instructions) to Cooklang
+        // Convert the text (ingredients + instructions) to Cooklang
         let conversion_result = converter
-            .convert(&body)
+            .convert(&components.text)
             .await
             .map_err(|e| ImportError::ConversionError(e.to_string()))?;
 
-        // Reassemble with YAML frontmatter
+        // Build YAML frontmatter from metadata and name
         let mut output = String::new();
-        if !metadata.is_empty() {
+        let has_name = !components.name.is_empty();
+        let has_metadata = !components.metadata.is_empty();
+
+        if has_name || has_metadata {
             output.push_str("---\n");
-            for (key, value) in &metadata {
-                // Skip internal metadata fields
-                if !key.starts_with("__") {
-                    output.push_str(&format!("{}: {}\n", key, value));
+            if has_name {
+                output.push_str(&format!("title: {}\n", components.name));
+            }
+            if has_metadata {
+                output.push_str(&components.metadata);
+                if !components.metadata.ends_with('\n') {
+                    output.push('\n');
                 }
             }
             output.push_str("---\n\n");

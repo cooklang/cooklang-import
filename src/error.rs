@@ -27,6 +27,10 @@ pub enum ImportError {
     #[error("Builder error: {0}")]
     BuilderError(String),
 
+    /// Extraction error (from URL, image, or text)
+    #[error("Extraction failed: {0}")]
+    ExtractionError(String),
+
     /// Error parsing HTTP headers
     #[error("Header parse error: {0}")]
     HeaderError(#[from] reqwest::header::InvalidHeaderValue),

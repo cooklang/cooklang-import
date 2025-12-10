@@ -3,76 +3,43 @@
 //! This module provides FFI-compatible types and functions for use with iOS and Android.
 //! It wraps the async Rust API with synchronous functions that manage their own tokio runtime.
 
-use std::collections::HashMap;
 use std::fmt;
 use std::time::Duration;
 
-use crate::{ImportError, Recipe};
+use crate::{ImportError, RecipeComponents};
 
 // Re-export UniFFI macro
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
-/// FFI-compatible recipe structure
+/// FFI-compatible recipe components structure
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-pub struct FfiRecipe {
+pub struct FfiRecipeComponents {
+    /// Recipe text (ingredients + instructions)
+    pub text: String,
+    /// YAML-formatted metadata (without --- delimiters)
+    pub metadata: String,
     /// Recipe name/title
     pub name: String,
-    /// Recipe description (empty string if none)
-    pub description: String,
-    /// List of image URLs
-    pub images: Vec<String>,
-    /// List of ingredients
-    pub ingredients: Vec<String>,
-    /// Recipe instructions
-    pub instructions: String,
-    /// Metadata as key-value pairs
-    pub metadata: Vec<FfiKeyValue>,
 }
 
-/// Key-value pair for metadata (since HashMap isn't directly supported in UniFFI)
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-pub struct FfiKeyValue {
-    pub key: String,
-    pub value: String,
-}
-
-impl From<Recipe> for FfiRecipe {
-    fn from(recipe: Recipe) -> Self {
-        FfiRecipe {
-            name: recipe.name,
-            description: recipe.description.unwrap_or_default(),
-            images: recipe.image,
-            ingredients: recipe.ingredients,
-            instructions: recipe.instructions,
-            metadata: recipe
-                .metadata
-                .into_iter()
-                .map(|(key, value)| FfiKeyValue { key, value })
-                .collect(),
+impl From<RecipeComponents> for FfiRecipeComponents {
+    fn from(components: RecipeComponents) -> Self {
+        FfiRecipeComponents {
+            text: components.text,
+            metadata: components.metadata,
+            name: components.name,
         }
     }
 }
 
-impl From<FfiRecipe> for Recipe {
-    fn from(ffi: FfiRecipe) -> Self {
-        Recipe {
+impl From<FfiRecipeComponents> for RecipeComponents {
+    fn from(ffi: FfiRecipeComponents) -> Self {
+        RecipeComponents {
+            text: ffi.text,
+            metadata: ffi.metadata,
             name: ffi.name,
-            description: if ffi.description.is_empty() {
-                None
-            } else {
-                Some(ffi.description)
-            },
-            image: ffi.images,
-            ingredients: ffi.ingredients,
-            instructions: ffi.instructions,
-            metadata: ffi
-                .metadata
-                .into_iter()
-                .map(|kv| (kv.key, kv.value))
-                .collect(),
         }
     }
 }
@@ -106,8 +73,8 @@ impl From<FfiLlmProvider> for crate::LlmProvider {
 pub enum FfiImportResult {
     /// Recipe converted to Cooklang format
     Cooklang { content: String },
-    /// Recipe extracted but not converted
-    Recipe { recipe: FfiRecipe },
+    /// Recipe components extracted but not converted
+    Components { components: FfiRecipeComponents },
 }
 
 /// FFI-compatible error type
@@ -166,6 +133,7 @@ impl From<ImportError> for FfiImportError {
             ImportError::ConversionError(msg) => FfiImportError::ConversionError { message: msg },
             ImportError::InvalidMarkdown(msg) => FfiImportError::InvalidInput { message: msg },
             ImportError::BuilderError(msg) => FfiImportError::BuilderError { message: msg },
+            ImportError::ExtractionError(msg) => FfiImportError::ParseError { message: msg },
             ImportError::HeaderError(e) => FfiImportError::FetchError {
                 message: e.to_string(),
             },
@@ -251,8 +219,8 @@ async fn import_from_url_async(
 
     Ok(match result {
         crate::ImportResult::Cooklang { content, .. } => FfiImportResult::Cooklang { content },
-        crate::ImportResult::Recipe(recipe) => FfiImportResult::Recipe {
-            recipe: recipe.into(),
+        crate::ImportResult::Components(components) => FfiImportResult::Components {
+            components: components.into(),
         },
     })
 }
@@ -298,8 +266,8 @@ async fn convert_text_async(
 
     match result {
         crate::ImportResult::Cooklang { content, .. } => Ok(content),
-        crate::ImportResult::Recipe(_) => Err(FfiImportError::BuilderError {
-            message: "Unexpected recipe result when converting text".to_string(),
+        crate::ImportResult::Components(_) => Err(FfiImportError::BuilderError {
+            message: "Unexpected components result when converting text".to_string(),
         }),
     }
 }
@@ -345,44 +313,42 @@ async fn convert_image_async(
 
     match result {
         crate::ImportResult::Cooklang { content, .. } => Ok(content),
-        crate::ImportResult::Recipe(_) => Err(FfiImportError::BuilderError {
-            message: "Unexpected recipe result when converting image".to_string(),
+        crate::ImportResult::Components(_) => Err(FfiImportError::BuilderError {
+            message: "Unexpected components result when converting image".to_string(),
         }),
     }
 }
 
-/// Extract a recipe from a URL without converting to Cooklang format
+/// Extract recipe components from a URL without converting to Cooklang format
 ///
 /// # Arguments
 /// * `url` - The URL of the recipe webpage
 /// * `timeout_seconds` - Optional timeout in seconds
 ///
 /// # Returns
-/// An `FfiRecipe` struct containing the extracted recipe data
+/// An `FfiRecipeComponents` struct containing the extracted recipe data
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn extract_recipe_from_url(
     url: String,
     timeout_seconds: Option<u64>,
-) -> Result<FfiRecipe, FfiImportError> {
+) -> Result<FfiRecipeComponents, FfiImportError> {
     let rt = create_runtime()?;
     rt.block_on(async {
-        let timeout = timeout_seconds.map(Duration::from_secs);
-        let recipe = crate::fetch_recipe_with_timeout(&url, timeout).await?;
-        Ok(recipe.into())
-    })
-}
+        let mut builder = crate::RecipeImporter::builder().url(&url).extract_only();
 
-/// Generate Cooklang frontmatter from metadata
-///
-/// # Arguments
-/// * `metadata` - List of key-value pairs
-///
-/// # Returns
-/// A string containing the frontmatter in Cooklang format
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn generate_frontmatter(metadata: Vec<FfiKeyValue>) -> String {
-    let map: HashMap<String, String> = metadata.into_iter().map(|kv| (kv.key, kv.value)).collect();
-    crate::generate_frontmatter(&map)
+        if let Some(timeout_secs) = timeout_seconds {
+            builder = builder.timeout(Duration::from_secs(timeout_secs));
+        }
+
+        let result = builder.build().await?;
+
+        match result {
+            crate::ImportResult::Components(components) => Ok(components.into()),
+            crate::ImportResult::Cooklang { .. } => Err(FfiImportError::BuilderError {
+                message: "Unexpected Cooklang result when extracting".to_string(),
+            }),
+        }
+    })
 }
 
 /// Simple import from URL with default settings
@@ -399,7 +365,7 @@ pub fn generate_frontmatter(metadata: Vec<FfiKeyValue>) -> String {
 pub fn simple_import(url: String) -> Result<String, FfiImportError> {
     import_from_url(url, None).map(|result| match result {
         FfiImportResult::Cooklang { content } => content,
-        FfiImportResult::Recipe { recipe } => recipe.instructions,
+        FfiImportResult::Components { components } => components.text,
     })
 }
 
@@ -432,53 +398,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ffi_recipe_conversion() {
-        let recipe = Recipe {
+    fn test_ffi_recipe_components_conversion() {
+        let components = RecipeComponents {
+            text: "2 eggs\n1 cup flour\n\nMix together and bake.".to_string(),
+            metadata: "author: Chef".to_string(),
             name: "Test Recipe".to_string(),
-            description: Some("A test".to_string()),
-            image: vec!["http://example.com/image.jpg".to_string()],
-            ingredients: vec!["2 eggs".to_string(), "1 cup flour".to_string()],
-            instructions: "Mix together and bake.".to_string(),
-            metadata: [("author".to_string(), "Chef".to_string())]
-                .into_iter()
-                .collect(),
         };
 
-        let ffi_recipe: FfiRecipe = recipe.clone().into();
-        assert_eq!(ffi_recipe.name, "Test Recipe");
-        assert_eq!(ffi_recipe.description, "A test");
-        assert_eq!(ffi_recipe.images.len(), 1);
-        assert_eq!(ffi_recipe.ingredients.len(), 2);
-        assert_eq!(ffi_recipe.metadata.len(), 1);
+        let ffi_components: FfiRecipeComponents = components.clone().into();
+        assert_eq!(ffi_components.name, "Test Recipe");
+        assert_eq!(ffi_components.metadata, "author: Chef");
+        assert!(ffi_components.text.contains("2 eggs"));
 
-        let back: Recipe = ffi_recipe.into();
-        assert_eq!(back.name, recipe.name);
-        assert_eq!(back.description, recipe.description);
-        assert_eq!(back.ingredients, recipe.ingredients);
-        assert_eq!(back.instructions, recipe.instructions);
+        let back: RecipeComponents = ffi_components.into();
+        assert_eq!(back.name, components.name);
+        assert_eq!(back.metadata, components.metadata);
+        assert_eq!(back.text, components.text);
     }
 
     #[test]
     fn test_get_version() {
         let version = get_version();
         assert!(!version.is_empty());
-    }
-
-    #[test]
-    fn test_generate_frontmatter_ffi() {
-        let metadata = vec![
-            FfiKeyValue {
-                key: "author".to_string(),
-                value: "Chef".to_string(),
-            },
-            FfiKeyValue {
-                key: "servings".to_string(),
-                value: "4".to_string(),
-            },
-        ];
-
-        let frontmatter = generate_frontmatter(metadata);
-        assert!(frontmatter.contains("author: Chef"));
-        assert!(frontmatter.contains("servings: 4"));
     }
 }

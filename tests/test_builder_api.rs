@@ -1,6 +1,5 @@
 use cooklang_import::{
-    convert_text_to_cooklang, extract_recipe_from_url, import_from_url, ImportResult,
-    RecipeImporter,
+    text_to_cooklang, url_to_recipe, ImportResult, RecipeComponents, RecipeImporter,
 };
 
 /// Test Use Case 1: URL → Cooklang with builder API
@@ -19,7 +18,7 @@ async fn test_builder_url_to_cooklang() {
             assert!(!content.is_empty());
             assert!(content.contains(">>"));
         }
-        ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
+        ImportResult::Components(_) => panic!("Expected Cooklang result"),
     }
 }
 
@@ -36,10 +35,10 @@ async fn test_builder_url_to_recipe() {
 
     assert!(result.is_ok());
     match result.unwrap() {
-        ImportResult::Recipe(recipe) => {
-            assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
+        ImportResult::Components(components) => {
+            assert!(!components.text.is_empty());
         }
-        ImportResult::Cooklang { .. } => panic!("Expected Recipe result"),
+        ImportResult::Cooklang { .. } => panic!("Expected Components result"),
     }
 }
 
@@ -58,44 +57,35 @@ async fn test_builder_content_to_cooklang() {
             assert!(!content.is_empty());
             assert!(content.contains(">>"));
         }
-        ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
+        ImportResult::Components(_) => panic!("Expected Cooklang result"),
     }
 }
 
-/// Test convenience function: import_from_url
+/// Test convenience function: url_to_recipe
 /// This test is ignored by default since it requires network access
 #[tokio::test]
 #[ignore]
-async fn test_convenience_import_from_url() {
-    let result = import_from_url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await;
+async fn test_convenience_url_to_recipe() {
+    let result = url_to_recipe("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await;
 
     assert!(result.is_ok());
-    let cooklang = result.unwrap();
-    assert!(!cooklang.is_empty());
-    assert!(cooklang.contains(">>"));
+    let components = result.unwrap();
+    assert!(!components.text.is_empty());
+    assert!(!components.name.is_empty());
 }
 
-/// Test convenience function: extract_recipe_from_url
-/// This test is ignored by default since it requires network access
-#[tokio::test]
-#[ignore]
-async fn test_convenience_extract_recipe_from_url() {
-    let result =
-        extract_recipe_from_url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await;
-
-    assert!(result.is_ok());
-    let recipe = result.unwrap();
-    assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
-}
-
-/// Test convenience function: convert_text_to_cooklang with structured content
+/// Test convenience function: text_to_cooklang with structured content
 /// This test is ignored by default since it requires OpenAI API key
 #[tokio::test]
 #[ignore]
-async fn test_convenience_convert_text_to_cooklang_with_content() {
-    let content = "2 eggs\n1 cup flour\n1/2 cup milk\n\nMix all ingredients together. Bake at 350°F for 30 minutes.";
+async fn test_convenience_text_to_cooklang_with_content() {
+    let components = RecipeComponents {
+        text: "2 eggs\n1 cup flour\n1/2 cup milk\n\nMix all ingredients together. Bake at 350°F for 30 minutes.".to_string(),
+        metadata: String::new(),
+        name: "Simple Recipe".to_string(),
+    };
 
-    let result = convert_text_to_cooklang(content).await;
+    let result = text_to_cooklang(&components).await;
 
     assert!(result.is_ok());
     let cooklang = result.unwrap();
@@ -119,21 +109,22 @@ async fn test_builder_text_to_cooklang() {
             assert!(!content.is_empty());
             assert!(content.contains(">>"));
         }
-        ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
+        ImportResult::Components(_) => panic!("Expected Cooklang result"),
     }
 }
 
-/// Test convenience function: convert_text_to_cooklang
+/// Test convenience function: text_to_cooklang
 /// This test is ignored by default since it requires OpenAI API key
 #[tokio::test]
 #[ignore]
-async fn test_convenience_convert_text_to_cooklang() {
-    use cooklang_import::convert_text_to_cooklang;
+async fn test_convenience_text_to_cooklang() {
+    let components = RecipeComponents {
+        text: "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350°F for 30 minutes.".to_string(),
+        metadata: String::new(),
+        name: String::new(),
+    };
 
-    let recipe_text =
-        "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350°F for 30 minutes.";
-
-    let result = convert_text_to_cooklang(recipe_text).await;
+    let result = text_to_cooklang(&components).await;
 
     assert!(result.is_ok());
     let cooklang = result.unwrap();
@@ -244,45 +235,28 @@ async fn test_builder_with_anthropic_provider() {
             assert!(!content.is_empty());
             assert!(content.contains(">>"));
         }
-        ImportResult::Recipe(_) => panic!("Expected Cooklang result"),
+        ImportResult::Components(_) => panic!("Expected Cooklang result"),
     }
 }
 
-/// Test direct fetch_recipe_with_timeout function
+/// Test builder with timeout (replacement for fetch_recipe_with_timeout)
 #[tokio::test]
 #[ignore] // Requires network
-async fn test_fetch_recipe_with_timeout() {
+async fn test_builder_with_timeout_extract_only() {
     use std::time::Duration;
 
-    let result = cooklang_import::fetch_recipe_with_timeout(
-        "https://www.bbcgoodfood.com/recipes/classic-cottage-pie",
-        Some(Duration::from_secs(30)),
-    )
-    .await;
+    let result = RecipeImporter::builder()
+        .url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie")
+        .timeout(Duration::from_secs(30))
+        .extract_only()
+        .build()
+        .await;
 
     assert!(result.is_ok());
-    let recipe = result.unwrap();
-    assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
-}
-
-/// Test direct convert_recipe_with_provider function
-#[tokio::test]
-#[ignore] // Requires API key
-async fn test_convert_recipe_with_provider() {
-    use cooklang_import::{convert_recipe_with_provider, Recipe};
-
-    let recipe = Recipe {
-        name: "Test Recipe".to_string(),
-        ingredients: vec!["2 eggs".to_string(), "1 cup flour".to_string()],
-        instructions: "Mix and bake".to_string(),
-        ..Default::default()
-    };
-
-    // Test with default (OpenAI via env vars)
-    let result = convert_recipe_with_provider(&recipe, None).await;
-    assert!(result.is_ok());
-
-    // Test with explicit OpenAI provider
-    let result = convert_recipe_with_provider(&recipe, Some("openai")).await;
-    assert!(result.is_ok());
+    match result.unwrap() {
+        ImportResult::Components(components) => {
+            assert!(!components.text.is_empty());
+        }
+        ImportResult::Cooklang { .. } => panic!("Expected Components result"),
+    }
 }

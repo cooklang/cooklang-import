@@ -1,3 +1,4 @@
+use super::RecipeComponents;
 use crate::url_to_text::fetchers::{ChromeFetcher, RequestFetcher};
 use crate::url_to_text::html::extractors::{
     Extractor, HtmlClassExtractor, JsonLdExtractor, MicroDataExtractor, ParsingContext,
@@ -14,15 +15,15 @@ use std::time::Duration;
 /// 2. Tries HTML extractors (json_ld, microdata, html_class) in order
 /// 3. Falls back to ChromeFetcher (if available) or plain text extraction
 /// 4. Uses TextExtractor for plain text extraction
-/// 5. Returns the Recipe's to_text_with_metadata() output
+/// 5. Returns RecipeComponents with separated text, metadata, and name
 ///
 /// # Arguments
 /// * `url` - The URL to fetch and process
 ///
 /// # Returns
-/// * `Ok(String)` - The extracted recipe in text format with metadata
+/// * `Ok(RecipeComponents)` - The extracted recipe components
 /// * `Err(...)` - If all extraction methods fail
-pub async fn process(url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     // 1. Fetch HTML
     let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
     let html_content = fetcher.fetch(url).await?;
@@ -43,7 +44,7 @@ pub async fn process(url: &str) -> Result<String, Box<dyn Error + Send + Sync>> 
 
     for extractor in extractors {
         if let Ok(recipe) = extractor.parse(&context) {
-            return Ok(recipe.to_text_with_metadata());
+            return Ok(recipe_to_components(&recipe));
         }
     }
 
@@ -61,8 +62,61 @@ pub async fn process(url: &str) -> Result<String, Box<dyn Error + Send + Sync>> 
     // 4. Use TextExtractor to parse the plain text
     let text_with_metadata = TextExtractor::extract(&plain_text, url).await?;
 
-    // For now, return the text as-is (conversion will be added later)
-    Ok(text_with_metadata)
+    // Parse the text format and return as components
+    Ok(parse_text_to_components(&text_with_metadata))
+}
+
+/// Convert a Recipe to RecipeComponents
+fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
+    // Build text from ingredients and instructions
+    let mut text = String::new();
+    for ingredient in &recipe.ingredients {
+        text.push_str(ingredient);
+        text.push('\n');
+    }
+    if !recipe.ingredients.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(&recipe.instructions);
+
+    // Build metadata YAML (without --- delimiters)
+    let mut metadata_lines = Vec::new();
+    if let Some(desc) = &recipe.description {
+        metadata_lines.push(format!("description: {}", desc));
+    }
+    if !recipe.image.is_empty() {
+        metadata_lines.push(format!("image: {}", recipe.image.join(", ")));
+    }
+    for (key, value) in &recipe.metadata {
+        metadata_lines.push(format!("{}: {}", key, value));
+    }
+
+    RecipeComponents {
+        text,
+        metadata: metadata_lines.join("\n"),
+        name: recipe.name.clone(),
+    }
+}
+
+/// Parse text format (with optional frontmatter) into RecipeComponents
+fn parse_text_to_components(text: &str) -> RecipeComponents {
+    let (metadata_map, body) = crate::model::Recipe::parse_text_format(text);
+
+    // Extract name from metadata
+    let name = metadata_map.get("title").cloned().unwrap_or_default();
+
+    // Build metadata string excluding title (since it's in name field)
+    let metadata_lines: Vec<String> = metadata_map
+        .iter()
+        .filter(|(k, _)| *k != "title")
+        .map(|(k, v)| format!("{}: {}", k, v))
+        .collect();
+
+    RecipeComponents {
+        text: body,
+        metadata: metadata_lines.join("\n"),
+        name,
+    }
 }
 
 /// Simple text extraction from HTML

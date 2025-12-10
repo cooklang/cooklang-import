@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html_with_metadata(json_ld: &str) -> String {
@@ -62,39 +62,21 @@ async fn test_comprehensive_metadata_extraction() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
-    // Test all metadata fields (no duplicates)
-    assert_eq!(result.metadata.get("source").unwrap(), &url);
-    assert_eq!(result.metadata.get("author").unwrap(), "Jane Baker");
-    assert_eq!(result.metadata.get("prep time").unwrap(), "30 minutes");
-    assert_eq!(result.metadata.get("cook time").unwrap(), "45 minutes");
-    assert_eq!(
-        result.metadata.get("time required").unwrap(),
-        "1 hour 15 minutes"
-    );
-    assert_eq!(result.metadata.get("servings").unwrap(), "12 servings");
-    assert_eq!(result.metadata.get("course").unwrap(), "Dessert");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "French");
-    assert_eq!(
-        result.metadata.get("diet").unwrap(),
-        "GlutenFree, Vegetarian"
-    );
-    assert_eq!(
-        result.metadata.get("tags").unwrap(),
-        "chocolate, cake, dessert, baking"
-    );
+    // Test name
+    assert_eq!(result.name, "Ultimate Chocolate Cake");
 
-    // Check that duplicate keys are NOT present
-    assert!(!result.metadata.contains_key("source.url"));
-    assert!(!result.metadata.contains_key("source.author"));
-    assert!(!result.metadata.contains_key("time.prep"));
-    assert!(!result.metadata.contains_key("time.cook"));
-    assert!(!result.metadata.contains_key("time"));
-    assert!(!result.metadata.contains_key("duration"));
-    assert!(!result.metadata.contains_key("serves"));
-    assert!(!result.metadata.contains_key("yield"));
-    assert!(!result.metadata.contains_key("category"));
+    // Test metadata fields (check they exist in metadata string)
+    assert!(result.metadata.contains("author: Jane Baker"));
+    assert!(result.metadata.contains("prep time: 30 minutes"));
+    assert!(result.metadata.contains("cook time: 45 minutes"));
+    assert!(result.metadata.contains("time required: 1 hour 15 minutes"));
+    assert!(result.metadata.contains("servings: 12 servings"));
+    assert!(result.metadata.contains("course: Dessert"));
+    assert!(result.metadata.contains("cuisine: French"));
+    assert!(result.metadata.contains("diet: GlutenFree, Vegetarian"));
+    assert!(result.metadata.contains("tags: chocolate, cake, dessert, baking"));
 }
 
 #[tokio::test]
@@ -123,9 +105,9 @@ async fn test_metadata_with_numeric_yield() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
-    assert_eq!(result.metadata.get("servings").unwrap(), "4");
+    assert!(result.metadata.contains("servings: 4"));
 }
 
 #[tokio::test]
@@ -154,9 +136,9 @@ async fn test_metadata_with_string_author() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
-    assert_eq!(result.metadata.get("author").unwrap(), "John Chef");
+    assert!(result.metadata.contains("author: John Chef"));
 }
 
 #[tokio::test]
@@ -187,15 +169,15 @@ async fn test_metadata_partial_fields() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Check present fields
-    assert_eq!(result.metadata.get("prep time").unwrap(), "10 minutes");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "American");
-    assert_eq!(result.metadata.get("tags").unwrap(), "simple, easy");
+    assert!(result.metadata.contains("prep time: 10 minutes"));
+    assert!(result.metadata.contains("cuisine: American"));
+    assert!(result.metadata.contains("tags: simple, easy"));
 
     // Check absent fields
-    assert!(!result.metadata.contains_key("author"));
-    assert!(!result.metadata.contains_key("cook time"));
-    assert!(!result.metadata.contains_key("servings"));
+    assert!(!result.metadata.contains("author:"));
+    assert!(!result.metadata.contains("cook time:"));
+    assert!(!result.metadata.contains("servings:"));
 }

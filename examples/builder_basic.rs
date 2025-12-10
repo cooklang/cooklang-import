@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Latency: {}ms", meta.latency_ms);
             }
         }
-        ImportResult::Recipe(_) => unreachable!(),
+        ImportResult::Components(_) => unreachable!(),
     }
 
     println!("\n=== Use Case 2: URL → Recipe (extract only) ===");
@@ -42,13 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     match result {
-        ImportResult::Recipe(recipe) => {
-            println!("Recipe name: {}", recipe.name);
-            println!("Ingredients:");
-            for ingredient in &recipe.ingredients {
-                println!("  - {}", ingredient);
-            }
-            println!("\nInstructions:\n{}", recipe.instructions);
+        ImportResult::Components(components) => {
+            println!("Recipe name: {}", components.name);
+            println!("\nText:\n{}", components.text);
+            println!("\nMetadata:\n{}", components.metadata);
         }
         ImportResult::Cooklang { .. } => unreachable!(),
     }
@@ -81,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Converted to Cooklang:");
             println!("{}", content);
         }
-        ImportResult::Recipe(_) => unreachable!(),
+        ImportResult::Components(_) => unreachable!(),
     }
 
     Ok(())

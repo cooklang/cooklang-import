@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 #[tokio::test]
@@ -8,23 +8,20 @@ async fn test_shahi_paneer_recipe() {
     let _ = env_logger::try_init();
 
     let url = "https://amateurprochef.com/2024/09/07/shahi-paneer-2/";
-    match fetch_recipe(url).await {
-        Ok(recipe) => {
+    match url_to_recipe(url).await {
+        Ok(result) => {
             println!("Recipe parsed successfully!");
-            println!("Name: {}", recipe.name);
-            println!("Metadata: {:?}", recipe.metadata);
+            println!("Name: {}", result.name);
+            println!("Metadata: {}", result.metadata);
 
             // Verify the recipe was parsed
-            assert!(recipe.name.contains("Shahi Paneer"));
-            assert!(!recipe.ingredients.is_empty() || !recipe.instructions.is_empty());
+            assert!(result.name.contains("Shahi Paneer"));
+            assert!(!result.text.is_empty());
 
             // Check metadata
-            assert_eq!(recipe.metadata.get("author").unwrap(), "amateurprochef");
-            assert_eq!(recipe.metadata.get("cook time").unwrap(), "30 minutes");
-            assert_eq!(
-                recipe.metadata.get("course").unwrap(),
-                "All, All Things Indian"
-            );
+            assert!(result.metadata.contains("author: amateurprochef"));
+            assert!(result.metadata.contains("cook time: 30 minutes"));
+            assert!(result.metadata.contains("course: All, All Things Indian"));
         }
         Err(e) => {
             panic!("Failed to fetch recipe: {e}");

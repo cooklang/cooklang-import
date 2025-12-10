@@ -77,7 +77,7 @@ async fn test_download_mode_with_metadata() {
     assert!(stdout.contains("cuisine: Italian"));
     assert!(stdout.contains("servings: 4 servings"));
     assert!(stdout.contains("tags: test, recipe, metadata"));
-    assert!(stdout.contains(&format!("source: \"{url}\"")));
+    assert!(stdout.contains(&format!("source: {}", url)));
     assert!(stdout.contains("title: Test Recipe"));
 
     // Check that content is included
@@ -121,7 +121,7 @@ async fn test_download_mode_without_metadata() {
 
     // Should still have frontmatter with at least the source URL and title
     assert!(stdout.contains("---\n"));
-    assert!(stdout.contains(&format!("source: \"{url}\"")));
+    assert!(stdout.contains(&format!("source: {}", url)));
     assert!(stdout.contains("title: Simple Recipe"));
 
     // Check basic content

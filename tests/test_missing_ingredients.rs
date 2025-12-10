@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html(json_ld: &str) -> String {
@@ -71,24 +71,24 @@ async fn test_recipe_without_ingredients() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully without ingredients (only instructions)
     assert_eq!(result.name, "Home style Bhindi fry");
-    assert!(result.instructions.contains("In an iron kadai"));
+    assert!(result.text.contains("In an iron kadai"));
 
     // Verify metadata
-    assert_eq!(result.metadata.get("author").unwrap(), "Ranveer Brar");
-    assert_eq!(result.metadata.get("cook time").unwrap(), "15 minutes");
-    assert_eq!(result.metadata.get("prep time").unwrap(), "10 minutes");
-    assert_eq!(result.metadata.get("time required").unwrap(), "25 minutes");
-    assert_eq!(result.metadata.get("course").unwrap(), "Main Course");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "Indian");
-    assert_eq!(result.metadata.get("servings").unwrap(), "2");
+    assert!(result.metadata.contains("author: Ranveer Brar"));
+    assert!(result.metadata.contains("cook time: 15 minutes"));
+    assert!(result.metadata.contains("prep time: 10 minutes"));
+    assert!(result.metadata.contains("time required: 25 minutes"));
+    assert!(result.metadata.contains("course: Main Course"));
+    assert!(result.metadata.contains("cuisine: Indian"));
+    assert!(result.metadata.contains("servings: 2"));
 
     // Verify instructions were parsed
-    assert!(result.instructions.contains("iron kadai"));
-    assert!(result.instructions.contains("ginger green chili paste"));
+    assert!(result.text.contains("iron kadai"));
+    assert!(result.text.contains("ginger green chili paste"));
 }
 
 #[tokio::test]
@@ -117,20 +117,20 @@ async fn test_recipe_with_duration_range() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // The duration converter might not handle ranges perfectly,
     // but at least it should not crash
     assert_eq!(result.name, "Variable Cook Time Recipe");
 
     // Check that some time value is extracted (even if not perfect)
-    let cook_time = result.metadata.get("cook time");
-    assert!(cook_time.is_some());
-    println!("Cook time extracted: {cook_time:?}");
+    let has_cook_time = result.metadata.contains("cook time:");
+    assert!(has_cook_time);
+    println!("Cook time in metadata: {has_cook_time}");
 
-    let total_time = result.metadata.get("time required");
-    assert!(total_time.is_some());
-    println!("Total time extracted: {total_time:?}");
+    let has_total_time = result.metadata.contains("time required:");
+    assert!(has_total_time);
+    println!("Total time in metadata: {has_total_time}");
 }
 
 #[tokio::test]
@@ -192,31 +192,25 @@ async fn test_recipe_with_ingredient_objects() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully
     assert_eq!(result.name, "Nigella Lawson's Basque Burnt Cheesecake");
 
-    // Check ingredients formatting
-    assert_eq!(result.ingredients[0], "For the cheesecake:"); // No amount
-    assert_eq!(
-        result.ingredients[1],
-        "600g full-fat cream cheese, at room temperature"
-    );
-    assert_eq!(result.ingredients[2], "175g caster sugar");
-    assert_eq!(result.ingredients[3], "3 large eggs, at room temperature");
-    assert_eq!(result.ingredients[4], "¼ tsp fine sea salt");
+    // Check ingredients formatting in text
+    assert!(result.text.contains("For the cheesecake:")); // No amount
+    assert!(result.text.contains("600g full-fat cream cheese, at room temperature"));
+    assert!(result.text.contains("175g caster sugar"));
+    assert!(result.text.contains("3 large eggs, at room temperature"));
+    assert!(result.text.contains("¼ tsp fine sea salt"));
 
     // Verify metadata
-    assert_eq!(result.metadata.get("author").unwrap(), "Nigella Lawson");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "Spanish");
-    assert_eq!(
-        result.metadata.get("servings").unwrap(),
-        "Gives 8-12 slices"
-    );
+    assert!(result.metadata.contains("author: Nigella Lawson"));
+    assert!(result.metadata.contains("cuisine: Spanish"));
+    assert!(result.metadata.contains("servings: Gives 8-12 slices"));
 
     // Empty category array should not create metadata
-    assert!(!result.metadata.contains_key("course"));
+    assert!(!result.metadata.contains("course:"));
 }
 
 #[tokio::test]
@@ -277,21 +271,21 @@ async fn test_recipe_with_nested_sections() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully
     assert_eq!(result.name, "Sałatka z brokuła");
 
     // Check that nested instructions were extracted
-    assert!(result.instructions.contains("Brokuła umyć"));
-    assert!(result.instructions.contains("Ser feta pokroić"));
-    assert!(result.instructions.contains("Słonecznik podprażyć"));
+    assert!(result.text.contains("Brokuła umyć"));
+    assert!(result.text.contains("Ser feta pokroić"));
+    assert!(result.text.contains("Słonecznik podprażyć"));
 
     // Verify metadata
-    assert_eq!(result.metadata.get("course").unwrap(), "Brokuły");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "Kuchnia polska");
-    assert_eq!(result.metadata.get("servings").unwrap(), "1 - 2");
-    assert_eq!(result.metadata.get("time required").unwrap(), "15 minutes");
+    assert!(result.metadata.contains("course: Brokuły"));
+    assert!(result.metadata.contains("cuisine: Kuchnia polska"));
+    assert!(result.metadata.contains("servings: 1 - 2"));
+    assert!(result.metadata.contains("time required: 15 minutes"));
 }
 
 #[tokio::test]
@@ -319,11 +313,8 @@ async fn test_recipe_with_seconds_duration() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // PT5400S = 5400 seconds = 90 minutes = 1 hour 30 minutes
-    assert_eq!(
-        result.metadata.get("time required").unwrap(),
-        "1 hour 30 minutes"
-    );
+    assert!(result.metadata.contains("time required: 1 hour 30 minutes"));
 }

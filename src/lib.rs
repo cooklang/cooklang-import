@@ -3,7 +3,7 @@ pub mod config;
 pub mod converters;
 pub mod error;
 pub mod images_to_text;
-pub mod model;
+pub(crate) mod model;
 pub mod pipelines;
 pub mod url_to_text;
 
@@ -14,299 +14,166 @@ pub mod uniffi_bindings;
 #[cfg(feature = "uniffi")]
 pub use uniffi_bindings::*;
 
-// Re-exports for convenience
-pub use builder::{ImportResult, LlmProvider, RecipeImporter, RecipeImporterBuilder};
+// Public API re-exports
 pub use config::AiConfig;
 pub use converters::{ConversionMetadata, ConversionResult, TokenUsage};
 pub use error::ImportError;
 pub use images_to_text::ImageSource;
-pub use model::Recipe;
+pub use pipelines::RecipeComponents;
 
-// Convenience functions using the new architecture
+// Advanced builder API (for users who need more control)
+pub use builder::{ImportResult, LlmProvider, RecipeImporter, RecipeImporterBuilder};
 
-/// Helper function to generate YAML frontmatter from metadata
-pub fn generate_frontmatter(metadata: &std::collections::HashMap<String, String>) -> String {
-    if metadata.is_empty() {
-        return String::new();
-    }
-
-    let mut frontmatter = String::from("---\n");
-
-    // Sort keys for consistent output
-    let mut keys: Vec<_> = metadata.keys().collect();
-    keys.sort();
-
-    for key in keys {
-        if let Some(value) = metadata.get(key) {
-            // Escape values that contain special characters
-            if value.contains('\n') || value.contains('"') || value.contains(':') {
-                frontmatter.push_str(&format!("{}: \"{}\"\n", key, value.replace('"', "\\\"")));
-            } else {
-                frontmatter.push_str(&format!("{key}: {value}\n"));
-            }
-        }
-    }
-
-    frontmatter.push_str("---\n\n");
-    frontmatter
-}
-
-/// Fetches and extracts a recipe from a URL (convenience function).
+/// Extract recipe components from a URL.
 ///
-/// This is a simplified wrapper that uses the new pipeline architecture.
-/// For more control, use `RecipeImporter::builder()` directly.
+/// Returns `RecipeComponents` with text, metadata, and name fields.
+/// Empty strings are used for fields that couldn't be extracted.
 ///
 /// # Arguments
 /// * `url` - The URL of the recipe webpage to fetch
 ///
 /// # Returns
-/// A `Recipe` struct containing the extracted recipe data
+/// * `Ok(RecipeComponents)` - The extracted recipe components
+/// * `Err(ImportError)` - If the URL cannot be fetched or parsed
 ///
-/// # Errors
-/// Returns `ImportError` if the URL cannot be fetched or parsed
-pub async fn fetch_recipe(url: &str) -> Result<model::Recipe, ImportError> {
-    extract_recipe_from_url(url).await
-}
-
-/// Fetches and extracts a recipe from a URL with timeout.
-///
-/// This is a wrapper that uses the new pipeline architecture.
-/// For more control, use `RecipeImporter::builder()` directly.
-///
-/// # Arguments
-/// * `url` - The URL of the recipe webpage to fetch
-/// * `timeout` - Optional timeout for the HTTP request
-///
-/// # Returns
-/// A `Recipe` struct containing the extracted recipe data
-///
-/// # Errors
-/// Returns `ImportError` if the URL cannot be fetched or parsed
-pub async fn fetch_recipe_with_timeout(
-    url: &str,
-    timeout: Option<std::time::Duration>,
-) -> Result<model::Recipe, ImportError> {
-    let mut builder = RecipeImporter::builder().url(url).extract_only();
-
-    if let Some(t) = timeout {
-        builder = builder.timeout(t);
-    }
-
-    match builder.build().await? {
-        builder::ImportResult::Recipe(r) => Ok(r),
-        builder::ImportResult::Cooklang { .. } => unreachable!("extract_only sets Recipe mode"),
-    }
-}
-
-/// Converts a recipe to Cooklang format with explicit configuration.
-///
-/// This is a simplified wrapper that uses the new pipeline architecture.
-/// For more control, use `RecipeImporter::builder()` directly.
-///
-/// # Arguments
-/// * `recipe` - The recipe to convert
-/// * `provider_name` - Optional provider name ("openai", "anthropic", "google", "ollama", "azure_openai")
-/// * `api_key` - Optional API key to use
-/// * `model` - Optional model name to use
-///
-/// # Returns
-/// A string containing the recipe in Cooklang format, including frontmatter
-///
-/// # Errors
-/// Returns `ImportError::ConversionError` if the conversion fails
-pub async fn convert_recipe_with_config(
-    recipe: &model::Recipe,
-    provider_name: Option<&str>,
-    api_key: Option<String>,
-    model: Option<String>,
-) -> Result<String, ImportError> {
-    // Convert recipe to text format
-    let text = recipe.to_text_with_metadata();
-
-    // Use builder with provider configuration
-    let mut builder = RecipeImporter::builder().text(&text);
-
-    if let Some(name) = provider_name {
-        let provider = match name {
-            "openai" => LlmProvider::OpenAI,
-            "anthropic" => LlmProvider::Anthropic,
-            "google" => LlmProvider::Google,
-            "ollama" => LlmProvider::Ollama,
-            "azure_openai" => LlmProvider::AzureOpenAI,
-            _ => {
-                return Err(ImportError::ConversionError(format!(
-                    "Unknown provider: {}",
-                    name
-                )))
-            }
-        };
-        builder = builder.provider(provider);
-    }
-
-    if let Some(key) = api_key {
-        builder = builder.api_key(&key);
-    }
-
-    if let Some(m) = model {
-        builder = builder.model(&m);
-    }
-
-    match builder.build().await? {
-        builder::ImportResult::Cooklang { content, .. } => Ok(content),
-        builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
-    }
-}
-
-/// Converts a recipe to Cooklang format using a custom provider.
-///
-/// This is a simplified wrapper that uses the new pipeline architecture.
-/// For more control, use `RecipeImporter::builder()` directly.
-///
-/// # Arguments
-/// * `recipe` - The recipe to convert
-/// * `provider_name` - Optional provider name ("openai", "anthropic", "google", "ollama", "azure_openai")
-///   If None, uses the default provider from config
-///
-/// # Returns
-/// A string containing the recipe in Cooklang format, including frontmatter
-///
-/// # Errors
-/// Returns `ImportError::ConversionError` if the conversion fails
-/// Returns `ImportError::ConfigError` if the configuration is invalid
-pub async fn convert_recipe_with_provider(
-    recipe: &model::Recipe,
-    provider_name: Option<&str>,
-) -> Result<String, ImportError> {
-    // Convert recipe to text format
-    let text = recipe.to_text_with_metadata();
-
-    // Use builder with provider name
-    let mut builder = RecipeImporter::builder().text(&text);
-
-    if let Some(name) = provider_name {
-        let provider = match name {
-            "openai" => LlmProvider::OpenAI,
-            "anthropic" => LlmProvider::Anthropic,
-            "google" => LlmProvider::Google,
-            "ollama" => LlmProvider::Ollama,
-            "azure_openai" => LlmProvider::AzureOpenAI,
-            _ => {
-                return Err(ImportError::ConversionError(format!(
-                    "Unknown provider: {}",
-                    name
-                )))
-            }
-        };
-        builder = builder.provider(provider);
-    }
-
-    match builder.build().await? {
-        builder::ImportResult::Cooklang { content, .. } => Ok(content),
-        builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
-    }
-}
-
-/// Fetches a recipe from a URL and converts it to Cooklang format.
-///
-/// This is a convenience function that wraps the builder API for simple use cases.
-/// For more control (e.g., custom provider, timeout), use `RecipeImporter::builder()` directly.
-///
-/// # Arguments
-/// * `url` - The URL of the recipe to fetch
-///
-/// # Returns
-/// A `String` containing the recipe in Cooklang format
-///
-/// # Errors
-/// Returns `ImportError` if the URL cannot be fetched, parsed, or converted
-///
-/// # Examples
+/// # Example
 /// ```no_run
-/// use cooklang_import::import_from_url;
+/// use cooklang_import::url_to_recipe;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let cooklang = import_from_url("https://example.com/recipe").await?;
+///     let recipe = url_to_recipe("https://example.com/recipe").await?;
+///     println!("Name: {}", recipe.name);
+///     println!("Text: {}", recipe.text);
+///     Ok(())
+/// }
+/// ```
+pub async fn url_to_recipe(url: &str) -> Result<RecipeComponents, ImportError> {
+    pipelines::url::process(url)
+        .await
+        .map_err(|e| ImportError::ExtractionError(e.to_string()))
+}
+
+/// Extract recipe components from images.
+///
+/// Returns `RecipeComponents` with text extracted via OCR.
+/// Metadata contains the source info, name is typically empty.
+///
+/// Requires GOOGLE_API_KEY environment variable to be set.
+///
+/// # Arguments
+/// * `images` - Vector of image sources (paths or base64-encoded data)
+///
+/// # Returns
+/// * `Ok(RecipeComponents)` - The extracted recipe components
+/// * `Err(ImportError)` - If OCR fails
+///
+/// # Example
+/// ```no_run
+/// use cooklang_import::{image_to_recipe, ImageSource};
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let images = vec![ImageSource::Path("/path/to/recipe.jpg".to_string())];
+///     let recipe = image_to_recipe(&images).await?;
+///     println!("Text: {}", recipe.text);
+///     Ok(())
+/// }
+/// ```
+pub async fn image_to_recipe(images: &[ImageSource]) -> Result<RecipeComponents, ImportError> {
+    pipelines::image::process(images)
+        .await
+        .map_err(|e| ImportError::ExtractionError(e.to_string()))
+}
+
+/// Parse text into recipe components.
+///
+/// If `extract` is true, uses LLM to extract structured recipe data.
+/// If `extract` is false, parses the text assuming it's already formatted
+/// with optional YAML frontmatter.
+///
+/// # Arguments
+/// * `text` - The recipe text
+/// * `extract` - Whether to use LLM extraction
+///
+/// # Returns
+/// * `Ok(RecipeComponents)` - The parsed recipe components
+/// * `Err(ImportError)` - If parsing or extraction fails
+///
+/// # Example
+/// ```no_run
+/// use cooklang_import::text_to_recipe;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let text = "2 eggs\n1 cup flour\n\nMix and bake at 350F.";
+///     let recipe = text_to_recipe(text, false).await?;
+///     println!("Text: {}", recipe.text);
+///     Ok(())
+/// }
+/// ```
+pub async fn text_to_recipe(text: &str, extract: bool) -> Result<RecipeComponents, ImportError> {
+    pipelines::text::process(text, extract)
+        .await
+        .map_err(|e| ImportError::ExtractionError(e.to_string()))
+}
+
+/// Convert recipe text to Cooklang format.
+///
+/// Takes recipe text (ingredients + instructions) and converts it
+/// to Cooklang format using an LLM. Returns the Cooklang text
+/// with optional YAML frontmatter if metadata/name are provided.
+///
+/// # Arguments
+/// * `components` - The recipe components to convert
+///
+/// # Returns
+/// * `Ok(String)` - The recipe in Cooklang format
+/// * `Err(ImportError)` - If conversion fails
+///
+/// # Example
+/// ```no_run
+/// use cooklang_import::{text_to_cooklang, RecipeComponents};
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let components = RecipeComponents {
+///         text: "2 eggs\n1 cup flour\n\nMix and bake at 350F.".to_string(),
+///         metadata: String::new(),
+///         name: "Simple Cake".to_string(),
+///     };
+///     let cooklang = text_to_cooklang(&components).await?;
 ///     println!("{}", cooklang);
 ///     Ok(())
 /// }
 /// ```
-pub async fn import_from_url(url: &str) -> Result<String, ImportError> {
-    match RecipeImporter::builder().url(url).build().await? {
-        builder::ImportResult::Cooklang { content, .. } => Ok(content),
-        builder::ImportResult::Recipe(_) => unreachable!("Default mode is Cooklang"),
-    }
-}
-
-/// Fetches a recipe from a URL and returns it as a Recipe struct.
-///
-/// This extracts the recipe without converting to Cooklang format.
-/// For more control, use `RecipeImporter::builder()` directly.
-///
-/// # Arguments
-/// * `url` - The URL of the recipe to fetch
-///
-/// # Returns
-/// A `Recipe` struct containing the recipe ingredients and instructions
-///
-/// # Errors
-/// Returns `ImportError` if the URL cannot be fetched or parsed
-///
-/// # Examples
-/// ```no_run
-/// use cooklang_import::extract_recipe_from_url;
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let recipe = extract_recipe_from_url("https://example.com/recipe").await?;
-///     println!("Ingredients: {:?}", recipe.ingredients);
-///     println!("Instructions: {}", recipe.instructions);
-///     Ok(())
-/// }
-/// ```
-pub async fn extract_recipe_from_url(url: &str) -> Result<Recipe, ImportError> {
+pub async fn text_to_cooklang(components: &RecipeComponents) -> Result<String, ImportError> {
     match RecipeImporter::builder()
-        .url(url)
-        .extract_only()
+        .text(&components.text)
         .build()
         .await?
     {
-        builder::ImportResult::Recipe(r) => Ok(r),
-        builder::ImportResult::Cooklang { .. } => unreachable!("extract_only sets Recipe mode"),
-    }
-}
+        ImportResult::Cooklang { mut content, .. } => {
+            // Prepend frontmatter if we have name or metadata
+            let has_name = !components.name.is_empty();
+            let has_metadata = !components.metadata.is_empty();
 
-/// Converts plain text to Cooklang format.
-///
-/// This is a convenience function that wraps the builder API.
-/// Use this when you have a recipe in unstructured plain text format.
-/// The LLM will parse the text to extract ingredients and instructions.
-/// For more control, use `RecipeImporter::builder()` directly.
-///
-/// # Arguments
-/// * `text` - The recipe text in plain format
-///
-/// # Returns
-/// A `String` containing the recipe in Cooklang format
-///
-/// # Errors
-/// Returns `ImportError` if the text is invalid or conversion fails
-///
-/// # Examples
-/// ```no_run
-/// use cooklang_import::convert_text_to_cooklang;
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     let recipe_text = "Take 2 eggs and 1 cup of flour. Mix them together and bake at 350F for 30 minutes.";
-///     let cooklang = convert_text_to_cooklang(recipe_text).await?;
-///     println!("{}", cooklang);
-///     Ok(())
-/// }
-/// ```
-pub async fn convert_text_to_cooklang(text: &str) -> Result<String, ImportError> {
-    match RecipeImporter::builder().text(text).build().await? {
-        builder::ImportResult::Cooklang { content, .. } => Ok(content),
-        builder::ImportResult::Recipe(_) => unreachable!("Text + Cooklang mode"),
+            if has_name || has_metadata {
+                let mut frontmatter = String::from("---\n");
+                if has_name {
+                    frontmatter.push_str(&format!("title: {}\n", components.name));
+                }
+                if has_metadata {
+                    frontmatter.push_str(&components.metadata);
+                    if !components.metadata.ends_with('\n') {
+                        frontmatter.push('\n');
+                    }
+                }
+                frontmatter.push_str("---\n\n");
+                content = frontmatter + &content;
+            }
+            Ok(content)
+        }
+        ImportResult::Components(_) => unreachable!("Default mode is Cooklang"),
     }
 }

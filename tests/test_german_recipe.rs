@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html_with_sections(json_ld: &str) -> String {
@@ -104,7 +104,7 @@ async fn test_german_recipe_with_sections_and_array_yield() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully
     assert_eq!(
@@ -113,50 +113,40 @@ async fn test_german_recipe_with_sections_and_array_yield() {
     );
 
     // Check that yield array was handled correctly - should prefer "15 Stück" over "15"
-    assert_eq!(result.metadata.get("servings").unwrap(), "15 Stück");
+    assert!(result.metadata.contains("servings: 15 Stück"));
 
     // Check that category array was handled
-    assert_eq!(
-        result.metadata.get("course").unwrap(),
-        "Dessert, Kuchen, Snack"
-    );
+    assert!(result.metadata.contains("course: Dessert, Kuchen, Snack"));
 
     // Check cuisine array with single element
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "Amerikanisch");
+    assert!(result.metadata.contains("cuisine: Amerikanisch"));
 
     // Check time conversions
-    assert_eq!(result.metadata.get("prep time").unwrap(), "20 minutes");
-    assert_eq!(result.metadata.get("cook time").unwrap(), "25 minutes");
-    assert_eq!(result.metadata.get("time required").unwrap(), "45 minutes");
+    assert!(result.metadata.contains("prep time: 20 minutes"));
+    assert!(result.metadata.contains("cook time: 25 minutes"));
+    assert!(result.metadata.contains("time required: 45 minutes"));
 
     // Check keywords
-    assert_eq!(
-        result.metadata.get("tags").unwrap(),
-        "Brookies, Brownies, Chocolate Chip Cookies, Cookie Bars, Cookies, Kekse"
-    );
+    assert!(result.metadata.contains("tags: Brookies, Brownies, Chocolate Chip Cookies, Cookie Bars, Cookies, Kekse"));
 
     // Check author
-    assert_eq!(result.metadata.get("author").unwrap(), "Bianca Zapatka");
+    assert!(result.metadata.contains("author: Bianca Zapatka"));
 
     // Check that instructions from sections were parsed
-    assert!(result.instructions.contains("Den Backofen auf 180 °C"));
-    assert!(result
-        .instructions
-        .contains("Vegane Butter mit der Schokolade"));
-    assert!(result
-        .instructions
-        .contains("Mehl, Salz, Backpulver und Zucker"));
+    assert!(result.text.contains("Den Backofen auf 180 °C"));
+    assert!(result.text.contains("Vegane Butter mit der Schokolade"));
+    assert!(result.text.contains("Mehl, Salz, Backpulver und Zucker"));
 
     // Check that section names are preserved as markdown headers
     assert!(
-        result.instructions.contains("## Brownie-Teig"),
+        result.text.contains("## Brownie-Teig"),
         "Section name 'Brownie-Teig' should be preserved. Got: {}",
-        result.instructions
+        result.text
     );
     assert!(
-        result.instructions.contains("## Cookie-Teig"),
+        result.text.contains("## Cookie-Teig"),
         "Section name 'Cookie-Teig' should be preserved. Got: {}",
-        result.instructions
+        result.text
     );
 }
 
@@ -188,8 +178,8 @@ async fn test_recipe_yield_variations() {
         .create();
 
     let url = format!("{}/recipe1", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Should pick "4 servings" because it contains alphabetic characters
-    assert_eq!(result.metadata.get("servings").unwrap(), "4 servings");
+    assert!(result.metadata.contains("servings: 4 servings"));
 }

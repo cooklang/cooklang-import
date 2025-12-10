@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html(json_ld: &str) -> String {
@@ -69,36 +69,29 @@ async fn test_lowercase_recipe_type() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully despite lowercase @type
     assert_eq!(result.name, "Easy Black Bean Soup");
-    assert_eq!(
-        result.description,
-        Some("This black bean soup recipe is easy to make and full of flavor.".to_string())
-    );
+    assert!(result.metadata.contains("description: This black bean soup recipe is easy to make and full of flavor."));
 
     // Verify ingredients
-    let ingredients_text = result.ingredients.join("\n");
-    assert!(ingredients_text.contains("2 cans black beans"));
-    assert!(ingredients_text.contains("1 onion, diced"));
+    assert!(result.text.contains("2 cans black beans"));
+    assert!(result.text.contains("1 onion, diced"));
 
     // Verify instructions
-    assert!(result.instructions.contains("Sauté onion and garlic"));
-    assert!(result.instructions.contains("simmer for 20 minutes"));
+    assert!(result.text.contains("Sauté onion and garlic"));
+    assert!(result.text.contains("simmer for 20 minutes"));
 
     // Verify metadata
-    assert_eq!(result.metadata.get("author").unwrap(), "Chef Maria");
-    assert_eq!(result.metadata.get("prep time").unwrap(), "10 minutes");
-    assert_eq!(result.metadata.get("cook time").unwrap(), "30 minutes");
-    assert_eq!(result.metadata.get("time required").unwrap(), "40 minutes");
-    assert_eq!(result.metadata.get("servings").unwrap(), "6");
-    assert_eq!(result.metadata.get("course").unwrap(), "Soup");
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "Mexican");
-    assert_eq!(
-        result.metadata.get("tags").unwrap(),
-        "black bean soup, vegetarian, easy"
-    );
+    assert!(result.metadata.contains("author: Chef Maria"));
+    assert!(result.metadata.contains("prep time: 10 minutes"));
+    assert!(result.metadata.contains("cook time: 30 minutes"));
+    assert!(result.metadata.contains("time required: 40 minutes"));
+    assert!(result.metadata.contains("servings: 6"));
+    assert!(result.metadata.contains("course: Soup"));
+    assert!(result.metadata.contains("cuisine: Mexican"));
+    assert!(result.metadata.contains("tags: black bean soup, vegetarian, easy"));
 }
 
 #[tokio::test]
@@ -125,13 +118,12 @@ async fn test_mixed_case_recipe_type() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully despite uppercase @type
     assert_eq!(result.name, "Quick Pasta");
-    let all_content = format!("{}\n{}", result.ingredients.join("\n"), result.instructions);
-    assert!(all_content.contains("pasta"));
-    assert!(all_content.contains("Cook pasta"));
+    assert!(result.text.contains("pasta"));
+    assert!(result.text.contains("Cook pasta"));
 }
 
 #[tokio::test]
@@ -166,13 +158,12 @@ async fn test_graph_with_lowercase_type() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed from @graph despite lowercase type
     assert_eq!(result.name, "Grilled Cheese");
-    let all_content = format!("{}\n{}", result.ingredients.join("\n"), result.instructions);
-    assert!(all_content.contains("cheese"));
-    assert!(all_content.contains("grill until golden"));
+    assert!(result.text.contains("cheese"));
+    assert!(result.text.contains("grill until golden"));
 }
 
 #[tokio::test]
@@ -204,10 +195,10 @@ async fn test_array_with_mixed_case_types() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed from array despite mixed case type
     assert_eq!(result.name, "Mixed Case Recipe");
-    assert_eq!(result.ingredients, vec!["ingredient"]);
-    assert_eq!(result.instructions, "Instructions here");
+    assert!(result.text.contains("ingredient"));
+    assert!(result.text.contains("Instructions here"));
 }

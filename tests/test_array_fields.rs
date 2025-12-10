@@ -1,4 +1,4 @@
-use cooklang_import::fetch_recipe;
+use cooklang_import::url_to_recipe;
 use std::env;
 
 fn create_recipe_html_with_arrays(json_ld: &str) -> String {
@@ -77,40 +77,36 @@ async fn test_recipe_with_array_fields_and_empty_strings() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Verify the recipe was parsed successfully
     assert_eq!(result.name, "Shahi Paneer");
 
     // Check that array fields were handled correctly
-    assert_eq!(
-        result.metadata.get("course").unwrap(),
-        "All, All Things Indian"
-    );
+    assert!(result.metadata.contains("course: All, All Things Indian"));
 
     // Check that empty arrays don't create entries
-    assert!(!result.metadata.contains_key("cuisine"));
+    assert!(!result.metadata.contains("cuisine:"));
 
     // Check that empty strings don't create entries
-    assert!(!result.metadata.contains_key("tags"));
-    assert!(!result.metadata.contains_key("prep time"));
-    assert!(!result.metadata.contains_key("time required"));
-    assert!(!result.metadata.contains_key("servings"));
+    assert!(!result.metadata.contains("tags:"));
+    assert!(!result.metadata.contains("prep time:"));
+    assert!(!result.metadata.contains("time required:"));
+    assert!(!result.metadata.contains("servings:"));
 
     // Check that non-empty time fields work
-    assert_eq!(result.metadata.get("cook time").unwrap(), "30 minutes");
+    assert!(result.metadata.contains("cook time: 30 minutes"));
 
     // Check that author was parsed correctly
-    assert_eq!(result.metadata.get("author").unwrap(), "amateurprochef");
+    assert!(result.metadata.contains("author: amateurprochef"));
 
-    // Check that ingredients were parsed
-    let ingredients_text = result.ingredients.join("\n");
-    assert!(ingredients_text.contains("300g paneer"));
-    assert!(ingredients_text.contains("4 roma tomatoes"));
+    // Check that ingredients were parsed (in text field)
+    assert!(result.text.contains("300g paneer"));
+    assert!(result.text.contains("4 roma tomatoes"));
 
-    // Check that instructions were parsed
-    assert!(result.instructions.contains("Step 1: Chop vegetables"));
-    assert!(result.instructions.contains("Step 2: Cook the dish"));
+    // Check that instructions were parsed (in text field)
+    assert!(result.text.contains("Step 1: Chop vegetables"));
+    assert!(result.text.contains("Step 2: Cook the dish"));
 }
 
 #[tokio::test]
@@ -140,9 +136,9 @@ async fn test_recipe_with_single_string_cuisine() {
         .create();
 
     let url = format!("{}/recipe", server.url());
-    let result = fetch_recipe(&url).await.unwrap();
+    let result = url_to_recipe(&url).await.unwrap();
 
     // Check that single string values still work
-    assert_eq!(result.metadata.get("cuisine").unwrap(), "Italian");
-    assert_eq!(result.metadata.get("course").unwrap(), "Main Course");
+    assert!(result.metadata.contains("cuisine: Italian"));
+    assert!(result.metadata.contains("course: Main Course"));
 }

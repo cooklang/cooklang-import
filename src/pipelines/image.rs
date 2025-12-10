@@ -1,7 +1,10 @@
+use super::RecipeComponents;
 use crate::images_to_text::{self, ImageSource};
 use std::error::Error;
 
-pub async fn process(images: &[ImageSource]) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub async fn process(
+    images: &[ImageSource],
+) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     let mut all_text = Vec::new();
     let mut sources = Vec::new();
 
@@ -18,6 +21,9 @@ pub async fn process(images: &[ImageSource]) -> Result<String, Box<dyn Error + S
     let combined = all_text.join("\n\n");
     let source = sources.join(", ");
 
-    // Format as text with frontmatter
-    Ok(format!("---\nsource: {}\n---\n\n{}", source, combined))
+    Ok(RecipeComponents {
+        text: combined,
+        metadata: format!("source: {}", source),
+        name: String::new(), // Images typically don't have a name extracted
+    })
 }

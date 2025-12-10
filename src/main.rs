@@ -1,4 +1,4 @@
-use cooklang_import::{generate_frontmatter, ImportResult, LlmProvider, RecipeImporter};
+use cooklang_import::{ImportResult, LlmProvider, RecipeImporter};
 use log::info;
 use std::env;
 use std::time::Duration;
@@ -213,26 +213,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("Latency: {}ms", meta.latency_ms);
             }
         }
-        ImportResult::Recipe(recipe) => {
-            // Build metadata including title
-            let mut metadata = recipe.metadata.clone();
-            if !recipe.name.is_empty() {
-                metadata.insert("title".to_string(), recipe.name.clone());
-            }
-
+        ImportResult::Components(components) => {
             // Build the output with frontmatter
-            let mut output = generate_frontmatter(&metadata);
+            let mut output = String::new();
 
-            // Add ingredients
-            if !recipe.ingredients.is_empty() {
-                output.push_str(&recipe.ingredients.join("\n"));
-                output.push_str("\n\n");
+            // Add frontmatter if we have name or metadata
+            if !components.name.is_empty() || !components.metadata.is_empty() {
+                output.push_str("---\n");
+                if !components.name.is_empty() {
+                    output.push_str(&format!("title: {}\n", components.name));
+                }
+                if !components.metadata.is_empty() {
+                    output.push_str(&components.metadata);
+                    if !components.metadata.ends_with('\n') {
+                        output.push('\n');
+                    }
+                }
+                output.push_str("---\n\n");
             }
 
-            // Add instructions
-            if !recipe.instructions.is_empty() {
-                output.push_str(&recipe.instructions);
-            }
+            // Add recipe text
+            output.push_str(&components.text);
 
             println!("{}", output);
         }

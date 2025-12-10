@@ -3,32 +3,42 @@
 //! This example shows how to use the high-level convenience functions
 //! for the most common use cases.
 
-use cooklang_import::{convert_text_to_cooklang, extract_recipe_from_url, import_from_url};
+use cooklang_import::{text_to_cooklang, url_to_recipe, RecipeImporter};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Simple import: URL → Cooklang
     println!("=== Simple Import ===");
-    let cooklang =
-        import_from_url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await?;
+    let result = RecipeImporter::builder()
+        .url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie")
+        .build()
+        .await?;
     println!("Recipe in Cooklang format:");
-    println!("{}", cooklang);
+    match result {
+        cooklang_import::ImportResult::Cooklang { content, .. } => println!("{}", content),
+        cooklang_import::ImportResult::Components(components) => println!("{}", components.text),
+    }
 
-    // Extract only: URL → Recipe
+    // Extract only: URL → RecipeComponents
     println!("\n=== Extract Only ===");
-    let recipe =
-        extract_recipe_from_url("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await?;
-    println!("Recipe name: {}", recipe.name);
-    println!("Has {} ingredients", recipe.ingredients.len());
-    println!("Has instructions: {}", !recipe.instructions.is_empty());
+    let components =
+        url_to_recipe("https://www.bbcgoodfood.com/recipes/classic-cottage-pie").await?;
+    println!("Recipe name: {}", components.name);
+    println!("Has text content: {}", !components.text.is_empty());
+    println!("Has metadata: {}", !components.metadata.is_empty());
 
-    // Convert markdown: Markdown → Cooklang
-    println!("\n=== Convert Markdown ===");
+    // Convert text: Text → Cooklang
+    println!("\n=== Convert Text ===");
     let ingredients = "2 eggs\n1 cup flour\n1/2 cup milk";
     let instructions = "Mix all ingredients together. Bake at 350°F for 30 minutes.";
 
     let content = format!("{}\n\n{}", ingredients, instructions);
-    let cooklang = convert_text_to_cooklang(&content).await?;
+    let components = cooklang_import::RecipeComponents {
+        text: content,
+        metadata: String::new(),
+        name: "Simple Recipe".to_string(),
+    };
+    let cooklang = text_to_cooklang(&components).await?;
     println!("Converted to Cooklang:");
     println!("{}", cooklang);
 

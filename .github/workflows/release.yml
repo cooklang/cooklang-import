@@ -329,14 +329,41 @@ jobs:
           body: |
             ## Mobile SDK Release ${{ steps.version.outputs.VERSION }}
 
-            ### iOS
-            Download `cooklang-import-ios.zip` which contains:
+            ### iOS (Swift Package Manager)
+
+            Add to your `Package.swift` or Xcode project:
+            ```swift
+            .package(url: "https://github.com/cooklang/cooklang-import.git", from: "${{ steps.version.outputs.VERSION }}")
+            ```
+
+            Or download `cooklang-import-ios.zip` which contains:
             - `CooklangImport/` - Swift Package ready to use
             - `CooklangImportFFI.xcframework` - XCFramework for manual integration
             - `swift/` - Swift bindings source files
 
-            ### Android
-            Download `cooklang-import-android.zip` which contains:
+            ### Android (GitHub Packages Maven)
+
+            Add to your `settings.gradle.kts`:
+            ```kotlin
+            dependencyResolutionManagement {
+                repositories {
+                    maven {
+                        url = uri("https://maven.pkg.github.com/cooklang/cooklang-import")
+                        credentials {
+                            username = System.getenv("GITHUB_ACTOR")
+                            password = System.getenv("GITHUB_TOKEN")
+                        }
+                    }
+                }
+            }
+            ```
+
+            Add to your `build.gradle.kts`:
+            ```kotlin
+            implementation("com.cooklang:cooklang-import:${{ steps.version.outputs.VERSION }}")
+            ```
+
+            Or download `cooklang-import-android.zip` which contains:
             - `cooklang-import-android/` - Android library module
             - `jniLibs/` - Native libraries for all architectures
             - `kotlin/` - Kotlin bindings source files
@@ -354,3 +381,261 @@ jobs:
             - x86_64
 
             See the README for integration instructions.
+
+  # Update Package.swift for Swift Package Manager
+  update-swift-package:
+    name: Update Package.swift
+    needs: [release]
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download iOS zip and compute checksum
+        id: checksum
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/cooklang-import-ios.zip"
+
+          echo "Downloading from: ${URL}"
+          curl -fsSL "$URL" -o ios.zip
+
+          CHECKSUM=$(swift package compute-checksum ios.zip)
+          echo "Checksum: ${CHECKSUM}"
+          echo "CHECKSUM=${CHECKSUM}" >> $GITHUB_OUTPUT
+
+      - name: Generate Package.swift
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          CHECKSUM="${{ steps.checksum.outputs.CHECKSUM }}"
+
+          cat > Package.swift << EOF
+          // swift-tools-version:5.5
+          // The swift-tools-version declares the minimum version of Swift required to build this package.
+
+          import PackageDescription
+
+          let package = Package(
+              name: "CooklangImport",
+              platforms: [
+                  .iOS(.v13),
+                  .macOS(.v10_15)
+              ],
+              products: [
+                  .library(
+                      name: "CooklangImport",
+                      targets: ["CooklangImport", "CooklangImportFFI"]
+                  ),
+              ],
+              targets: [
+                  .target(
+                      name: "CooklangImport",
+                      dependencies: ["CooklangImportFFI"],
+                      path: "Sources/CooklangImport"
+                  ),
+                  .binaryTarget(
+                      name: "CooklangImportFFI",
+                      url: "https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/cooklang-import-ios.zip",
+                      checksum: "${CHECKSUM}"
+                  ),
+              ]
+          )
+          EOF
+
+      - name: Create Sources directory
+        run: |
+          mkdir -p Sources/CooklangImport
+          cat > Sources/CooklangImport/CooklangImport.swift << 'EOF'
+          // Re-export the FFI module for convenience
+          @_exported import CooklangImportFFI
+          EOF
+
+      - name: Commit and push Package.swift
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Package.swift Sources/
+          git commit -m "Update Package.swift for ${{ steps.version.outputs.VERSION }}" || echo "No changes to commit"
+          git push origin main
+
+  # Publish Android package to GitHub Packages
+  publish-android:
+    name: Publish Android to GitHub Packages
+    needs: [build-android, release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-artifacts
+
+      - name: Extract Android artifacts
+        run: |
+          unzip cooklang-import-android.zip -d target/android/
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Configure Android library for publishing
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          ANDROID_DIR="target/android/cooklang-import-android"
+
+          # Create settings.gradle.kts
+          cat > "${ANDROID_DIR}/settings.gradle.kts" << 'EOF'
+          rootProject.name = "cooklang-import-android"
+          EOF
+
+          # Create build.gradle.kts with publishing
+          cat > "${ANDROID_DIR}/build.gradle.kts" << EOF
+          plugins {
+              id("com.android.library")
+              id("org.jetbrains.kotlin.android")
+              id("maven-publish")
+          }
+
+          group = "com.cooklang"
+          version = "${VERSION}"
+
+          android {
+              namespace = "com.cooklang.import_lib"
+              compileSdk = 34
+
+              defaultConfig {
+                  minSdk = 21
+                  testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                  consumerProguardFiles("consumer-rules.pro")
+
+                  aarMetadata {
+                      minCompileSdk = 21
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_1_8
+                  targetCompatibility = JavaVersion.VERSION_1_8
+              }
+              kotlinOptions {
+                  jvmTarget = "1.8"
+              }
+              sourceSets {
+                  getByName("main") {
+                      jniLibs.srcDirs("src/main/jniLibs")
+                  }
+              }
+
+              publishing {
+                  singleVariant("release") {
+                      withSourcesJar()
+                  }
+              }
+          }
+
+          dependencies {
+              implementation("net.java.dev.jna:jna:5.14.0@aar")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+          }
+
+          publishing {
+              publications {
+                  register<MavenPublication>("release") {
+                      groupId = "com.cooklang"
+                      artifactId = "cooklang-import"
+                      version = "${VERSION}"
+
+                      afterEvaluate {
+                          from(components["release"])
+                      }
+
+                      pom {
+                          name.set("CooklangImport")
+                          description.set("Android library for importing recipes into Cooklang format")
+                          url.set("https://github.com/cooklang/cooklang-import")
+
+                          licenses {
+                              license {
+                                  name.set("MIT License")
+                                  url.set("https://opensource.org/licenses/MIT")
+                              }
+                          }
+
+                          scm {
+                              connection.set("scm:git:git://github.com/cooklang/cooklang-import.git")
+                              developerConnection.set("scm:git:ssh://github.com/cooklang/cooklang-import.git")
+                              url.set("https://github.com/cooklang/cooklang-import")
+                          }
+                      }
+                  }
+              }
+
+              repositories {
+                  maven {
+                      name = "GitHubPackages"
+                      url = uri("https://maven.pkg.github.com/cooklang/cooklang-import")
+                      credentials {
+                          username = System.getenv("GITHUB_ACTOR")
+                          password = System.getenv("GITHUB_TOKEN")
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # Create gradle.properties
+          cat > "${ANDROID_DIR}/gradle.properties" << 'GRADLE_EOF'
+          android.useAndroidX=true
+          kotlin.code.style=official
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.nonTransitiveRClass=true
+          GRADLE_EOF
+
+      - name: Publish to GitHub Packages
+        working-directory: target/android/cooklang-import-android
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          gradle wrapper --gradle-version 8.5
+          ./gradlew publish --no-daemon

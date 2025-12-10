@@ -437,6 +437,462 @@ cargo run --example simple_api
 cargo run --example builder_advanced
 ```
 
+## Mobile SDKs
+
+`cooklang-import` provides native SDKs for iOS and Android via UniFFI bindings.
+
+### iOS (Swift)
+
+#### Installation via Swift Package Manager
+
+Add the package to your Xcode project:
+
+1. **Xcode UI**: File → Add Package Dependencies → Enter URL:
+   ```
+   https://github.com/cooklang/cooklang-import
+   ```
+
+2. **Package.swift**: Add to your dependencies:
+   ```swift
+   dependencies: [
+       .package(url: "https://github.com/cooklang/cooklang-import.git", from: "0.8.0")
+   ]
+   ```
+   And add to your target:
+   ```swift
+   .target(
+       name: "YourApp",
+       dependencies: [
+           .product(name: "CooklangImport", package: "cooklang-import")
+       ]
+   )
+   ```
+
+#### Manual Installation
+
+1. Download `cooklang-import-ios.zip` from the [latest release](https://github.com/cooklang/cooklang-import/releases)
+2. Extract and add `CooklangImportFFI.xcframework` to your Xcode project
+3. Add the Swift bindings file to your project
+
+#### Usage in Swift
+
+```swift
+import CooklangImport
+
+// Simple import from URL (uses structured data extraction, no LLM needed)
+func importRecipe() async throws {
+    let cooklang = try await simpleImport(url: "https://example.com/recipe")
+    print(cooklang)
+}
+
+// Import with LLM configuration (for text/image conversion or fallback)
+func importWithLlm() async throws {
+    let config = FfiImportConfig(
+        provider: .anthropic,
+        apiKey: "your-api-key",
+        model: nil,  // Uses default model
+        timeoutSeconds: 30,
+        extractOnly: false
+    )
+
+    let result = try await importFromUrl(
+        url: "https://example.com/recipe",
+        config: config
+    )
+    print(result)
+}
+
+// Extract recipe without Cooklang conversion
+func extractOnly() async throws {
+    let config = FfiImportConfig(
+        provider: .anthropic,
+        apiKey: "your-api-key",
+        model: nil,
+        timeoutSeconds: 30,
+        extractOnly: true
+    )
+
+    let recipe = try await importFromUrl(
+        url: "https://example.com/recipe",
+        config: config
+    )
+    // Returns structured recipe data
+}
+
+// Convert plain text to Cooklang
+func convertText() async throws {
+    let config = FfiImportConfig(
+        provider: .openai,
+        apiKey: "your-api-key",
+        model: "gpt-4.1-mini",
+        timeoutSeconds: 30,
+        extractOnly: false
+    )
+
+    let text = "Take 2 eggs and 1 cup flour. Mix and bake at 350F for 30 min."
+    let cooklang = try await importFromText(text: text, config: config)
+    print(cooklang)
+}
+```
+
+#### SwiftUI Example
+
+```swift
+import SwiftUI
+import CooklangImport
+
+struct RecipeImportView: View {
+    @State private var url = ""
+    @State private var result = ""
+    @State private var isLoading = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            TextField("Recipe URL", text: $url)
+                .textFieldStyle(.roundedBorder)
+
+            Button("Import Recipe") {
+                Task {
+                    await importRecipe()
+                }
+            }
+            .disabled(isLoading || url.isEmpty)
+
+            if isLoading {
+                ProgressView()
+            }
+
+            if let error = error {
+                Text(error)
+                    .foregroundColor(.red)
+            }
+
+            ScrollView {
+                Text(result)
+                    .font(.system(.body, design: .monospaced))
+            }
+        }
+        .padding()
+    }
+
+    func importRecipe() async {
+        isLoading = true
+        error = nil
+
+        do {
+            result = try await simpleImport(url: url)
+        } catch {
+            self.error = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+}
+```
+
+#### Available LLM Providers (iOS)
+
+```swift
+enum FfiLlmProvider {
+    case openai      // Requires OPENAI_API_KEY or apiKey parameter
+    case anthropic   // Requires ANTHROPIC_API_KEY or apiKey parameter
+    case google      // Requires GOOGLE_API_KEY or apiKey parameter
+    case azureOpenai // Requires additional Azure configuration
+    case ollama      // Local models via Ollama
+}
+```
+
+---
+
+### Android (Kotlin)
+
+#### Installation via GitHub Packages (Maven)
+
+1. Add the GitHub Packages repository to your `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/cooklang/cooklang-import")
+            credentials {
+                // Use gradle.properties or environment variables
+                username = project.findProperty("gpr.user") as String?
+                    ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String?
+                    ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}
+```
+
+2. Add the dependency to your app's `build.gradle.kts`:
+
+```kotlin
+dependencies {
+    implementation("com.cooklang:cooklang-import:0.8.0")
+}
+```
+
+3. Configure credentials in `~/.gradle/gradle.properties`:
+
+```properties
+gpr.user=YOUR_GITHUB_USERNAME
+gpr.key=YOUR_GITHUB_TOKEN
+```
+
+> **Note:** You need a GitHub personal access token with `read:packages` scope.
+
+#### Manual Installation
+
+1. Download `cooklang-import-android.zip` from the [latest release](https://github.com/cooklang/cooklang-import/releases)
+2. Extract and copy the module to your project
+3. Add to `settings.gradle.kts`:
+   ```kotlin
+   include(":cooklang-import-android")
+   ```
+4. Add dependency:
+   ```kotlin
+   implementation(project(":cooklang-import-android"))
+   ```
+
+#### Usage in Kotlin
+
+```kotlin
+import uniffi.cooklang_import.*
+
+// Simple import from URL (uses structured data extraction)
+suspend fun importRecipe(url: String): String {
+    return simpleImport(url)
+}
+
+// Import with LLM configuration
+suspend fun importWithLlm(url: String, apiKey: String): String {
+    val config = FfiImportConfig(
+        provider = FfiLlmProvider.ANTHROPIC,
+        apiKey = apiKey,
+        model = null,  // Uses default model
+        timeoutSeconds = 30u,
+        extractOnly = false
+    )
+
+    return importFromUrl(url, config)
+}
+
+// Extract recipe without Cooklang conversion
+suspend fun extractOnly(url: String, apiKey: String): String {
+    val config = FfiImportConfig(
+        provider = FfiLlmProvider.OPENAI,
+        apiKey = apiKey,
+        model = null,
+        timeoutSeconds = 30u,
+        extractOnly = true
+    )
+
+    return importFromUrl(url, config)
+}
+
+// Convert plain text to Cooklang
+suspend fun convertText(text: String, apiKey: String): String {
+    val config = FfiImportConfig(
+        provider = FfiLlmProvider.OPENAI,
+        apiKey = apiKey,
+        model = "gpt-4.1-mini",
+        timeoutSeconds = 30u,
+        extractOnly = false
+    )
+
+    return importFromText(text, config)
+}
+```
+
+#### Jetpack Compose Example
+
+```kotlin
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import uniffi.cooklang_import.*
+
+@Composable
+fun RecipeImportScreen() {
+    var url by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        OutlinedTextField(
+            value = url,
+            onValueChange = { url = it },
+            label = { Text("Recipe URL") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Button(
+            onClick = {
+                scope.launch {
+                    isLoading = true
+                    error = null
+                    try {
+                        result = simpleImport(url)
+                    } catch (e: Exception) {
+                        error = e.message
+                    }
+                    isLoading = false
+                }
+            },
+            enabled = !isLoading && url.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("Import Recipe")
+            }
+        }
+
+        error?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        Text(
+            text = result,
+            style = MaterialTheme.typography.bodyMedium,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+        )
+    }
+}
+```
+
+#### Available LLM Providers (Android)
+
+```kotlin
+enum class FfiLlmProvider {
+    OPENAI,       // Requires OPENAI_API_KEY or apiKey parameter
+    ANTHROPIC,    // Requires ANTHROPIC_API_KEY or apiKey parameter
+    GOOGLE,       // Requires GOOGLE_API_KEY or apiKey parameter
+    AZURE_OPENAI, // Requires additional Azure configuration
+    OLLAMA        // Local models via Ollama
+}
+```
+
+#### ProGuard Rules
+
+If you're using ProGuard or R8 minification, the library includes consumer rules automatically. If you need to add them manually:
+
+```proguard
+-keep class uniffi.** { *; }
+-keep class com.cooklang.** { *; }
+-keep class com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.** { public *; }
+```
+
+---
+
+### API Reference (Both Platforms)
+
+#### Functions
+
+| Function | Description |
+|----------|-------------|
+| `simpleImport(url)` | Import recipe from URL using structured data extraction (no LLM required) |
+| `importFromUrl(url, config)` | Import recipe from URL with LLM configuration |
+| `importFromText(text, config)` | Convert plain text to Cooklang format |
+
+#### FfiImportConfig
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | `FfiLlmProvider` | LLM provider to use |
+| `apiKey` | `String?` | API key (optional if set via environment) |
+| `model` | `String?` | Model name (uses provider default if nil) |
+| `timeoutSeconds` | `UInt32` | Request timeout in seconds |
+| `extractOnly` | `Bool` | If true, returns extracted recipe without Cooklang conversion |
+
+#### Error Handling
+
+Both platforms throw exceptions/errors that should be caught:
+
+**Swift:**
+```swift
+do {
+    let result = try await simpleImport(url: url)
+} catch {
+    print("Import failed: \(error)")
+}
+```
+
+**Kotlin:**
+```kotlin
+try {
+    val result = simpleImport(url)
+} catch (e: Exception) {
+    println("Import failed: ${e.message}")
+}
+```
+
+---
+
+### Building from Source
+
+#### iOS
+
+```bash
+./scripts/build-ios.sh
+```
+
+Output in `target/ios/`:
+- `CooklangImportFFI.xcframework` - XCFramework for all iOS targets
+- `CooklangImport/` - Swift Package ready to use
+- `swift/` - Swift binding files
+
+#### Android
+
+```bash
+./scripts/build-android.sh
+```
+
+Output in `target/android/`:
+- `cooklang-import-android/` - Android library module
+- `jniLibs/` - Native libraries for all architectures
+- `kotlin/` - Kotlin binding files
+
+#### Supported Architectures
+
+**iOS:**
+- arm64 (devices)
+- arm64 (simulator, Apple Silicon Macs)
+- x86_64 (simulator, Intel Macs)
+
+**Android:**
+- arm64-v8a (64-bit ARM)
+- armeabi-v7a (32-bit ARM)
+- x86_64 (64-bit x86)
+
 ## Development
 
 Run tests:
