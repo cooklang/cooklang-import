@@ -82,38 +82,38 @@ pub enum FfiImportResult {
 #[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum FfiImportError {
     /// Failed to fetch recipe from URL
-    FetchError { message: String },
+    FetchError { reason: String },
     /// Failed to parse recipe from webpage
-    ParseError { message: String },
+    ParseError { reason: String },
     /// No extractor could successfully parse the recipe
-    NoExtractorMatched { message: String },
+    NoExtractorMatched { reason: String },
     /// Failed to convert recipe to Cooklang format
-    ConversionError { message: String },
+    ConversionError { reason: String },
     /// Invalid input provided
-    InvalidInput { message: String },
+    InvalidInput { reason: String },
     /// Builder configuration error
-    BuilderError { message: String },
+    BuilderError { reason: String },
     /// Configuration error
-    ConfigError { message: String },
+    ConfigError { reason: String },
     /// Runtime error (tokio)
-    RuntimeError { message: String },
+    RuntimeError { reason: String },
 }
 
 impl fmt::Display for FfiImportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FfiImportError::FetchError { message } => write!(f, "Fetch error: {}", message),
-            FfiImportError::ParseError { message } => write!(f, "Parse error: {}", message),
-            FfiImportError::NoExtractorMatched { message } => {
-                write!(f, "No extractor matched: {}", message)
+            FfiImportError::FetchError { reason } => write!(f, "Fetch error: {}", reason),
+            FfiImportError::ParseError { reason } => write!(f, "Parse error: {}", reason),
+            FfiImportError::NoExtractorMatched { reason } => {
+                write!(f, "No extractor matched: {}", reason)
             }
-            FfiImportError::ConversionError { message } => {
-                write!(f, "Conversion error: {}", message)
+            FfiImportError::ConversionError { reason } => {
+                write!(f, "Conversion error: {}", reason)
             }
-            FfiImportError::InvalidInput { message } => write!(f, "Invalid input: {}", message),
-            FfiImportError::BuilderError { message } => write!(f, "Builder error: {}", message),
-            FfiImportError::ConfigError { message } => write!(f, "Config error: {}", message),
-            FfiImportError::RuntimeError { message } => write!(f, "Runtime error: {}", message),
+            FfiImportError::InvalidInput { reason } => write!(f, "Invalid input: {}", reason),
+            FfiImportError::BuilderError { reason } => write!(f, "Builder error: {}", reason),
+            FfiImportError::ConfigError { reason } => write!(f, "Config error: {}", reason),
+            FfiImportError::RuntimeError { reason } => write!(f, "Runtime error: {}", reason),
         }
     }
 }
@@ -124,24 +124,24 @@ impl From<ImportError> for FfiImportError {
     fn from(err: ImportError) -> Self {
         match err {
             ImportError::FetchError(e) => FfiImportError::FetchError {
-                message: e.to_string(),
+                reason: e.to_string(),
             },
-            ImportError::ParseError(msg) => FfiImportError::ParseError { message: msg },
+            ImportError::ParseError(msg) => FfiImportError::ParseError { reason: msg },
             ImportError::NoExtractorMatched => FfiImportError::NoExtractorMatched {
-                message: "No extractor could parse the recipe from this webpage".to_string(),
+                reason: "No extractor could parse the recipe from this webpage".to_string(),
             },
-            ImportError::ConversionError(msg) => FfiImportError::ConversionError { message: msg },
-            ImportError::InvalidMarkdown(msg) => FfiImportError::InvalidInput { message: msg },
-            ImportError::BuilderError(msg) => FfiImportError::BuilderError { message: msg },
-            ImportError::ExtractionError(msg) => FfiImportError::ParseError { message: msg },
+            ImportError::ConversionError(msg) => FfiImportError::ConversionError { reason: msg },
+            ImportError::InvalidMarkdown(msg) => FfiImportError::InvalidInput { reason: msg },
+            ImportError::BuilderError(msg) => FfiImportError::BuilderError { reason: msg },
+            ImportError::ExtractionError(msg) => FfiImportError::ParseError { reason: msg },
             ImportError::HeaderError(e) => FfiImportError::FetchError {
-                message: e.to_string(),
+                reason: e.to_string(),
             },
             ImportError::EnvError(e) => FfiImportError::ConfigError {
-                message: e.to_string(),
+                reason: e.to_string(),
             },
             ImportError::ConfigError(e) => FfiImportError::ConfigError {
-                message: e.to_string(),
+                reason: e.to_string(),
             },
         }
     }
@@ -166,7 +166,7 @@ pub struct FfiImportConfig {
 /// Create a new tokio runtime for FFI calls
 fn create_runtime() -> Result<tokio::runtime::Runtime, FfiImportError> {
     tokio::runtime::Runtime::new().map_err(|e| FfiImportError::RuntimeError {
-        message: format!("Failed to create async runtime: {}", e),
+        reason: format!("Failed to create async runtime: {}", e),
     })
 }
 
@@ -267,7 +267,7 @@ async fn convert_text_async(
     match result {
         crate::ImportResult::Cooklang { content, .. } => Ok(content),
         crate::ImportResult::Components(_) => Err(FfiImportError::BuilderError {
-            message: "Unexpected components result when converting text".to_string(),
+            reason: "Unexpected components result when converting text".to_string(),
         }),
     }
 }
@@ -314,7 +314,7 @@ async fn convert_image_async(
     match result {
         crate::ImportResult::Cooklang { content, .. } => Ok(content),
         crate::ImportResult::Components(_) => Err(FfiImportError::BuilderError {
-            message: "Unexpected components result when converting image".to_string(),
+            reason: "Unexpected components result when converting image".to_string(),
         }),
     }
 }
@@ -345,7 +345,7 @@ pub fn extract_recipe_from_url(
         match result {
             crate::ImportResult::Components(components) => Ok(components.into()),
             crate::ImportResult::Cooklang { .. } => Err(FfiImportError::BuilderError {
-                message: "Unexpected Cooklang result when extracting".to_string(),
+                reason: "Unexpected Cooklang result when extracting".to_string(),
             }),
         }
     })
