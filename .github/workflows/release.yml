@@ -57,6 +57,9 @@ jobs:
 
       - name: Create XCFramework
         run: |
+          # Clean up any existing xcframework from cache
+          rm -rf target/ios/CooklangImportFFI.xcframework
+          rm -rf target/ios/ios-device target/ios/ios-simulator
           mkdir -p target/ios/ios-device target/ios/ios-simulator
 
           # Copy device library
@@ -179,11 +182,16 @@ jobs:
 
       - name: Generate Kotlin bindings
         run: |
+          # Clean up any existing kotlin bindings from cache
+          rm -rf target/android/kotlin
           mkdir -p target/android/kotlin
           ./target/release/uniffi-bindgen generate \
             --library target/aarch64-linux-android/release/libcooklang_import.so \
             --language kotlin \
             --out-dir target/android/kotlin
+          # Debug: show what was generated
+          echo "Generated Kotlin files:"
+          find target/android/kotlin -name "*.kt" -type f
 
       - name: Organize JNI libraries
         run: |
@@ -200,8 +208,8 @@ jobs:
           # Copy JNI libs
           cp -R target/android/jniLibs/* target/android/cooklang-import-android/src/main/jniLibs/
 
-          # Copy Kotlin bindings
-          cp target/android/kotlin/*.kt target/android/cooklang-import-android/src/main/kotlin/
+          # Copy Kotlin bindings (uniffi generates them in subdirectories)
+          find target/android/kotlin -name "*.kt" -exec cp {} target/android/cooklang-import-android/src/main/kotlin/ \;
 
           # Create build.gradle.kts
           cat > target/android/cooklang-import-android/build.gradle.kts << 'EOF'
