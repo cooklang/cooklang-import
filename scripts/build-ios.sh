@@ -87,10 +87,12 @@ generate_swift_bindings() {
 
     if [[ -f "$lib_path" ]]; then
         cargo run --features uniffi --bin uniffi-bindgen generate \
+            --config uniffi.toml \
             --library "$lib_path" \
             --language swift \
             --out-dir "$SWIFT_OUTPUT_DIR" 2>/dev/null || \
         uniffi-bindgen generate \
+            --config uniffi.toml \
             --library "$lib_path" \
             --language swift \
             --out-dir "$SWIFT_OUTPUT_DIR"

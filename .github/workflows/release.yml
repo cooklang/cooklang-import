@@ -51,6 +51,7 @@ jobs:
         run: |
           mkdir -p target/ios/swift
           cargo run --features uniffi-cli --bin uniffi-bindgen -- generate \
+            --config uniffi.toml \
             --library target/aarch64-apple-ios/release/libcooklang_import.a \
             --language swift \
             --out-dir target/ios/swift
@@ -191,6 +192,7 @@ jobs:
           rm -rf target/android/kotlin
           mkdir -p target/android/kotlin
           ./target/release/uniffi-bindgen generate \
+            --config uniffi.toml \
             --library target/aarch64-linux-android/release/libcooklang_import.so \
             --language kotlin \
             --out-dir target/android/kotlin
@@ -273,15 +275,13 @@ jobs:
 
           # Create proguard rules
           cat > target/android/cooklang-import-android/proguard-rules.pro << 'EOF'
-          -keep class uniffi.** { *; }
-          -keep class com.cooklang.** { *; }
+          -keep class org.cooklang.** { *; }
           -keep class com.sun.jna.** { *; }
           -keepclassmembers class * extends com.sun.jna.** { public *; }
           EOF
 
           cat > target/android/cooklang-import-android/consumer-rules.pro << 'EOF'
-          -keep class uniffi.** { *; }
-          -keep class com.cooklang.** { *; }
+          -keep class org.cooklang.** { *; }
           EOF
 
       - name: Package Android artifacts

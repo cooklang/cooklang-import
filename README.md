@@ -666,7 +666,7 @@ gpr.key=YOUR_GITHUB_TOKEN
 #### Usage in Kotlin
 
 ```kotlin
-import uniffi.cooklang_import.*
+import org.cooklang.import.*
 
 // Simple import from URL (uses structured data extraction)
 suspend fun importRecipe(url: String): String {
@@ -722,7 +722,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import uniffi.cooklang_import.*
+import org.cooklang.import.*
 
 @Composable
 fun RecipeImportScreen() {
@@ -805,8 +805,7 @@ enum class FfiLlmProvider {
 If you're using ProGuard or R8 minification, the library includes consumer rules automatically. If you need to add them manually:
 
 ```proguard
--keep class uniffi.** { *; }
--keep class com.cooklang.** { *; }
+-keep class org.cooklang.** { *; }
 -keep class com.sun.jna.** { *; }
 -keepclassmembers class * extends com.sun.jna.** { public *; }
 ```

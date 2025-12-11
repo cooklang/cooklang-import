@@ -131,10 +131,12 @@ generate_kotlin_bindings() {
 
     if [[ -f "$lib_path" ]]; then
         cargo run --features uniffi --bin uniffi-bindgen generate \
+            --config uniffi.toml \
             --library "$lib_path" \
             --language kotlin \
             --out-dir "$KOTLIN_OUTPUT_DIR" 2>/dev/null || \
         uniffi-bindgen generate \
+            --config uniffi.toml \
             --library "$lib_path" \
             --language kotlin \
             --out-dir "$KOTLIN_OUTPUT_DIR"
@@ -235,9 +237,8 @@ EOF
 
     # Create proguard rules
     cat > "${lib_dir}/proguard-rules.pro" << 'EOF'
-# Keep UniFFI generated code
--keep class uniffi.** { *; }
--keep class com.cooklang.** { *; }
+# Keep cooklang generated code
+-keep class org.cooklang.** { *; }
 
 # Keep JNA classes
 -keep class com.sun.jna.** { *; }
@@ -247,8 +248,7 @@ EOF
     # Create consumer proguard rules
     cat > "${lib_dir}/consumer-rules.pro" << 'EOF'
 # Consumer proguard rules for cooklang-import
--keep class uniffi.** { *; }
--keep class com.cooklang.** { *; }
+-keep class org.cooklang.** { *; }
 EOF
 
     # Create AndroidManifest.xml

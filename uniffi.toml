@@ -1,0 +1,9 @@
+[bindings.kotlin]
+package_name = "org.cooklang.import"
+generate_immutable_records = true
+android = true
+
+[bindings.swift]
+ffi_module_name = "CooklangImportFFI"
+module_name = "CooklangImport"
+generate_immutable_records = true
