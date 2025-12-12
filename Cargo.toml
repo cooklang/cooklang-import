@@ -1,6 +1,6 @@
 [package]
 name = "cooklang-import"
-version = "0.8.6"
+version = "0.8.7"
 edition = "2021"
 description = "A tool for importing recipes into Cooklang format"
 license = "MIT"
@@ -24,7 +24,7 @@ path = "uniffi-bindgen.rs"
 required-features = ["uniffi-cli"]
 
 [features]
-uniffi-cli = ["dep:uniffi", "uniffi/cli"]
+uniffi-cli = ["uniffi", "uniffi/cli"]
 default = []
 uniffi = ["dep:uniffi"]
 
@@ -49,4 +49,4 @@ mockito = "1.5.0"
 tokio = { version = "1.0", features = ["full", "rt", "macros", "test-util"] }
 
 [build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.28", features = ["build"], optional = true }

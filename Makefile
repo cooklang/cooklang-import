@@ -71,9 +71,8 @@ mobile: ios android
 # === Bindings Generation ===
 
 # Generate Swift bindings only (without full iOS build)
-bindings-swift:
+bindings-swift: build-uniffi
 	@mkdir -p target/bindings/swift
-	cargo build --release --features uniffi
 	uniffi-bindgen generate \
 		--library target/release/libcooklang_import.dylib \
 		--language swift \
@@ -84,9 +83,8 @@ bindings-swift:
 		--out-dir target/bindings/swift
 
 # Generate Kotlin bindings only (without full Android build)
-bindings-kotlin:
+bindings-kotlin: build-uniffi
 	@mkdir -p target/bindings/kotlin
-	cargo build --release --features uniffi
 	uniffi-bindgen generate \
 		--library target/release/libcooklang_import.so \
 		--language kotlin \
@@ -97,9 +95,8 @@ bindings-kotlin:
 		--out-dir target/bindings/kotlin
 
 # Generate Python bindings
-bindings-python:
+bindings-python: build-uniffi
 	@mkdir -p target/bindings/python
-	cargo build --release --features uniffi
 	uniffi-bindgen generate \
 		--library target/release/libcooklang_import.so \
 		--language python \
@@ -110,9 +107,8 @@ bindings-python:
 		--out-dir target/bindings/python
 
 # Generate Ruby bindings
-bindings-ruby:
+bindings-ruby: build-uniffi
 	@mkdir -p target/bindings/ruby
-	cargo build --release --features uniffi
 	uniffi-bindgen generate \
 		--library target/release/libcooklang_import.so \
 		--language ruby \
