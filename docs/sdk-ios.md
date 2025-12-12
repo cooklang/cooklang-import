@@ -67,23 +67,12 @@ func importWithLlm() async throws {
 }
 ```
 
-### Extract Recipe Without Conversion
+### Extract Recipe Without Conversion (No LLM Required)
 
 ```swift
 func extractOnly() async throws {
-    let config = FfiImportConfig(
-        provider: .anthropic,
-        apiKey: "your-api-key",
-        model: nil,
-        timeoutSeconds: 30,
-        extractOnly: true
-    )
-
-    let recipe = try await importFromUrl(
-        url: "https://example.com/recipe",
-        config: config
-    )
-    // Returns structured recipe data
+    let recipe = try await simpleExtract(url: "https://example.com/recipe")
+    // Returns structured recipe data without Cooklang conversion
 }
 ```
 

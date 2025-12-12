@@ -87,19 +87,12 @@ suspend fun importWithLlm(url: String, apiKey: String): String {
 }
 ```
 
-### Extract Recipe Without Conversion
+### Extract Recipe Without Conversion (No LLM Required)
 
 ```kotlin
-suspend fun extractOnly(url: String, apiKey: String): String {
-    val config = FfiImportConfig(
-        provider = FfiLlmProvider.OPENAI,
-        apiKey = apiKey,
-        model = null,
-        timeoutSeconds = 30u,
-        extractOnly = true
-    )
-
-    return importFromUrl(url, config)
+suspend fun extractOnly(url: String): String {
+    return simpleExtract(url)
+    // Returns structured recipe data without Cooklang conversion
 }
 ```
 
