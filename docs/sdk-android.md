@@ -61,7 +61,9 @@ gpr.key=YOUR_GITHUB_TOKEN
 
 ## Usage
 
-### Simple Import (No LLM Required)
+### Simple Import (Default LLM Settings)
+
+Uses default LLM provider from environment variables (e.g., `OPENAI_API_KEY`).
 
 ```kotlin
 import org.cooklang.import.*
@@ -71,7 +73,7 @@ suspend fun importRecipe(url: String): String {
 }
 ```
 
-### Import with LLM Configuration
+### Import with Custom LLM Configuration
 
 ```kotlin
 suspend fun importWithLlm(url: String, apiKey: String): String {

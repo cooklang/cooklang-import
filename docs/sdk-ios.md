@@ -36,7 +36,9 @@ Add to your target:
 
 ## Usage
 
-### Simple Import (No LLM Required)
+### Simple Import (Default LLM Settings)
+
+Uses default LLM provider from environment variables (e.g., `OPENAI_API_KEY`).
 
 ```swift
 import CooklangImport
@@ -47,7 +49,7 @@ func importRecipe() async throws {
 }
 ```
 
-### Import with LLM Configuration
+### Import with Custom LLM Configuration
 
 ```swift
 func importWithLlm() async throws {
