@@ -505,8 +505,8 @@ func importWithLlm() async throws {
 // Extract recipe without Cooklang conversion
 func extractOnly() async throws {
     let config = FfiImportConfig(
-        provider: .anthropic,
-        apiKey: "your-api-key",
+        provider: nil,
+        apiKey: nil,
         model: nil,
         timeoutSeconds: 30,
         extractOnly: true
@@ -689,8 +689,8 @@ suspend fun importWithLlm(url: String, apiKey: String): String {
 // Extract recipe without Cooklang conversion
 suspend fun extractOnly(url: String, apiKey: String): String {
     val config = FfiImportConfig(
-        provider = FfiLlmProvider.OPENAI,
-        apiKey = apiKey,
+        provider = null,
+        apiKey = null,
         model = null,
         timeoutSeconds = 30u,
         extractOnly = true
