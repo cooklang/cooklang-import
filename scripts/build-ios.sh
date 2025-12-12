@@ -129,19 +129,19 @@ create_xcframework() {
 
     # Create module.modulemap
     local modulemap_content="module ${FRAMEWORK_NAME} {
-    header \"${PACKAGE_NAME}FFI.h\"
+    header \"${FRAMEWORK_NAME}.h\"
     export *
 }"
 
     # Create headers and modulemap for device
     mkdir -p "$ios_device_dir/Headers"
-    cp "${SWIFT_OUTPUT_DIR}/${PACKAGE_NAME}FFI.h" "$ios_device_dir/Headers/"
+    cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$ios_device_dir/Headers/"
     mkdir -p "$ios_device_dir/Modules"
     echo "$modulemap_content" > "$ios_device_dir/Modules/module.modulemap"
 
     # Create headers and modulemap for simulator
     mkdir -p "$ios_sim_dir/Headers"
-    cp "${SWIFT_OUTPUT_DIR}/${PACKAGE_NAME}FFI.h" "$ios_sim_dir/Headers/"
+    cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$ios_sim_dir/Headers/"
     mkdir -p "$ios_sim_dir/Modules"
     echo "$modulemap_content" > "$ios_sim_dir/Modules/module.modulemap"
 
@@ -153,8 +153,8 @@ create_xcframework() {
         -headers "$ios_sim_dir/Headers" \
         -output "$XCFRAMEWORK_OUTPUT"
 
-    # Copy Swift file alongside XCFramework
-    cp "${SWIFT_OUTPUT_DIR}/${PACKAGE_NAME}.swift" "${OUTPUT_DIR}/"
+    # Copy Swift file alongside XCFramework (uses module_name from uniffi.toml)
+    cp "${SWIFT_OUTPUT_DIR}/CooklangImport.swift" "${OUTPUT_DIR}/"
 
     # Cleanup temp directories
     rm -rf "$ios_device_dir" "$ios_sim_dir"
@@ -169,8 +169,8 @@ create_swift_package() {
     local swift_pkg_dir="${OUTPUT_DIR}/CooklangImport"
     mkdir -p "${swift_pkg_dir}/Sources/CooklangImport"
 
-    # Copy Swift bindings
-    cp "${SWIFT_OUTPUT_DIR}/${PACKAGE_NAME}.swift" "${swift_pkg_dir}/Sources/CooklangImport/"
+    # Copy Swift bindings (uses module_name from uniffi.toml)
+    cp "${SWIFT_OUTPUT_DIR}/CooklangImport.swift" "${swift_pkg_dir}/Sources/CooklangImport/"
 
     # Create Package.swift
     cat > "${swift_pkg_dir}/Package.swift" << 'EOF'
@@ -228,7 +228,7 @@ main() {
     echo ""
     echo "Output files:"
     echo "  - XCFramework: ${XCFRAMEWORK_OUTPUT}"
-    echo "  - Swift bindings: ${OUTPUT_DIR}/${PACKAGE_NAME}.swift"
+    echo "  - Swift bindings: ${OUTPUT_DIR}/CooklangImport.swift"
     echo "  - Swift Package: ${OUTPUT_DIR}/CooklangImport/"
     echo ""
     echo "To use in your iOS project:"
