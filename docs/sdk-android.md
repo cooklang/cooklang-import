@@ -91,7 +91,15 @@ suspend fun importWithLlm(url: String, apiKey: String): String {
 
 ```kotlin
 suspend fun extractOnly(url: String): String {
-    return simpleExtract(url)
+    val config = FfiImportConfig(
+        provider = null,
+        apiKey = null,
+        model = null,
+        timeoutSeconds = 30u,
+        extractOnly = true
+    )
+
+    return importFromUrl(url, config)
     // Returns structured recipe data without Cooklang conversion
 }
 ```

@@ -71,7 +71,18 @@ func importWithLlm() async throws {
 
 ```swift
 func extractOnly() async throws {
-    let recipe = try await simpleExtract(url: "https://example.com/recipe")
+    let config = FfiImportConfig(
+        provider: nil,
+        apiKey: nil,
+        model: nil,
+        timeoutSeconds: 30,
+        extractOnly: true
+    )
+
+    let result = try await importFromUrl(
+        url: "https://example.com/recipe",
+        config: config
+    )
     // Returns structured recipe data without Cooklang conversion
 }
 ```
