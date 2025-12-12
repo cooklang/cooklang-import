@@ -71,13 +71,14 @@ fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
     // Build text from ingredients and instructions
     let mut text = String::new();
     for ingredient in &recipe.ingredients {
-        text.push_str(ingredient);
+        text.push_str(ingredient.trim());
         text.push('\n');
     }
-    if !recipe.ingredients.is_empty() {
+    // Always add a blank line between ingredients and instructions
+    if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
         text.push('\n');
     }
-    text.push_str(&recipe.instructions);
+    text.push_str(recipe.instructions.trim_start());
 
     // Build metadata YAML (without --- delimiters)
     let mut metadata_lines = Vec::new();
