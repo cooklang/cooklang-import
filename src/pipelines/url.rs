@@ -85,8 +85,9 @@ fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
     if let Some(desc) = &recipe.description {
         metadata_lines.push(format!("description: {}", desc));
     }
-    if !recipe.image.is_empty() {
-        metadata_lines.push(format!("image: {}", recipe.image.join(", ")));
+    // Only use the first image if multiple are available
+    if let Some(first_image) = recipe.image.first() {
+        metadata_lines.push(format!("image: {}", first_image));
     }
     for (key, value) in &recipe.metadata {
         metadata_lines.push(format!("{}: {}", key, value));

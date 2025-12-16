@@ -122,21 +122,59 @@ impl JsonLdExtractor {
             }
         }
 
-        // Map image (use the first image if multiple are available)
-        if let Some(ref img) = json_ld_recipe.image {
-            let image_url = match img {
-                ImageType::String(i) => Some(decode_html_symbols(i)),
-                ImageType::MultipleStrings(imgs) if !imgs.is_empty() => {
-                    Some(decode_html_symbols(&imgs[0]))
+        // Map nutrition information as nested YAML
+        if let Some(nutrition) = &json_ld_recipe.nutrition {
+            let mut nutrition_lines = Vec::new();
+            if let Some(calories) = &nutrition.calories {
+                if !calories.is_empty() {
+                    nutrition_lines.push(format!("  calories: {}", calories));
                 }
-                ImageType::Object(i) => Some(i.url.clone()),
-                ImageType::MultipleObjects(imgs) if !imgs.is_empty() => Some(imgs[0].url.clone()),
-                _ => None,
-            };
-            if let Some(url) = image_url {
-                if !url.is_empty() {
-                    metadata.insert("image".to_string(), url);
+            }
+            if let Some(fat) = &nutrition.fat_content {
+                if !fat.is_empty() {
+                    nutrition_lines.push(format!("  fat: {}", fat));
                 }
+            }
+            if let Some(sat_fat) = &nutrition.saturated_fat_content {
+                if !sat_fat.is_empty() {
+                    nutrition_lines.push(format!("  saturated fat: {}", sat_fat));
+                }
+            }
+            if let Some(carbs) = &nutrition.carbohydrate_content {
+                if !carbs.is_empty() {
+                    nutrition_lines.push(format!("  carbohydrates: {}", carbs));
+                }
+            }
+            if let Some(sugar) = &nutrition.sugar_content {
+                if !sugar.is_empty() {
+                    nutrition_lines.push(format!("  sugar: {}", sugar));
+                }
+            }
+            if let Some(protein) = &nutrition.protein_content {
+                if !protein.is_empty() {
+                    nutrition_lines.push(format!("  protein: {}", protein));
+                }
+            }
+            if let Some(fiber) = &nutrition.fiber_content {
+                if !fiber.is_empty() {
+                    nutrition_lines.push(format!("  fiber: {}", fiber));
+                }
+            }
+            if let Some(sodium) = &nutrition.sodium_content {
+                if !sodium.is_empty() {
+                    nutrition_lines.push(format!("  sodium: {}", sodium));
+                }
+            }
+            if let Some(serving_size) = &nutrition.serving_size {
+                if !serving_size.is_empty() {
+                    nutrition_lines.push(format!("  serving size: {}", serving_size));
+                }
+            }
+            if !nutrition_lines.is_empty() {
+                metadata.insert(
+                    "nutrition".to_string(),
+                    format!("\n{}", nutrition_lines.join("\n")),
+                );
             }
         }
 
@@ -323,6 +361,28 @@ struct JsonLdRecipe {
     recipe_cuisine: Option<RecipeCuisine>,
     keywords: Option<Keywords>,
     author: Option<Author>,
+    nutrition: Option<NutritionInformation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NutritionInformation {
+    calories: Option<String>,
+    #[serde(rename = "fatContent")]
+    fat_content: Option<String>,
+    #[serde(rename = "saturatedFatContent")]
+    saturated_fat_content: Option<String>,
+    #[serde(rename = "carbohydrateContent")]
+    carbohydrate_content: Option<String>,
+    #[serde(rename = "sugarContent")]
+    sugar_content: Option<String>,
+    #[serde(rename = "proteinContent")]
+    protein_content: Option<String>,
+    #[serde(rename = "fiberContent")]
+    fiber_content: Option<String>,
+    #[serde(rename = "sodiumContent")]
+    sodium_content: Option<String>,
+    #[serde(rename = "servingSize")]
+    serving_size: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -465,8 +525,93 @@ impl TryFrom<&Value> for JsonLdRecipe {
 }
 
 fn decode_html_symbols(text: &str) -> String {
-    // for some reason need to decode twice to get the correct string
-    decode_html_entities(&decode_html_entities(text)).into_owned()
+    // First decode HTML entities (e.g., &lt; -> <), then strip HTML tags
+    // Need to decode twice to handle double-encoded entities
+    let first_decode = decode_html_entities(text);
+    let second_decode = decode_html_entities(&first_decode);
+    // Now strip the HTML tags
+    strip_html_tags(&second_decode)
+}
+
+/// Strip HTML tags from text, converting block elements to newlines
+fn strip_html_tags(html: &str) -> String {
+    // If there are no HTML tags, return as-is
+    if !html.contains('<') {
+        return html.to_string();
+    }
+
+    // Parse as HTML fragment and extract text
+    let fragment = scraper::Html::parse_fragment(html);
+    let mut result = String::new();
+
+    extract_text_recursive(fragment.root_element(), &mut result);
+
+    // Clean up the result: normalize whitespace and trim
+    let cleaned = result
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    cleaned
+}
+
+/// Recursively extract text from HTML element, adding newlines for block elements
+fn extract_text_recursive(element: scraper::ElementRef, result: &mut String) {
+    for child in element.children() {
+        if let Some(text) = child.value().as_text() {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                // Don't add space before punctuation
+                let starts_with_punct = trimmed.starts_with(['.', ',', '!', '?', ':', ';', ')']);
+                if !result.is_empty()
+                    && !result.ends_with('\n')
+                    && !result.ends_with(' ')
+                    && !starts_with_punct
+                {
+                    result.push(' ');
+                }
+                result.push_str(trimmed);
+            }
+        } else if let Some(el) = child.value().as_element() {
+            let tag_name = el.name();
+
+            // Block elements that should have newlines
+            let is_block = matches!(
+                tag_name,
+                "p" | "div"
+                    | "br"
+                    | "li"
+                    | "ul"
+                    | "ol"
+                    | "h1"
+                    | "h2"
+                    | "h3"
+                    | "h4"
+                    | "h5"
+                    | "h6"
+                    | "tr"
+                    | "blockquote"
+                    | "pre"
+                    | "hr"
+            );
+
+            if is_block && !result.is_empty() && !result.ends_with('\n') {
+                result.push('\n');
+            }
+
+            // Recurse into child element
+            if let Some(child_ref) = scraper::ElementRef::wrap(child) {
+                extract_text_recursive(child_ref, result);
+            }
+
+            // Add newline after block elements
+            if is_block && !result.is_empty() && !result.ends_with('\n') {
+                result.push('\n');
+            }
+        }
+    }
 }
 
 fn clean_diet_value(diet: &str) -> String {
@@ -973,5 +1118,59 @@ mod tests {
         assert_eq!(result.metadata.get("servings").unwrap(), "4");
         assert_eq!(result.metadata.get("diet").unwrap(), "GlutenFree, LowCarb");
         assert_eq!(result.metadata.get("cuisine").unwrap(), "Italian");
+    }
+
+    #[test]
+    fn test_strip_html_tags() {
+        // Test simple HTML
+        let html = "<ul><li>Step 1</li><li>Step 2</li></ul>";
+        let result = strip_html_tags(html);
+        assert_eq!(result, "Step 1\nStep 2");
+
+        // Test with strong tags
+        let html = "<li>Chop the <strong>potatoes</strong> lengthways</li>";
+        let result = strip_html_tags(html);
+        assert_eq!(result, "Chop the potatoes lengthways");
+
+        // Test with paragraph
+        let html = "<p>TIP: Use two baking trays if necessary.</p>";
+        let result = strip_html_tags(html);
+        assert_eq!(result, "TIP: Use two baking trays if necessary.");
+
+        // Test text without HTML
+        let text = "Plain text without tags";
+        let result = strip_html_tags(text);
+        assert_eq!(result, "Plain text without tags");
+    }
+
+    #[test]
+    fn test_decode_html_symbols_strips_tags() {
+        let html = "<ul>\n<li>Preheat your oven to 240°C.</li>\n<li>Chop the <strong>potatoes</strong>.</li>\n</ul>";
+        let result = decode_html_symbols(html);
+        assert!(
+            !result.contains("<ul>"),
+            "Should not contain <ul>: {}",
+            result
+        );
+        assert!(
+            !result.contains("<li>"),
+            "Should not contain <li>: {}",
+            result
+        );
+        assert!(
+            !result.contains("<strong>"),
+            "Should not contain <strong>: {}",
+            result
+        );
+        assert!(
+            result.contains("Preheat your oven to 240°C."),
+            "Should contain the text: {}",
+            result
+        );
+        assert!(
+            result.contains("Chop the potatoes."),
+            "Should contain the text: {}",
+            result
+        );
     }
 }
