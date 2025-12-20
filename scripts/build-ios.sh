@@ -153,6 +153,12 @@ create_xcframework() {
         -headers "$ios_sim_dir/Headers" \
         -output "$XCFRAMEWORK_OUTPUT"
 
+    # Copy module maps into the XCFramework (xcodebuild doesn't do this automatically)
+    mkdir -p "$XCFRAMEWORK_OUTPUT/ios-arm64/Modules"
+    mkdir -p "$XCFRAMEWORK_OUTPUT/ios-arm64_x86_64-simulator/Modules"
+    echo "$modulemap_content" > "$XCFRAMEWORK_OUTPUT/ios-arm64/Modules/module.modulemap"
+    echo "$modulemap_content" > "$XCFRAMEWORK_OUTPUT/ios-arm64_x86_64-simulator/Modules/module.modulemap"
+
     # Copy Swift file alongside XCFramework (uses module_name from uniffi.toml)
     cp "${SWIFT_OUTPUT_DIR}/CooklangImport.swift" "${OUTPUT_DIR}/"
 

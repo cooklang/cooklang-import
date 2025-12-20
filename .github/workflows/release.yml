@@ -90,6 +90,16 @@ jobs:
             -headers target/ios/ios-simulator/Headers \
             -output target/ios/CooklangImportFFI.xcframework
 
+          # Copy module maps into the XCFramework (xcodebuild doesn't do this automatically)
+          mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64/Modules
+          mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/Modules
+          cp target/ios/ios-device/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64/Modules/
+          cp target/ios/ios-simulator/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/Modules/
+
+          # Show structure for debugging
+          echo "XCFramework structure:"
+          find target/ios/CooklangImportFFI.xcframework -type f | head -20
+
       - name: Create Swift Package
         run: |
           mkdir -p target/ios/CooklangImport/Sources/CooklangImport
@@ -406,18 +416,29 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Download iOS zip and compute checksum
+      - name: Download iOS artifacts and compute checksum
         id: checksum
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportFFI.xcframework.zip"
 
-          echo "Downloading from: ${URL}"
-          curl -fsSL "$URL" -o CooklangImportFFI.xcframework.zip
+          # Download XCFramework for checksum
+          XCFRAMEWORK_URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportFFI.xcframework.zip"
+          echo "Downloading XCFramework from: ${XCFRAMEWORK_URL}"
+          curl -fsSL "$XCFRAMEWORK_URL" -o CooklangImportFFI.xcframework.zip
 
           CHECKSUM=$(swift package compute-checksum CooklangImportFFI.xcframework.zip)
           echo "Checksum: ${CHECKSUM}"
           echo "CHECKSUM=${CHECKSUM}" >> $GITHUB_OUTPUT
+
+          # Download full iOS package which contains generated Swift bindings
+          IOS_ZIP_URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImport-ios.zip"
+          echo "Downloading iOS package from: ${IOS_ZIP_URL}"
+          curl -fsSL "$IOS_ZIP_URL" -o CooklangImport-ios.zip
+
+          # Extract the generated Swift bindings
+          unzip -o CooklangImport-ios.zip
+          echo "Extracted Swift bindings:"
+          ls -la swift/
 
       - name: Generate Package.swift
         run: |
@@ -457,13 +478,13 @@ jobs:
           )
           EOF
 
-      - name: Create Sources directory
+      - name: Copy generated Swift bindings
         run: |
           mkdir -p Sources/CooklangImport
-          cat > Sources/CooklangImport/CooklangImport.swift << 'EOF'
-          // Re-export the FFI module for convenience
-          @_exported import CooklangImportFFI
-          EOF
+          # Copy the generated Swift bindings from the iOS build artifact
+          cp swift/CooklangImport.swift Sources/CooklangImport/
+          echo "Copied generated Swift bindings:"
+          head -50 Sources/CooklangImport/CooklangImport.swift
 
       - name: Commit and push Package.swift
         run: |

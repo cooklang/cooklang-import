@@ -74,10 +74,12 @@ mobile: ios android
 bindings-swift: build-uniffi
 	@mkdir -p target/bindings/swift
 	uniffi-bindgen generate \
+		--config uniffi.toml \
 		--library target/release/libcooklang_import.dylib \
 		--language swift \
 		--out-dir target/bindings/swift || \
 	uniffi-bindgen generate \
+		--config uniffi.toml \
 		--library target/release/libcooklang_import.so \
 		--language swift \
 		--out-dir target/bindings/swift

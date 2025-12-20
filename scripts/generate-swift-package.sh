@@ -167,18 +167,33 @@ main() {
     echo -e "${GREEN}Package.swift generated at: ${package_swift_path}${NC}"
     echo ""
 
-    # Also create the Sources directory structure if it doesn't exist
+    # Copy generated Swift bindings to Sources directory
     local sources_dir="${PROJECT_ROOT}/Sources/${PACKAGE_NAME}"
-    if [[ ! -d "$sources_dir" ]]; then
-        echo -e "${YELLOW}Creating Sources directory structure...${NC}"
-        mkdir -p "$sources_dir"
+    local swift_bindings=""
 
-        # Create a placeholder file that re-exports the FFI module
+    # Check multiple possible locations for generated Swift bindings
+    if [[ -f "${PROJECT_ROOT}/target/ios/swift/CooklangImport.swift" ]]; then
+        swift_bindings="${PROJECT_ROOT}/target/ios/swift/CooklangImport.swift"
+    elif [[ -f "${PROJECT_ROOT}/target/bindings/swift/CooklangImport.swift" ]]; then
+        swift_bindings="${PROJECT_ROOT}/target/bindings/swift/CooklangImport.swift"
+    fi
+
+    mkdir -p "$sources_dir"
+
+    if [[ -n "$swift_bindings" ]]; then
+        echo -e "${YELLOW}Copying generated Swift bindings from ${swift_bindings}...${NC}"
+        cp "$swift_bindings" "$sources_dir/"
+        echo -e "${GREEN}Copied generated Swift bindings to ${sources_dir}${NC}"
+    else
+        echo -e "${RED}Warning: Generated Swift bindings not found${NC}"
+        echo -e "${RED}Run 'make ios' or 'make bindings-swift' first to generate bindings${NC}"
+        echo -e "${YELLOW}Creating placeholder file for now...${NC}"
         cat > "${sources_dir}/CooklangImport.swift" << 'SWIFT_EOF'
 // Re-export the FFI module for convenience
+// NOTE: This is a placeholder. For full functionality, run the iOS build
+// to generate proper Swift bindings.
 @_exported import CooklangImportFFI
 SWIFT_EOF
-        echo -e "${GREEN}Created placeholder Swift file${NC}"
     fi
 
     echo ""
