@@ -130,7 +130,7 @@ bindings: bindings-swift bindings-kotlin bindings-python bindings-ruby
 install-deps:
 	rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios || true
 	rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android || true
-	cargo install uniffi-bindgen-cli --version 0.28 || true
+	@echo "uniffi-bindgen is built as part of this project"
 	cargo install cargo-ndk || true
 
 # === Release ===

@@ -43,11 +43,8 @@ check_requirements() {
         exit 1
     fi
 
-    # Check if uniffi-bindgen is installed
-    if ! cargo install --list | grep -q "uniffi-bindgen-cli"; then
-        echo -e "${YELLOW}Installing uniffi-bindgen-cli...${NC}"
-        cargo install uniffi-bindgen-cli --version 0.28
-    fi
+    # uniffi-bindgen is built as part of this project (uniffi-bindgen.rs)
+    # No external CLI installation needed
 
     echo -e "${GREEN}All requirements met!${NC}"
 }
@@ -86,12 +83,7 @@ generate_swift_bindings() {
     local lib_path="target/${IOS_TARGETS[0]}/release/${LIB_NAME}"
 
     if [[ -f "$lib_path" ]]; then
-        cargo run --features uniffi --bin uniffi-bindgen generate \
-            --config uniffi.toml \
-            --library "$lib_path" \
-            --language swift \
-            --out-dir "$SWIFT_OUTPUT_DIR" 2>/dev/null || \
-        uniffi-bindgen generate \
+        cargo run --features uniffi-cli --bin uniffi-bindgen -- generate \
             --config uniffi.toml \
             --library "$lib_path" \
             --language swift \
@@ -134,16 +126,15 @@ create_xcframework() {
 }"
 
     # Create headers and modulemap for device
+    # Note: modulemap must be in Headers/ directory for static library xcframeworks
     mkdir -p "$ios_device_dir/Headers"
     cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$ios_device_dir/Headers/"
-    mkdir -p "$ios_device_dir/Modules"
-    echo "$modulemap_content" > "$ios_device_dir/Modules/module.modulemap"
+    echo "$modulemap_content" > "$ios_device_dir/Headers/module.modulemap"
 
     # Create headers and modulemap for simulator
     mkdir -p "$ios_sim_dir/Headers"
     cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$ios_sim_dir/Headers/"
-    mkdir -p "$ios_sim_dir/Modules"
-    echo "$modulemap_content" > "$ios_sim_dir/Modules/module.modulemap"
+    echo "$modulemap_content" > "$ios_sim_dir/Headers/module.modulemap"
 
     # Create XCFramework
     xcodebuild -create-xcframework \
@@ -152,12 +143,6 @@ create_xcframework() {
         -library "$ios_sim_dir/${LIB_NAME}" \
         -headers "$ios_sim_dir/Headers" \
         -output "$XCFRAMEWORK_OUTPUT"
-
-    # Copy module maps into the XCFramework (xcodebuild doesn't do this automatically)
-    mkdir -p "$XCFRAMEWORK_OUTPUT/ios-arm64/Modules"
-    mkdir -p "$XCFRAMEWORK_OUTPUT/ios-arm64_x86_64-simulator/Modules"
-    echo "$modulemap_content" > "$XCFRAMEWORK_OUTPUT/ios-arm64/Modules/module.modulemap"
-    echo "$modulemap_content" > "$XCFRAMEWORK_OUTPUT/ios-arm64_x86_64-simulator/Modules/module.modulemap"
 
     # Copy Swift file alongside XCFramework (uses module_name from uniffi.toml)
     cp "${SWIFT_OUTPUT_DIR}/CooklangImport.swift" "${OUTPUT_DIR}/"
