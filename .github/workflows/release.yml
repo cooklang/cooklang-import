@@ -490,6 +490,24 @@ jobs:
           git commit -m "Update Package.swift for ${{ steps.version.outputs.VERSION }}" || echo "No changes to commit"
           git push origin main
 
+      - name: Move tag to updated commit
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # Get the current commit SHA after Package.swift update
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "Moving tag ${VERSION} to commit ${CURRENT_SHA}"
+
+          # Delete the tag locally and remotely
+          git tag -d "${VERSION}" || true
+          git push origin ":refs/tags/${VERSION}" || true
+
+          # Create the tag at the current commit
+          git tag "${VERSION}" "${CURRENT_SHA}"
+
+          # Force push the tag to remote
+          git push origin "${VERSION}" --force
+
   # Publish Android package to GitHub Packages
   publish-android:
     name: Publish Android to GitHub Packages
