@@ -27,7 +27,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -45,7 +45,6 @@ jobs:
         run: |
           cargo build --release --target aarch64-apple-ios --features uniffi
           cargo build --release --target aarch64-apple-ios-sim --features uniffi
-          cargo build --release --target x86_64-apple-ios --features uniffi
 
       - name: Generate Swift bindings
         run: |
@@ -66,11 +65,8 @@ jobs:
           # Copy device library
           cp target/aarch64-apple-ios/release/libcooklang_import.a target/ios/ios-device/
 
-          # Create fat library for simulator
-          lipo -create \
-            target/aarch64-apple-ios-sim/release/libcooklang_import.a \
-            target/x86_64-apple-ios/release/libcooklang_import.a \
-            -output target/ios/ios-simulator/libcooklang_import.a
+          # Copy simulator library (arm64 only, x86_64 dropped for smaller size)
+          cp target/aarch64-apple-ios-sim/release/libcooklang_import.a target/ios/ios-simulator/
 
           # Create headers
           mkdir -p target/ios/ios-device/Headers target/ios/ios-simulator/Headers
@@ -92,9 +88,9 @@ jobs:
 
           # Copy module maps into the XCFramework (xcodebuild doesn't do this automatically)
           mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64/Modules
-          mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/Modules
+          mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64-simulator/Modules
           cp target/ios/ios-device/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64/Modules/
-          cp target/ios/ios-simulator/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/Modules/
+          cp target/ios/ios-simulator/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64-simulator/Modules/
 
           # Show structure for debugging
           echo "XCFramework structure:"

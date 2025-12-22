@@ -17,11 +17,10 @@ OUTPUT_DIR="target/ios"
 SWIFT_OUTPUT_DIR="${OUTPUT_DIR}/swift"
 XCFRAMEWORK_OUTPUT="${OUTPUT_DIR}/${FRAMEWORK_NAME}.xcframework"
 
-# iOS targets
+# iOS targets (x86_64 simulator dropped - Intel Macs are rare now)
 IOS_TARGETS=(
     "aarch64-apple-ios"           # iOS devices (arm64)
     "aarch64-apple-ios-sim"       # iOS Simulator (arm64, Apple Silicon Macs)
-    "x86_64-apple-ios"            # iOS Simulator (x86_64, Intel Macs)
 )
 
 # Check for required tools
@@ -112,12 +111,8 @@ create_xcframework() {
     # Copy device library
     cp "target/aarch64-apple-ios/release/${LIB_NAME}" "$ios_device_dir/"
 
-    # Create fat library for simulator (arm64 + x86_64)
-    echo "Creating fat library for iOS Simulator..."
-    lipo -create \
-        "target/aarch64-apple-ios-sim/release/${LIB_NAME}" \
-        "target/x86_64-apple-ios/release/${LIB_NAME}" \
-        -output "$ios_sim_dir/${LIB_NAME}"
+    # Copy simulator library (arm64 only, x86_64 dropped)
+    cp "target/aarch64-apple-ios-sim/release/${LIB_NAME}" "$ios_sim_dir/"
 
     # Create module.modulemap
     local modulemap_content="module ${FRAMEWORK_NAME} {
