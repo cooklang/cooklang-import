@@ -232,7 +232,7 @@ jobs:
           }
 
           android {
-              namespace = "com.cooklang.import_lib"
+              namespace = "org.cooklang.cooklang_import"
               compileSdk = 34
 
               defaultConfig {
@@ -371,7 +371,7 @@ jobs:
 
             Add to your `build.gradle.kts`:
             ```kotlin
-            implementation("com.cooklang:cooklang-import:${{ steps.version.outputs.VERSION }}")
+            implementation("org.cooklang:cooklang-import:${{ steps.version.outputs.VERSION }}")
             ```
 
             Or download `cooklang-import-android.zip` which contains:
@@ -581,11 +581,11 @@ jobs:
               id("maven-publish")
           }
 
-          group = "com.cooklang"
+          group = "org.cooklang"
           version = "${VERSION}"
 
           android {
-              namespace = "com.cooklang.import_lib"
+              namespace = "org.cooklang.cooklang_import"
               compileSdk = 34
 
               defaultConfig {
@@ -635,7 +635,7 @@ jobs:
           publishing {
               publications {
                   register<MavenPublication>("release") {
-                      groupId = "com.cooklang"
+                      groupId = "org.cooklang"
                       artifactId = "cooklang-import"
                       version = "${VERSION}"
 
