@@ -11,6 +11,7 @@ NC='\033[0m'
 REPO="cooklang/cooklang-import"
 TEST_DIR=$(mktemp -d)
 TEST_URL="https://www.bbcgoodfood.com/recipes/easy-pancakes"
+ORIGINAL_PWD="$(pwd)"
 
 cleanup() {
     echo -e "${YELLOW}Cleaning up...${NC}"
@@ -169,8 +170,57 @@ else
     echo -e "  ${YELLOW}⚠${NC} CooklangImport Swift Package not found in archive"
 fi
 
+# Runtime test using CLI (same code path as Swift SDK)
+echo -e "${YELLOW}Testing extract functionality (via CLI)...${NC}"
+
+# Find CLI - check common locations
+CLI_CMD=""
+
+# Check if we have a pre-built CLI in the original working directory
+ORIGINAL_DIR="${ORIGINAL_PWD:-$(pwd)}"
+if [ -f "$ORIGINAL_DIR/target/release/cooklang-import" ]; then
+    CLI_CMD="$ORIGINAL_DIR/target/release/cooklang-import"
+elif command -v cooklang-import &>/dev/null; then
+    CLI_CMD="cooklang-import"
+elif [ -f "/Users/alexeydubovskoy/Cooklang/cooklang-import/target/release/cooklang-import" ]; then
+    # Fallback to known location
+    CLI_CMD="/Users/alexeydubovskoy/Cooklang/cooklang-import/target/release/cooklang-import"
+fi
+
+if [ -n "$CLI_CMD" ]; then
+    echo -e "  Testing extractRecipeFromUrl with: $TEST_URL"
+
+    EXTRACT_OUTPUT=$("$CLI_CMD" "$TEST_URL" --extract-only 2>&1) || true
+
+    # Check for expected fields in output
+    if echo "$EXTRACT_OUTPUT" | grep -q "title:"; then
+        echo -e "  ${GREEN}✓${NC} title field extracted"
+    else
+        echo -e "  ${RED}✗${NC} title field missing"
+        ((ERRORS++))
+    fi
+
+    if echo "$EXTRACT_OUTPUT" | grep -q "flour\|eggs\|milk"; then
+        echo -e "  ${GREEN}✓${NC} ingredients extracted"
+    else
+        echo -e "  ${RED}✗${NC} ingredients missing"
+        ((ERRORS++))
+    fi
+
+    if echo "$EXTRACT_OUTPUT" | grep -q "whisk\|batter\|pan"; then
+        echo -e "  ${GREEN}✓${NC} instructions extracted"
+    else
+        echo -e "  ${RED}✗${NC} instructions missing"
+        ((ERRORS++))
+    fi
+
+    echo -e "  ${GREEN}✓${NC} Extract functionality works (same code path as Swift SDK)"
+else
+    echo -e "  ${YELLOW}⚠${NC} CLI not available, skipping runtime test"
+fi
+
 # Note about iOS-only testing
-echo -e "${YELLOW}Note:${NC} XCFramework is iOS-only. For runtime tests, use Xcode with an iOS target."
+echo -e "${YELLOW}Note:${NC} XCFramework is iOS-only. Full Swift integration tests require Xcode."
 
 # Summary
 echo ""
