@@ -24,7 +24,7 @@ let package = Package(
         .binaryTarget(
             name: "CooklangImportFFI",
             url: "https://github.com/cooklang/cooklang-import/releases/download/v0.8.13/CooklangImportFFI.xcframework.zip",
-            checksum: "0ede69941aa27c449824904b3f4654967c7573cffde564dcc05d408aab3ed4a4"
+            checksum: "21372dccf03eabc1069e876ad88f377ddf1219acc50d6ed1ef79d91199b22340"
         ),
     ]
 )
