@@ -1,6 +1,6 @@
 [package]
 name = "cooklang-import"
-version = "0.8.11"
+version = "0.8.12"
 edition = "2021"
 description = "A tool for importing recipes into Cooklang format"
 license = "MIT"
@@ -55,9 +55,8 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "test-util"]
 uniffi = { version = "0.28", features = ["build"], optional = true }
 
 # Release profile optimizations for smaller binaries
+# Note: LTO disabled - it embeds LLVM bitcode in static libraries, increasing size.
+# The final app's linker can apply LTO when linking against this library.
 [profile.release]
-lto = true              # Link-time optimization - significant size reduction
-codegen-units = 1       # Better optimization (slower compile)
 opt-level = "z"         # Optimize for size
-strip = true            # Strip symbols from binary
-panic = "abort"         # Smaller binary, no unwinding (safe for FFI with proper error handling)
+panic = "abort"         # Smaller binary, no unwinding
