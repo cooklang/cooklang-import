@@ -31,22 +31,33 @@ uniffi = ["dep:uniffi"]
 [dependencies]
 async-trait = "0.1.83"
 base64 = "0.22"
-config = "0.14"
-env_logger = "0.11"
+# Only enable toml format - saves ~300KB from yaml/json5/ron/ini parsers
+config = { version = "0.14", default-features = false, features = ["toml"] }
+# Disable default features (regex, color) - saves ~430KB from regex stack
+env_logger = { version = "0.11", default-features = false }
 html-escape = "0.2"
 log = "0.4"
-openssl = { version = "0.10", features = ["vendored"] }
-reqwest = { version = "0.12", features = ["blocking", "json", "native-tls-vendored", "native-tls-alpn"] }
+# Use native-tls-vendored in reqwest (handles OpenSSL for Android, Security.framework for iOS)
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "native-tls-vendored"] }
 scraper = "0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-tokio = { version = "1.0", features = ["full"] }
+# Only enable required tokio features - saves ~100KB
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs"] }
 uniffi = { version = "0.28", optional = true }
 
 [dev-dependencies]
 mockito = "1.5.0"
-tokio = { version = "1.0", features = ["full", "rt", "macros", "test-util"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "test-util"] }
 
 [build-dependencies]
 uniffi = { version = "0.28", features = ["build"], optional = true }
+
+# Release profile optimizations for smaller binaries
+[profile.release]
+lto = true              # Link-time optimization - significant size reduction
+codegen-units = 1       # Better optimization (slower compile)
+opt-level = "z"         # Optimize for size
+strip = true            # Strip symbols from binary
+panic = "abort"         # Smaller binary, no unwinding (safe for FFI with proper error handling)
