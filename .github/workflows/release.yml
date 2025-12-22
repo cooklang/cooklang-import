@@ -493,20 +493,24 @@ jobs:
       - name: Move tag to updated commit
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION_NO_V="${VERSION#v}"
 
           # Get the current commit SHA after Package.swift update
           CURRENT_SHA=$(git rev-parse HEAD)
-          echo "Moving tag ${VERSION} to commit ${CURRENT_SHA}"
+          echo "Moving tags ${VERSION} and ${VERSION_NO_V} to commit ${CURRENT_SHA}"
 
-          # Delete the tag locally and remotely
+          # Delete both tag variants locally and remotely
           git tag -d "${VERSION}" || true
+          git tag -d "${VERSION_NO_V}" || true
           git push origin ":refs/tags/${VERSION}" || true
+          git push origin ":refs/tags/${VERSION_NO_V}" || true
 
-          # Create the tag at the current commit
+          # Create both tags at the current commit
           git tag "${VERSION}" "${CURRENT_SHA}"
+          git tag "${VERSION_NO_V}" "${CURRENT_SHA}"
 
-          # Force push the tag to remote
-          git push origin "${VERSION}" --force
+          # Force push both tags to remote
+          git push origin "${VERSION}" "${VERSION_NO_V}" --force
 
   # Publish Android package to GitHub Packages
   publish-android:
