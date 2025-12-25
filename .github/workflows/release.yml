@@ -1,45 +1,73 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: 'Dry run (skip release creation)'
-        required: false
-        default: 'false'
-        type: boolean
+      version:
+        description: 'Release version (e.g., 0.8.16)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Build iOS artifacts on macOS
+  # Update version in Cargo.toml
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+      version_tag: ${{ steps.set-version.outputs.version_tag }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set version outputs
+        id: set-version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_tag=v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update Cargo.toml version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" Cargo.toml
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Update Cargo.lock
+        run: cargo update -p cooklang-import
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to ${{ github.event.inputs.version }}"
+          git push origin main
+
+  # Build iOS artifacts
   build-ios:
     name: Build iOS
+    needs: prepare-release
     runs-on: macos-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-ios-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-ios-cargo-
 
       - name: Build iOS targets
         run: |
@@ -57,7 +85,6 @@ jobs:
 
       - name: Create XCFramework
         run: |
-          # Clean up any existing xcframework from cache
           rm -rf target/ios/CooklangImportFFI.xcframework
           rm -rf target/ios/ios-device target/ios/ios-simulator
           mkdir -p target/ios/ios-device target/ios/ios-simulator
@@ -65,18 +92,15 @@ jobs:
           # Copy device library
           cp target/aarch64-apple-ios/release/libcooklang_import.a target/ios/ios-device/
 
-          # Copy simulator library (arm64 only, x86_64 dropped for smaller size)
+          # Copy simulator library
           cp target/aarch64-apple-ios-sim/release/libcooklang_import.a target/ios/ios-simulator/
 
-          # Create headers
+          # Create headers and module maps (must be in Headers/ directory)
           mkdir -p target/ios/ios-device/Headers target/ios/ios-simulator/Headers
           cp target/ios/swift/CooklangImportFFI.h target/ios/ios-device/Headers/
           cp target/ios/swift/CooklangImportFFI.h target/ios/ios-simulator/Headers/
-
-          # Create module maps
-          mkdir -p target/ios/ios-device/Modules target/ios/ios-simulator/Modules
-          echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > target/ios/ios-device/Modules/module.modulemap
-          echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > target/ios/ios-simulator/Modules/module.modulemap
+          echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > target/ios/ios-device/Headers/module.modulemap
+          echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > target/ios/ios-simulator/Headers/module.modulemap
 
           # Create XCFramework
           xcodebuild -create-xcframework \
@@ -86,57 +110,12 @@ jobs:
             -headers target/ios/ios-simulator/Headers \
             -output target/ios/CooklangImportFFI.xcframework
 
-          # Copy module maps into the XCFramework (xcodebuild doesn't do this automatically)
-          mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64/Modules
-          mkdir -p target/ios/CooklangImportFFI.xcframework/ios-arm64-simulator/Modules
-          cp target/ios/ios-device/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64/Modules/
-          cp target/ios/ios-simulator/Modules/module.modulemap target/ios/CooklangImportFFI.xcframework/ios-arm64-simulator/Modules/
-
-          # Show structure for debugging
-          echo "XCFramework structure:"
-          find target/ios/CooklangImportFFI.xcframework -type f | head -20
-
-      - name: Create Swift Package
-        run: |
-          mkdir -p target/ios/CooklangImport/Sources/CooklangImport
-          cp target/ios/swift/CooklangImport.swift target/ios/CooklangImport/Sources/CooklangImport/
-          cp -R target/ios/CooklangImportFFI.xcframework target/ios/CooklangImport/
-
-          cat > target/ios/CooklangImport/Package.swift << 'EOF'
-          // swift-tools-version:5.5
-          import PackageDescription
-
-          let package = Package(
-              name: "CooklangImport",
-              platforms: [
-                  .iOS(.v13),
-                  .macOS(.v10_15)
-              ],
-              products: [
-                  .library(
-                      name: "CooklangImport",
-                      targets: ["CooklangImport", "CooklangImportFFI"]
-                  ),
-              ],
-              targets: [
-                  .target(
-                      name: "CooklangImport",
-                      dependencies: ["CooklangImportFFI"]
-                  ),
-                  .binaryTarget(
-                      name: "CooklangImportFFI",
-                      path: "CooklangImportFFI.xcframework"
-                  ),
-              ]
-          )
-          EOF
-
       - name: Package iOS artifacts
         run: |
           cd target/ios
-          # Create xcframework zip (main artifact, like cooklang-rs)
           zip -r ../../CooklangImportFFI.xcframework.zip CooklangImportFFI.xcframework
-          # Also create full package with Swift sources for manual integration
+          mkdir -p CooklangImport/Sources/CooklangImport
+          cp swift/CooklangImport.swift CooklangImport/Sources/CooklangImport/
           zip -r ../../CooklangImport-ios.zip CooklangImport CooklangImportFFI.xcframework swift
 
       - name: Upload iOS artifacts
@@ -146,31 +125,23 @@ jobs:
           path: |
             CooklangImportFFI.xcframework.zip
             CooklangImport-ios.zip
+            target/ios/swift/CooklangImport.swift
 
-  # Build Android artifacts on Linux
+  # Build Android artifacts
   build-android:
     name: Build Android
+    needs: prepare-release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-android-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-android-cargo-
 
       - name: Setup Android NDK
         uses: android-actions/setup-android@v3
@@ -194,7 +165,6 @@ jobs:
 
       - name: Generate Kotlin bindings
         run: |
-          # Clean up any existing kotlin bindings from cache
           rm -rf target/android/kotlin
           mkdir -p target/android/kotlin
           ./target/release/uniffi-bindgen generate \
@@ -202,9 +172,6 @@ jobs:
             --library target/aarch64-linux-android/release/libcooklang_import.so \
             --language kotlin \
             --out-dir target/android/kotlin
-          # Debug: show what was generated
-          echo "Generated Kotlin files:"
-          find target/android/kotlin -name "*.kt" -type f
 
       - name: Organize JNI libraries
         run: |
@@ -215,13 +182,14 @@ jobs:
 
       - name: Create Android library module
         run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
           mkdir -p target/android/cooklang-import-android/src/main/kotlin
           mkdir -p target/android/cooklang-import-android/src/main/jniLibs
 
           # Copy JNI libs
           cp -R target/android/jniLibs/* target/android/cooklang-import-android/src/main/jniLibs/
 
-          # Copy Kotlin bindings (uniffi generates them in subdirectories)
+          # Copy Kotlin bindings
           find target/android/kotlin -name "*.kt" -exec cp {} target/android/cooklang-import-android/src/main/kotlin/ \;
 
           # Create build.gradle.kts
@@ -301,103 +269,11 @@ jobs:
           name: android-artifacts
           path: cooklang-import-android.zip
 
-  # Create GitHub Release
-  release:
-    name: Create Release
-    needs: [build-ios, build-android]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Download iOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-artifacts
-
-      - name: Download Android artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: android-artifacts
-
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: Release ${{ steps.version.outputs.VERSION }}
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-          generate_release_notes: true
-          files: |
-            CooklangImportFFI.xcframework.zip
-            CooklangImport-ios.zip
-            cooklang-import-android.zip
-          body: |
-            ## Mobile SDK Release ${{ steps.version.outputs.VERSION }}
-
-            ### iOS (Swift Package Manager)
-
-            Add to your `Package.swift` or Xcode project:
-            ```swift
-            .package(url: "https://github.com/cooklang/cooklang-import.git", from: "${{ steps.version.outputs.VERSION }}")
-            ```
-
-            **Downloads:**
-            - `CooklangImportFFI.xcframework.zip` - XCFramework binary (used by Package.swift)
-            - `CooklangImport-ios.zip` - Full package with Swift sources for manual integration
-
-            ### Android (GitHub Packages Maven)
-
-            Add to your `settings.gradle.kts`:
-            ```kotlin
-            dependencyResolutionManagement {
-                repositories {
-                    maven {
-                        url = uri("https://maven.pkg.github.com/cooklang/cooklang-import")
-                        credentials {
-                            username = System.getenv("GITHUB_ACTOR")
-                            password = System.getenv("GITHUB_TOKEN")
-                        }
-                    }
-                }
-            }
-            ```
-
-            Add to your `build.gradle.kts`:
-            ```kotlin
-            implementation("org.cooklang:cooklang-import:${{ steps.version.outputs.VERSION }}")
-            ```
-
-            Or download `cooklang-import-android.zip` which contains:
-            - `cooklang-import-android/` - Android library module
-            - `jniLibs/` - Native libraries for all architectures
-            - `kotlin/` - Kotlin bindings source files
-
-            ### Supported Architectures
-
-            **iOS:**
-            - arm64 (devices)
-            - arm64 (simulator, Apple Silicon)
-
-            **Android:**
-            - arm64-v8a
-            - armeabi-v7a
-            - x86_64
-
-            See the README for integration instructions.
-
-  # Update Package.swift for Swift Package Manager
-  update-swift-package:
+  # Update Package.swift with correct checksum
+  update-package-swift:
     name: Update Package.swift
-    needs: [release]
+    needs: [prepare-release, build-ios]
     runs-on: macos-latest
-    if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
     permissions:
       contents: write
     steps:
@@ -407,38 +283,22 @@ jobs:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Download iOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-artifacts
 
-      - name: Download iOS artifacts and compute checksum
+      - name: Compute checksum
         id: checksum
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-
-          # Download XCFramework for checksum
-          XCFRAMEWORK_URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportFFI.xcframework.zip"
-          echo "Downloading XCFramework from: ${XCFRAMEWORK_URL}"
-          curl -fsSL "$XCFRAMEWORK_URL" -o CooklangImportFFI.xcframework.zip
-
           CHECKSUM=$(swift package compute-checksum CooklangImportFFI.xcframework.zip)
-          echo "Checksum: ${CHECKSUM}"
-          echo "CHECKSUM=${CHECKSUM}" >> $GITHUB_OUTPUT
+          echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
+          echo "Computed checksum: ${CHECKSUM}"
 
-          # Download full iOS package which contains generated Swift bindings
-          IOS_ZIP_URL="https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImport-ios.zip"
-          echo "Downloading iOS package from: ${IOS_ZIP_URL}"
-          curl -fsSL "$IOS_ZIP_URL" -o CooklangImport-ios.zip
-
-          # Extract the generated Swift bindings
-          unzip -o CooklangImport-ios.zip
-          echo "Extracted Swift bindings:"
-          ls -la swift/
-
-      - name: Generate Package.swift
+      - name: Update Package.swift
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          CHECKSUM="${{ steps.checksum.outputs.CHECKSUM }}"
+          VERSION="${{ needs.prepare-release.outputs.version_tag }}"
+          CHECKSUM="${{ steps.checksum.outputs.checksum }}"
 
           cat > Package.swift << EOF
           // swift-tools-version:5.5
@@ -476,54 +336,134 @@ jobs:
       - name: Copy generated Swift bindings
         run: |
           mkdir -p Sources/CooklangImport
-          # Copy the generated Swift bindings from the iOS build artifact
-          cp swift/CooklangImport.swift Sources/CooklangImport/
-          echo "Copied generated Swift bindings:"
-          head -50 Sources/CooklangImport/CooklangImport.swift
+          cp target/ios/swift/CooklangImport.swift Sources/CooklangImport/
 
-      - name: Commit and push Package.swift
+      - name: Commit Package.swift and Sources
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add Package.swift Sources/
-          git commit -m "Update Package.swift for ${{ steps.version.outputs.VERSION }}" || echo "No changes to commit"
+          git commit -m "Release ${{ needs.prepare-release.outputs.version_tag }}"
           git push origin main
 
-      - name: Move tag to updated commit
+  # Create tags and release
+  create-release:
+    name: Create Tags and Release
+    needs: [prepare-release, build-ios, build-android, update-package-swift]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download iOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-artifacts
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-artifacts
+
+      - name: Create and push tags
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          VERSION_NO_V="${VERSION#v}"
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          VERSION_TAG="${{ needs.prepare-release.outputs.version_tag }}"
 
-          # Get the current commit SHA after Package.swift update
-          CURRENT_SHA=$(git rev-parse HEAD)
-          echo "Moving tags ${VERSION} and ${VERSION_NO_V} to commit ${CURRENT_SHA}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Delete both tag variants locally and remotely
-          git tag -d "${VERSION}" || true
-          git tag -d "${VERSION_NO_V}" || true
-          git push origin ":refs/tags/${VERSION}" || true
-          git push origin ":refs/tags/${VERSION_NO_V}" || true
+          # Create both tags at current commit
+          git tag "${VERSION_TAG}"
+          git tag "${VERSION}"
 
-          # Create both tags at the current commit
-          git tag "${VERSION}" "${CURRENT_SHA}"
-          git tag "${VERSION_NO_V}" "${CURRENT_SHA}"
+          # Push tags
+          git push origin "${VERSION_TAG}" "${VERSION}"
 
-          # Force push both tags to remote
-          git push origin "${VERSION}" "${VERSION_NO_V}" --force
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.version_tag }}
+          name: Release ${{ needs.prepare-release.outputs.version_tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            CooklangImportFFI.xcframework.zip
+            CooklangImport-ios.zip
+            cooklang-import-android.zip
+          body: |
+            ## Mobile SDK Release ${{ needs.prepare-release.outputs.version_tag }}
+
+            ### iOS (Swift Package Manager)
+
+            Add to your `Package.swift` or Xcode project:
+            ```swift
+            .package(url: "https://github.com/cooklang/cooklang-import.git", from: "${{ needs.prepare-release.outputs.version_tag }}")
+            ```
+
+            **Downloads:**
+            - `CooklangImportFFI.xcframework.zip` - XCFramework binary (used by Package.swift)
+            - `CooklangImport-ios.zip` - Full package with Swift sources for manual integration
+
+            ### Android (GitHub Packages Maven)
+
+            Add to your `settings.gradle.kts`:
+            ```kotlin
+            dependencyResolutionManagement {
+                repositories {
+                    maven {
+                        url = uri("https://maven.pkg.github.com/cooklang/cooklang-import")
+                        credentials {
+                            username = System.getenv("GITHUB_ACTOR")
+                            password = System.getenv("GITHUB_TOKEN")
+                        }
+                    }
+                }
+            }
+            ```
+
+            Add to your `build.gradle.kts`:
+            ```kotlin
+            implementation("org.cooklang:cooklang-import:${{ needs.prepare-release.outputs.version_tag }}")
+            ```
+
+            Or download `cooklang-import-android.zip` which contains:
+            - `cooklang-import-android/` - Android library module
+            - `jniLibs/` - Native libraries for all architectures
+            - `kotlin/` - Kotlin bindings source files
+
+            ### Supported Architectures
+
+            **iOS:**
+            - arm64 (devices)
+            - arm64 (simulator, Apple Silicon)
+
+            **Android:**
+            - arm64-v8a
+            - armeabi-v7a
+            - x86_64
+
+            See the README for integration instructions.
 
   # Publish Android package to GitHub Packages
   publish-android:
     name: Publish Android to GitHub Packages
-    needs: [build-android, release]
+    needs: [prepare-release, build-android, create-release]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') && github.event.inputs.dry_run != 'true'
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Download Android artifacts
         uses: actions/download-artifact@v4
@@ -534,12 +474,6 @@ jobs:
         run: |
           mkdir -p target/android
           unzip cooklang-import-android.zip -d target/android/
-
-      - name: Get version from tag
-        id: version
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -555,7 +489,7 @@ jobs:
 
       - name: Configure Android library for publishing
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION="${{ needs.prepare-release.outputs.version }}"
           ANDROID_DIR="target/android/cooklang-import-android"
 
           # Create settings.gradle.kts with plugin management
