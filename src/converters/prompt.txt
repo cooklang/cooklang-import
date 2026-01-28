@@ -56,7 +56,7 @@ CONVERSION GUIDELINES:
 
 IMPORTANT: Do NOT include a title or header in your output. Start directly with the recipe steps or sections.
 
-IMPORTANT: keep original recipe language provided by user, never translate to English.
+IMPORTANT: The output must be fully in {{LANGUAGE}}. Do not translate to any other language.
 
 1. Remove the original ingredient list entirely. Incorporate each ingredient into the method text using Cooklang syntax.
 

@@ -1,3 +1,5 @@
+use whatlang::detect;
+
 /// The system prompt template used for converting recipes to Cooklang format.
 ///
 /// This prompt instructs the AI model on how to properly format recipes
@@ -7,13 +9,23 @@
 /// `include_str!` macro, making it easy to edit without dealing with
 /// Rust string syntax.
 ///
-/// Contains a `{{RECIPE}}` placeholder that should be replaced with the actual
-/// recipe content using the `inject_recipe` function.
+/// Contains `{{RECIPE}}` and `{{LANGUAGE}}` placeholders that should be replaced
+/// with the actual recipe content and detected language using the `inject_recipe` function.
 pub const COOKLANG_CONVERTER_PROMPT: &str = include_str!("prompt.txt");
 
-/// Injects the recipe content into the prompt template by replacing `{{RECIPE}}`.
+/// Detects the language of the given text and returns a human-readable language name.
+fn detect_language(text: &str) -> String {
+    detect(text)
+        .map(|info| info.lang().eng_name().to_string())
+        .unwrap_or_else(|| "the original language".to_string())
+}
+
+/// Injects the recipe content and detected language into the prompt template.
 pub fn inject_recipe(recipe_content: &str) -> String {
-    COOKLANG_CONVERTER_PROMPT.replace("{{RECIPE}}", recipe_content)
+    let language = detect_language(recipe_content);
+    COOKLANG_CONVERTER_PROMPT
+        .replace("{{RECIPE}}", recipe_content)
+        .replace("{{LANGUAGE}}", &language)
 }
 
 #[cfg(test)]
