@@ -9,30 +9,41 @@ Here is the recipe you need to convert:
 Below are the Cooklang syntax rules you must follow:
 
 INGREDIENTS
-Use the @ symbol to define ingredients.
-- Single-word ingredients: @salt
+Use the @ symbol to define ingredients. Always close with curly braces, even for single-word ingredients.
+- Single-word ingredients: @salt{}
 - Multi-word ingredients: @ground black pepper{}
 - With quantity: @potato{2}
 - With quantity and unit: @bacon strips{1%kg} or @syrup{1/2%tbsp} or @potato{1%large} or @chopped tomatoes{1%12oz can} or @salt{pinch} or @edamame pods{1%28oz frozen package} or @chickpeas{1%400g can}
 - Fixed quantities (don't scale with servings): @salt{=1%tsp}
 - With preparation instructions: @onion{1}(peeled and finely chopped) or @garlic{2%cloves}(minced). Note that there shouldn't be any white space between }(.
-- Optional ingredients. Mark the ingredient as optional with @?: Now you can add @?thyme.
+- Optional ingredients. Mark the ingredient as optional with @?: Now you can add @?hash browns{3-4}
+- NEVER modify ingredient amounts from the original recipe (e.g., "3 tbsp oats" stays as @oats{3%tbsp}).
 
 COOKWARE
-Use the # symbol to define cookware.
-- Single-word: #pot
+Use the # symbol to define cookware. Always close with curly braces, even for single-word items. Only tag cookware the FIRST time it appears in the recipe.
+- Single-word: #pot{}
 - Multi-word: #potato masher{} or #baking sheet{}
+- Include size/descriptors as part of the cookware name: "#9.5-10-inch stainless steel pan{}" or "#small saucepan{}" (NOT "small #saucepan{}" or "9.5-10-inch #stainless steel pan{}")
+- Do NOT tag common kitchen items like bowls, plates, knives, spoons, forks, cutting boards.
 
 TIMERS
-Use the ~ symbol to define timers.
+Use the ~ symbol to define timers. Always close with curly braces. Format must be ~{number%units} or ~name{number%units}. Convert all durations to a single unit.
 - Basic timer: ~{25%minutes}
 - Named timer: ~eggs{3%minutes}
+- With ranges: ~{10-15%minutes} (use "-" for ranges, single unit)
+- Convert complex durations to single unit:
+  - "1 hour 45 minutes" → ~{105%minutes}
+  - "4:00 minutes" → ~{4%minutes}
+  - "1¼ hours" → ~{75%minutes}
+  - "1 more minute" → ~{1%minute}
+  - "about 10 minutes" → ~{10%minutes}
+- IMPORTANT: Only use ~ for actual timers. Remove ~ from approximate measurements like "~500 grams" or "~20cm" - replace with "about" (e.g., "about 500 grams", "about 20cm/8\"").
 
 STEPS
 Each paragraph is a cooking step. Steps must be separated by an empty line (two newlines). Limit lines to 80-100 characters when practical.
 
 SECTIONS
-For recipes with multiple components, use section headers:
+For recipes with multiple components, use section headers. Do NOT use sections if the recipe has only one component.
 == Section Name ==
 
 Example:
@@ -45,7 +56,7 @@ Mix @flour{200%g} and @water{100%ml}.
 Combine @cheese{100%g} and @spinach{50%g}.
 
 NOTES
-Use > at the start of a line for background information or tips:
+Use > at the start of a line for background information or tips. Do NOT use any Cooklang syntax (@, #, ~) inside notes - write plain text only.
 > This is my grandmother's secret recipe!
 
 COMMENTS
@@ -74,8 +85,12 @@ IMPORTANT: The output must be fully in {{LANGUAGE}}. Do not translate to any oth
 
 8. Ensure each step is separated by an empty line (two newlines).
 
-9. Mark all cookware items with # even if mentioned multiple times.
+9. Mark cookware items with # only the FIRST time they appear. Subsequent mentions should be plain text.
 
 10. When a timer is mentioned, mark it with ~ and include the duration.
+
+11. If the input contains no cooking steps or method, output "no recipe" instead of trying to create one.
+
+12. Replace tilde (~) used for approximations with the word "about" - only use ~ for timers. Example: "~500 grams" becomes "about 500 grams", "~20cm/8\"" becomes "about 20cm/8\"".
 
 Now convert the recipe above into Cooklang format following all these rules.
