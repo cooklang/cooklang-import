@@ -12,7 +12,7 @@ import Foundation
 #endif
 
 private extension RustBuffer {
-    // Allocate a new buffer, copying the contents of a `UInt8` array.
+    /// Allocate a new buffer, copying the contents of a `UInt8` array.
     init(bytes: [UInt8]) {
         let rbuf = bytes.withUnsafeBufferPointer { ptr in
             RustBuffer.from(ptr)
@@ -28,8 +28,8 @@ private extension RustBuffer {
         try! rustCall { ffi_cooklang_import_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
-    // Frees the buffer in place.
-    // The buffer must not be used after this is called.
+    /// Frees the buffer in place.
+    /// The buffer must not be used after this is called.
     func deallocate() {
         try! rustCall { ffi_cooklang_import_rustbuffer_free(self, $0) }
     }
@@ -76,9 +76,9 @@ private func createReader(data: Data) -> (data: Data, offset: Data.Index) {
     (data: data, offset: 0)
 }
 
-// Reads an integer at the current offset, in big-endian order, and advances
-// the offset on success. Throws if reading the integer would move the
-// offset past the end of the buffer.
+/// Reads an integer at the current offset, in big-endian order, and advances
+/// the offset on success. Throws if reading the integer would move the
+/// offset past the end of the buffer.
 private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
     let range = reader.offset ..< reader.offset + MemoryLayout<T>.size
     guard reader.data.count >= range.upperBound else {
@@ -95,8 +95,8 @@ private func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: 
     return value.bigEndian
 }
 
-// Reads an arbitrary number of bytes, to be used to read
-// raw bytes, this is useful when lifting strings
+/// Reads an arbitrary number of bytes, to be used to read
+/// raw bytes, this is useful when lifting strings
 private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> [UInt8] {
     let range = reader.offset ..< (reader.offset + count)
     guard reader.data.count >= range.upperBound else {
@@ -110,17 +110,17 @@ private func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: 
     return value
 }
 
-// Reads a float at the current offset.
+/// Reads a float at the current offset.
 private func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
     return try Float(bitPattern: readInt(&reader))
 }
 
-// Reads a float at the current offset.
+/// Reads a float at the current offset.
 private func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
     return try Double(bitPattern: readInt(&reader))
 }
 
-// Indicates if the offset has reached the end of the buffer.
+/// Indicates if the offset has reached the end of the buffer.
 private func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
     return reader.offset < reader.data.count
 }
@@ -133,14 +133,14 @@ private func createWriter() -> [UInt8] {
     return []
 }
 
-private func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+private func writeBytes<S: Sequence>(_ writer: inout [UInt8], _ byteArr: S) where S.Element == UInt8 {
     writer.append(contentsOf: byteArr)
 }
 
-// Writes an integer in big-endian order.
-//
-// Warning: make sure what you are trying to write
-// is in the correct type!
+/// Writes an integer in big-endian order.
+///
+/// Warning: make sure what you are trying to write
+/// is in the correct type!
 private func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
     var value = value.bigEndian
     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
@@ -154,8 +154,8 @@ private func writeDouble(_ writer: inout [UInt8], _ value: Double) {
     writeInt(&writer, value.bitPattern)
 }
 
-// Protocol for types that transfer other types across the FFI. This is
-// analogous to the Rust trait of the same name.
+/// Protocol for types that transfer other types across the FFI. This is
+/// analogous to the Rust trait of the same name.
 private protocol FfiConverter {
     associatedtype FfiType
     associatedtype SwiftType
@@ -166,7 +166,7 @@ private protocol FfiConverter {
     static func write(_ value: SwiftType, into buf: inout [UInt8])
 }
 
-// Types conforming to `Primitive` pass themselves directly over the FFI.
+/// Types conforming to `Primitive` pass themselves directly over the FFI.
 private protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType {}
 
 extension FfiConverterPrimitive {
@@ -185,8 +185,8 @@ extension FfiConverterPrimitive {
     }
 }
 
-// Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
-// Used for complex types where it's hard to write a custom lift/lower.
+/// Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
+/// Used for complex types where it's hard to write a custom lift/lower.
 private protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
 
 extension FfiConverterRustBuffer {
@@ -213,8 +213,8 @@ extension FfiConverterRustBuffer {
     }
 }
 
-// An error type for FFI errors. These errors occur at the UniFFI level, not
-// the library level.
+/// An error type for FFI errors. These errors occur at the UniFFI level, not
+/// the library level.
 private enum UniffiInternalError: LocalizedError {
     case bufferOverflow
     case incompleteData
@@ -501,22 +501,22 @@ public struct FfiImportConfig {
      */
     public let extractOnly: Bool
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
     public init(
-        /**
+        /* 
          * Optional LLM provider (uses default if not specified)
          */ provider: FfiLlmProvider?,
-        /**
+        /* 
             * Optional API key (uses environment variable if not specified)
             */ apiKey: String?,
-        /**
+        /* 
             * Optional model name (uses provider default if not specified)
             */ model: String?,
-        /**
+        /* 
             * Optional timeout in seconds (uses default if not specified)
             */ timeoutSeconds: UInt64?,
-        /**
+        /* 
             * If true, only extract recipe without converting to Cooklang
             */ extractOnly: Bool
     ) {
@@ -612,16 +612,16 @@ public struct FfiRecipeComponents {
      */
     public let name: String
 
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
+    /// Default memberwise initializers are never public by default, so we
+    /// declare one manually.
     public init(
-        /**
+        /* 
          * Recipe text (ingredients + instructions)
          */ text: String,
-        /**
+        /* 
             * YAML-formatted metadata (without --- delimiters)
             */ metadata: String,
-        /**
+        /* 
             * Recipe name/title
             */ name: String
     ) {
@@ -693,43 +693,35 @@ public enum FfiImportError {
     /**
      * Failed to fetch recipe from URL
      */
-    case FetchError(reason: String
-    )
+    case FetchError(reason: String)
     /**
      * Failed to parse recipe from webpage
      */
-    case ParseError(reason: String
-    )
+    case ParseError(reason: String)
     /**
      * No extractor could successfully parse the recipe
      */
-    case NoExtractorMatched(reason: String
-    )
+    case NoExtractorMatched(reason: String)
     /**
      * Failed to convert recipe to Cooklang format
      */
-    case ConversionError(reason: String
-    )
+    case ConversionError(reason: String)
     /**
      * Invalid input provided
      */
-    case InvalidInput(reason: String
-    )
+    case InvalidInput(reason: String)
     /**
      * Builder configuration error
      */
-    case BuilderError(reason: String
-    )
+    case BuilderError(reason: String)
     /**
      * Configuration error
      */
-    case ConfigError(reason: String
-    )
+    case ConfigError(reason: String)
     /**
      * Runtime error (tokio)
      */
-    case RuntimeError(reason: String
-    )
+    case RuntimeError(reason: String)
 }
 
 #if swift(>=5.8)
@@ -816,7 +808,7 @@ extension FfiImportError: Foundation.LocalizedError {
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * FFI-compatible import result
  */
 
@@ -824,13 +816,11 @@ public enum FfiImportResult {
     /**
      * Recipe converted to Cooklang format
      */
-    case cooklang(content: String
-    )
+    case cooklang(content: String)
     /**
      * Recipe components extracted but not converted
      */
-    case components(components: FfiRecipeComponents
-    )
+    case components(components: FfiRecipeComponents)
 }
 
 #if swift(>=5.8)
@@ -842,11 +832,9 @@ public struct FfiConverterTypeFfiImportResult: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiImportResult {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        case 1: return try .cooklang(content: FfiConverterString.read(from: &buf)
-            )
+        case 1: return try .cooklang(content: FfiConverterString.read(from: &buf))
 
-        case 2: return try .components(components: FfiConverterTypeFfiRecipeComponents.read(from: &buf)
-            )
+        case 2: return try .components(components: FfiConverterTypeFfiRecipeComponents.read(from: &buf))
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -883,7 +871,7 @@ extension FfiImportResult: Equatable, Hashable {}
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/**
+/* 
  * FFI-compatible LLM provider enum
  */
 
@@ -1112,8 +1100,7 @@ public func extractRecipeFromUrl(url: String, timeoutSeconds: UInt64?) throws ->
  */
 public func getVersion() -> String {
     return try! FfiConverterString.lift(try! rustCall {
-        uniffi_cooklang_import_fn_func_get_version($0
-        )
+        uniffi_cooklang_import_fn_func_get_version($0)
     })
 }
 
@@ -1173,8 +1160,8 @@ private enum InitializationResult {
     case apiChecksumMismatch
 }
 
-// Use a global variable to perform the versioning checks. Swift ensures that
-// the code inside is only computed once.
+/// Use a global variable to perform the versioning checks. Swift ensures that
+/// the code inside is only computed once.
 private var initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 26
