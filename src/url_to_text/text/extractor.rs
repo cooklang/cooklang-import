@@ -125,3 +125,40 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error + Send + Sync>
 
     serde_json::from_str(content).map_err(|e| e.into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_extract_returns_recipe_components() {
+        std::env::set_var("OPENAI_API_KEY", "test_key");
+
+        let result = TextExtractor::extract("some recipe text", "test-source").await;
+
+        assert!(result.is_ok());
+        let components = result.unwrap();
+
+        assert_eq!(components.name, "Test Recipe");
+        assert!(components.metadata.contains("source: test-source"));
+        assert!(components.metadata.contains("servings: 4"));
+        assert!(components.metadata.contains("prep_time: 10 min"));
+        assert!(components.metadata.contains("cook_time: 20 min"));
+        assert!(components.metadata.contains("total_time: 30 min"));
+        assert!(components.text.contains("pasta"));
+        assert!(components.text.contains("sauce"));
+        assert!(components.text.contains("Cook pasta with sauce"));
+    }
+
+    #[test]
+    fn test_is_available_without_key() {
+        std::env::remove_var("OPENAI_API_KEY");
+        assert!(!TextExtractor::is_available());
+    }
+
+    #[test]
+    fn test_is_available_with_key() {
+        std::env::set_var("OPENAI_API_KEY", "test_key");
+        assert!(TextExtractor::is_available());
+    }
+}
