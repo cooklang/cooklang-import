@@ -13,16 +13,16 @@ use std::time::Duration;
 /// This pipeline:
 /// 1. Fetches HTML using RequestFetcher
 /// 2. Tries HTML extractors (json_ld, microdata, html_class) in order
-/// 3. Falls back to ChromeFetcher (if available) or plain text extraction
-/// 4. Uses TextExtractor for plain text extraction
-/// 5. Returns RecipeComponents with separated text, metadata, and name
+/// 3. If HTML extractors fail and TextExtractor is configured (OPENAI_API_KEY),
+///    falls back to LLM-based extraction
+/// 4. Returns RecipeComponents with separated text, metadata, and name
 ///
 /// # Arguments
 /// * `url` - The URL to fetch and process
 ///
 /// # Returns
 /// * `Ok(RecipeComponents)` - The extracted recipe components
-/// * `Err(...)` - If all extraction methods fail
+/// * `Err(...)` - If all extraction methods fail or are not configured
 pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     // 1. Fetch HTML
     let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
@@ -48,7 +48,12 @@ pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send
         }
     }
 
-    // 3. Fallback: plain text path
+    // 3. Check if TextExtractor is available (requires OPENAI_API_KEY)
+    if !TextExtractor::is_available() {
+        return Err("No recipe found on page. Structured data extractors failed and LLM extraction is not configured.".into());
+    }
+
+    // 4. Fallback: plain text path
     let plain_text = if ChromeFetcher::is_available() {
         // Use ChromeFetcher if PAGE_SCRIBER_URL is configured
         let chrome =
@@ -59,7 +64,7 @@ pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send
         extract_text_from_html(&html_content)
     };
 
-    // 4. Use TextExtractor to parse the plain text
+    // 5. Use TextExtractor to parse the plain text
     let text_with_metadata = TextExtractor::extract(&plain_text, url).await?;
 
     // Parse the text format and return as components

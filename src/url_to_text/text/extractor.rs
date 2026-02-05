@@ -20,6 +20,11 @@ const MODEL: &str = "gpt-4o-mini";
 pub struct TextExtractor;
 
 impl TextExtractor {
+    /// Check if the TextExtractor is available (has required API key configured)
+    pub fn is_available() -> bool {
+        env::var("OPENAI_API_KEY").is_ok()
+    }
+
     pub async fn extract(
         plain_text: &str,
         source: &str,
