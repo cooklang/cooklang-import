@@ -140,6 +140,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut builder = RecipeImporter::builder().image_path(&image_path);
 
+        if extract_only {
+            builder = builder.extract_only();
+        }
+
         if let Some(p) = provider {
             builder = builder.provider(p);
         }
@@ -156,6 +160,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("Converting text to Cooklang (provider: {:?})", provider);
 
         let mut builder = RecipeImporter::builder().text(&text);
+
+        if extract_only {
+            builder = builder.extract_only();
+        }
 
         if let Some(p) = provider {
             builder = builder.provider(p);
