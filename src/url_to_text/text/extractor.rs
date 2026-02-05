@@ -1,8 +1,8 @@
+use crate::pipelines::RecipeComponents;
 use reqwest::Client;
 use serde_json::Value;
 use std::env;
 use std::error::Error;
-use crate::pipelines::RecipeComponents;
 
 const PROMPT: &str = r#"
 You're an expert in extracting recipe information from messy texts (often OCR'd from images).
@@ -46,10 +46,7 @@ impl TextExtractor {
         }
 
         // Extract title (fallback to empty string)
-        let name = json["title"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let name = json["title"].as_str().unwrap_or("").to_string();
 
         // Build metadata YAML from available fields
         let mut metadata_lines = vec![format!("source: {}", source)];
@@ -83,7 +80,11 @@ impl TextExtractor {
         // Combine ingredients and instructions
         let text = format!("{}\n\n{}", ingredients, instructions);
 
-        Ok(RecipeComponents { text, metadata, name })
+        Ok(RecipeComponents {
+            text,
+            metadata,
+            name,
+        })
     }
 }
 
