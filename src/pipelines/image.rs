@@ -1,5 +1,6 @@
 use super::RecipeComponents;
 use crate::images_to_text::{self, ImageSource};
+use crate::url_to_text::text::TextExtractor;
 use std::error::Error;
 
 pub async fn process(
@@ -21,9 +22,15 @@ pub async fn process(
     let combined = all_text.join("\n\n");
     let source = sources.join(", ");
 
-    Ok(RecipeComponents {
-        text: combined,
-        metadata: format!("source: {}", source),
-        name: String::new(), // Images typically don't have a name extracted
-    })
+    // Try structured extraction if API key available
+    if TextExtractor::is_available() {
+        TextExtractor::extract(&combined, &source).await
+    } else {
+        // Fallback: return raw OCR text
+        Ok(RecipeComponents {
+            text: combined,
+            metadata: format!("source: {}", source),
+            name: String::new(),
+        })
+    }
 }

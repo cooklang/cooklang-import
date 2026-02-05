@@ -46,7 +46,8 @@ flowchart TB
     TEXT --> |needs extraction| EXTRACT_TEXT
 
     IMAGE --> OCR
-    OCR --> TEXT_FORMAT
+    OCR --> |OPENAI_API_KEY set| EXTRACT_TEXT
+    OCR --> |no API key| TEXT_FORMAT
 
     RECIPE --> |serialize| TEXT_FORMAT
 
@@ -141,6 +142,8 @@ For recipe images (photos, screenshots):
 - Uses Google Cloud Vision API for OCR
 - Supports file paths or base64-encoded images
 - Multiple images can be combined
+- **Structured extraction**: If `OPENAI_API_KEY` is set, OCR text goes through TextExtractor to extract title, metadata (servings, prep_time, cook_time, total_time), and structured recipe text
+- **Fallback**: If no API key, returns raw OCR text
 - **Output**: Cooklang format via converter
 
 ## Data Flow
@@ -152,8 +155,10 @@ Intermediate Format (Text with YAML frontmatter):
 ---
 title: Recipe Name
 source: https://example.com
-author: Chef Name
 servings: 4
+prep_time: 15 min
+cook_time: 30 min
+total_time: 45 min
 ---
 
 ingredient 1
@@ -176,7 +181,12 @@ Attempt extraction in order of reliability:
 3. **HTML Class**: Common CSS class patterns for recipe sites
 
 ### Text Extractor (url_to_text/text/)
-LLM-based extraction for plain text when structured extractors fail.
+LLM-based extraction that parses unstructured text into structured recipe components:
+- Extracts title, servings, prep_time, cook_time, total_time
+- Parses ingredients and instructions from messy text
+- Used as fallback for URL processing when HTML extractors fail
+- Used for image OCR output to extract structured data from raw OCR text
+- Requires `OPENAI_API_KEY` environment variable
 
 ### Converters (converters/)
 Transform intermediate text format to Cooklang:
