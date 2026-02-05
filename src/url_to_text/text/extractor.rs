@@ -8,17 +8,19 @@ const PROMPT: &str = r#"
 You're an expert in extracting recipe information from messy texts (often OCR'd from images).
 Sometimes the text is not a recipe - in that case specify that in the error field.
 
+IMPORTANT: Only extract information that is EXPLICITLY present in the text. Do NOT invent, guess, or estimate any values. If a field is not mentioned in the text, use null.
+
 Given the text, output only this JSON without any other characters:
 
 {
-  "title": "<RECIPE TITLE OR NULL IF NOT FOUND>",
-  "servings": "<SERVINGS AS STRING e.g. '4' or '4-6' OR NULL>",
-  "prep_time": "<PREP TIME AS STRING e.g. '15 min' OR NULL>",
-  "cook_time": "<COOK TIME AS STRING e.g. '30 min' OR NULL>",
-  "total_time": "<TOTAL TIME AS STRING e.g. '45 min' OR NULL>",
+  "title": "<RECIPE TITLE OR null IF NOT EXPLICITLY STATED>",
+  "servings": "<SERVINGS OR null IF NOT EXPLICITLY STATED>",
+  "prep_time": "<PREP TIME OR null IF NOT EXPLICITLY STATED>",
+  "cook_time": "<COOK TIME OR null IF NOT EXPLICITLY STATED>",
+  "total_time": "<TOTAL TIME OR null IF NOT EXPLICITLY STATED>",
   "ingredients": ["<LIST OF INGREDIENTS>"],
   "instructions": ["<LIST OF INSTRUCTIONS>"],
-  "error": "<ERROR MESSAGE IF NO RECIPE, OTHERWISE NULL>"
+  "error": "<ERROR MESSAGE IF NO RECIPE, OTHERWISE null>"
 }
 "#;
 
