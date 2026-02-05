@@ -2,16 +2,23 @@ use reqwest::Client;
 use serde_json::Value;
 use std::env;
 use std::error::Error;
+use crate::pipelines::RecipeComponents;
 
 const PROMPT: &str = r#"
-You're an expert in finding recipe ingredients and instructions from messy texts.
-Sometimes the text is not a recipe, in that case specify that in error field.
-Given the text output only this JSON without any other characters:
+You're an expert in extracting recipe information from messy texts (often OCR'd from images).
+Sometimes the text is not a recipe - in that case specify that in the error field.
+
+Given the text, output only this JSON without any other characters:
 
 {
-  "ingredients": [<LIST OF INGREDIENTS HERE>],
-  "instructions": [<LIST OF INSTRUCTIONS HERE>],
-  "error": "<ERROR MESSAGE HERE IF NO RECIPE>"
+  "title": "<RECIPE TITLE OR NULL IF NOT FOUND>",
+  "servings": "<SERVINGS AS STRING e.g. '4' or '4-6' OR NULL>",
+  "prep_time": "<PREP TIME AS STRING e.g. '15 min' OR NULL>",
+  "cook_time": "<COOK TIME AS STRING e.g. '30 min' OR NULL>",
+  "total_time": "<TOTAL TIME AS STRING e.g. '45 min' OR NULL>",
+  "ingredients": ["<LIST OF INGREDIENTS>"],
+  "instructions": ["<LIST OF INSTRUCTIONS>"],
+  "error": "<ERROR MESSAGE IF NO RECIPE, OTHERWISE NULL>"
 }
 "#;
 
@@ -28,15 +35,34 @@ impl TextExtractor {
     pub async fn extract(
         plain_text: &str,
         source: &str,
-    ) -> Result<String, Box<dyn Error + Send + Sync>> {
+    ) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
         let json = fetch_json(plain_text.to_string()).await?;
 
+        // Check for error (not a recipe)
         if let Some(error) = json["error"].as_str() {
             if !error.is_empty() {
                 return Err(error.into());
             }
         }
 
+        // Extract title (fallback to empty string)
+        let name = json["title"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        // Build metadata YAML from available fields
+        let mut metadata_lines = vec![format!("source: {}", source)];
+        for field in ["servings", "prep_time", "cook_time", "total_time"] {
+            if let Some(val) = json[field].as_str() {
+                if !val.is_empty() {
+                    metadata_lines.push(format!("{}: {}", field, val));
+                }
+            }
+        }
+        let metadata = metadata_lines.join("\n");
+
+        // Format ingredients as newline-separated list
         let ingredients = json["ingredients"]
             .as_array()
             .unwrap_or(&Vec::new())
@@ -45,6 +71,7 @@ impl TextExtractor {
             .collect::<Vec<String>>()
             .join("\n");
 
+        // Format instructions as space-separated (paragraph)
         let instructions = json["instructions"]
             .as_array()
             .unwrap_or(&Vec::new())
@@ -53,16 +80,10 @@ impl TextExtractor {
             .collect::<Vec<String>>()
             .join(" ");
 
-        // Format as text with minimal frontmatter
-        let mut output = String::new();
-        output.push_str("---\n");
-        output.push_str(&format!("source: {}\n", source));
-        output.push_str("---\n\n");
-        output.push_str(&ingredients);
-        output.push_str("\n\n");
-        output.push_str(&instructions);
+        // Combine ingredients and instructions
+        let text = format!("{}\n\n{}", ingredients, instructions);
 
-        Ok(output)
+        Ok(RecipeComponents { text, metadata, name })
     }
 }
 
@@ -72,9 +93,14 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error + Send + Sync>
     // For testing environment, return mock data
     if api_key == "test_key" {
         return Ok(serde_json::json!({
+            "title": "Test Recipe",
+            "servings": "4",
+            "prep_time": "10 min",
+            "cook_time": "20 min",
+            "total_time": "30 min",
             "ingredients": ["pasta", "sauce"],
             "instructions": ["Cook pasta with sauce"],
-            "error": ""
+            "error": null
         }));
     }
 
