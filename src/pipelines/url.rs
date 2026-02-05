@@ -64,11 +64,8 @@ pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send
         extract_text_from_html(&html_content)
     };
 
-    // 5. Use TextExtractor to parse the plain text
-    let text_with_metadata = TextExtractor::extract(&plain_text, url).await?;
-
-    // Parse the text format and return as components
-    Ok(parse_text_to_components(&text_with_metadata))
+    // 5. Use TextExtractor to parse the plain text - returns RecipeComponents directly
+    TextExtractor::extract(&plain_text, url).await
 }
 
 /// Convert a Recipe to RecipeComponents
@@ -102,27 +99,6 @@ fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
         text,
         metadata: metadata_lines.join("\n"),
         name: recipe.name.clone(),
-    }
-}
-
-/// Parse text format (with optional frontmatter) into RecipeComponents
-fn parse_text_to_components(text: &str) -> RecipeComponents {
-    let (metadata_map, body) = crate::model::Recipe::parse_text_format(text);
-
-    // Extract name from metadata
-    let name = metadata_map.get("title").cloned().unwrap_or_default();
-
-    // Build metadata string excluding title (since it's in name field)
-    let metadata_lines: Vec<String> = metadata_map
-        .iter()
-        .filter(|(k, _)| *k != "title")
-        .map(|(k, v)| format!("{}: {}", k, v))
-        .collect();
-
-    RecipeComponents {
-        text: body,
-        metadata: metadata_lines.join("\n"),
-        name,
     }
 }
 
