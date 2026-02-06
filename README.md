@@ -1,6 +1,6 @@
 # cooklang-import
 
-A tool to import recipes into [Cooklang](https://cooklang.org/) format using AI-powered conversion.
+A tool to import recipes into [Cooklang](https://cooklang.org/) format using AI-powered conversion. Hosted version runs via https://cook.md
 
 ## Features
 
