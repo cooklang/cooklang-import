@@ -26,45 +26,51 @@ use std::time::Duration;
 pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     // 1. Fetch HTML
     let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
-    let html_content = fetcher.fetch(url).await?;
-    let document = Html::parse_document(&html_content);
+    let fetch_result = fetcher.fetch(url).await;
 
-    let context = ParsingContext {
-        url: url.to_string(),
-        document,
-        texts: None,
-    };
+    // 2. If HTML fetch succeeded, try structured extractors first
+    if let Ok(html_content) = &fetch_result {
+        let document = Html::parse_document(html_content);
 
-    // 2. Try HTML extractors in order
-    let extractors: Vec<Box<dyn Extractor>> = vec![
-        Box::new(JsonLdExtractor),
-        Box::new(MicroDataExtractor),
-        Box::new(HtmlClassExtractor),
-    ];
+        let context = ParsingContext {
+            url: url.to_string(),
+            document,
+            texts: None,
+        };
 
-    for extractor in extractors {
-        if let Ok(recipe) = extractor.parse(&context) {
-            return Ok(recipe_to_components(&recipe));
+        let extractors: Vec<Box<dyn Extractor>> = vec![
+            Box::new(JsonLdExtractor),
+            Box::new(MicroDataExtractor),
+            Box::new(HtmlClassExtractor),
+        ];
+
+        for extractor in extractors {
+            if let Ok(recipe) = extractor.parse(&context) {
+                return Ok(recipe_to_components(&recipe));
+            }
         }
     }
 
-    // 3. Check if TextExtractor is available (requires OPENAI_API_KEY)
+    // 3. Fallback: try ChromeFetcher if available (handles Cloudflare, JS-rendered pages)
+    if ChromeFetcher::is_available() {
+        if !TextExtractor::is_available() {
+            return Err("No recipe found on page. Structured data extractors failed and LLM extraction is not configured.".into());
+        }
+
+        let chrome =
+            ChromeFetcher::new().ok_or("ChromeFetcher is available but failed to initialize")?;
+        let plain_text = chrome.fetch(url).await?;
+        return TextExtractor::extract(&plain_text, url).await;
+    }
+
+    // 4. No ChromeFetcher — try LLM text extraction from HTML if fetch succeeded
+    let html_content = fetch_result?;
+
     if !TextExtractor::is_available() {
         return Err("No recipe found on page. Structured data extractors failed and LLM extraction is not configured.".into());
     }
 
-    // 4. Fallback: plain text path
-    let plain_text = if ChromeFetcher::is_available() {
-        // Use ChromeFetcher if PAGE_SCRIBER_URL is configured
-        let chrome =
-            ChromeFetcher::new().ok_or("ChromeFetcher is available but failed to initialize")?;
-        chrome.fetch(url).await?
-    } else {
-        // Extract text directly from HTML
-        extract_text_from_html(&html_content)
-    };
-
-    // 5. Use TextExtractor to parse the plain text - returns RecipeComponents directly
+    let plain_text = extract_text_from_html(&html_content);
     TextExtractor::extract(&plain_text, url).await
 }
 

@@ -20,6 +20,15 @@ impl RequestFetcher {
 
     pub async fn fetch(&self, url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
         let response = self.client.get(url).send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!(
+                "Failed to fetch page: HTTP {} ({})",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("Unknown")
+            )
+            .into());
+        }
         let html = response.text().await?;
         Ok(html)
     }
