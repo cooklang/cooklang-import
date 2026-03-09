@@ -1,5 +1,6 @@
 use super::RecipeComponents;
-use crate::url_to_text::fetchers::{ChromeFetcher, RequestFetcher};
+use crate::config::load_config;
+use crate::url_to_text::fetchers::{PageScriberFetcher, RequestFetcher};
 use crate::url_to_text::html::extractors::{
     Extractor, HtmlClassExtractor, JsonLdExtractor, MicroDataExtractor, ParsingContext,
 };
@@ -10,61 +11,60 @@ use std::time::Duration;
 
 /// Process a URL to extract recipe content
 ///
-/// This pipeline:
-/// 1. Fetches HTML using RequestFetcher
-/// 2. Tries HTML extractors (json_ld, microdata, html_class) in order
-/// 3. If HTML extractors fail and TextExtractor is configured (OPENAI_API_KEY),
-///    falls back to LLM-based extraction
-/// 4. Returns RecipeComponents with separated text, metadata, and name
-///
-/// # Arguments
-/// * `url` - The URL to fetch and process
-///
-/// # Returns
-/// * `Ok(RecipeComponents)` - The extracted recipe components
-/// * `Err(...)` - If all extraction methods fail or are not configured
+/// Pipeline:
+/// 1. Check if domain is in page_scriber.domains → use PageScriberFetcher
+/// 2. Otherwise, use RequestFetcher
+/// 3. Try structured extractors (JSON-LD → MicroData → HtmlClass)
+/// 4. If RequestFetcher failed (402/blocked), auto-fallback to PageScriberFetcher
+/// 5. Final fallback: TextExtractor (LLM) on extracted text
 pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
-    // 1. Fetch HTML
-    let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
-    let fetch_result = fetcher.fetch(url).await;
+    let page_scriber_config = load_config()
+        .ok()
+        .map(|c| c.page_scriber)
+        .unwrap_or_default();
 
-    // 2. If HTML fetch succeeded, try structured extractors first
-    if let Ok(html_content) = &fetch_result {
-        let document = Html::parse_document(html_content);
+    let use_page_scriber_first = domain_in_list(url, &page_scriber_config.domains);
 
-        let context = ParsingContext {
-            url: url.to_string(),
-            document,
-            texts: None,
-        };
+    // Step 1: Fetch HTML — either via page scriber (for listed domains) or reqwest
+    let (html_result, used_page_scriber) = if use_page_scriber_first {
+        match PageScriberFetcher::new(page_scriber_config.url.clone()) {
+            Some(fetcher) => (fetcher.fetch(url).await, true),
+            None => {
+                // Page scriber not configured despite domain being listed — fall back to reqwest
+                let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
+                (fetcher.fetch(url).await, false)
+            }
+        }
+    } else {
+        let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
+        (fetcher.fetch(url).await, false)
+    };
 
-        let extractors: Vec<Box<dyn Extractor>> = vec![
-            Box::new(JsonLdExtractor),
-            Box::new(MicroDataExtractor),
-            Box::new(HtmlClassExtractor),
-        ];
+    // Step 2: If we got HTML, try structured extractors
+    if let Ok(html_content) = &html_result {
+        if let Some(components) = try_structured_extractors(html_content, url) {
+            return Ok(components);
+        }
+    }
 
-        for extractor in extractors {
-            if let Ok(recipe) = extractor.parse(&context) {
-                return Ok(recipe_to_components(&recipe));
+    // Step 3: If reqwest failed, auto-fallback to page scriber
+    if !used_page_scriber && html_result.is_err() {
+        if let Some(fetcher) = PageScriberFetcher::new(page_scriber_config.url.clone()) {
+            if let Ok(html_content) = fetcher.fetch(url).await {
+                if let Some(components) = try_structured_extractors(&html_content, url) {
+                    return Ok(components);
+                }
+                // Structured extractors failed on page scriber HTML — try LLM
+                if TextExtractor::is_available() {
+                    let plain_text = extract_text_from_html(&html_content);
+                    return TextExtractor::extract(&plain_text, url).await;
+                }
             }
         }
     }
 
-    // 3. Fallback: try ChromeFetcher if available (handles Cloudflare, JS-rendered pages)
-    if ChromeFetcher::is_available() {
-        if !TextExtractor::is_available() {
-            return Err("No recipe found on page. Structured data extractors failed and LLM extraction is not configured.".into());
-        }
-
-        let chrome =
-            ChromeFetcher::new().ok_or("ChromeFetcher is available but failed to initialize")?;
-        let plain_text = chrome.fetch(url).await?;
-        return TextExtractor::extract(&plain_text, url).await;
-    }
-
-    // 4. No ChromeFetcher — try LLM text extraction from HTML if fetch succeeded
-    let html_content = fetch_result?;
+    // Step 4: Final fallback — LLM text extraction from whatever HTML we have
+    let html_content = html_result?;
 
     if !TextExtractor::is_available() {
         return Err("No recipe found on page. Structured data extractors failed and LLM extraction is not configured.".into());
@@ -72,6 +72,32 @@ pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send
 
     let plain_text = extract_text_from_html(&html_content);
     TextExtractor::extract(&plain_text, url).await
+}
+
+/// Try all structured extractors on HTML content.
+/// Returns Some(RecipeComponents) if any extractor succeeds, None otherwise.
+fn try_structured_extractors(html_content: &str, url: &str) -> Option<RecipeComponents> {
+    let document = Html::parse_document(html_content);
+
+    let context = ParsingContext {
+        url: url.to_string(),
+        document,
+        texts: None,
+    };
+
+    let extractors: Vec<Box<dyn Extractor>> = vec![
+        Box::new(JsonLdExtractor),
+        Box::new(MicroDataExtractor),
+        Box::new(HtmlClassExtractor),
+    ];
+
+    for extractor in extractors {
+        if let Ok(recipe) = extractor.parse(&context) {
+            return Some(recipe_to_components(&recipe));
+        }
+    }
+
+    None
 }
 
 /// Convert a Recipe to RecipeComponents
