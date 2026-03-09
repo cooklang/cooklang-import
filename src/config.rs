@@ -9,6 +9,7 @@ pub struct AiConfig {
     #[serde(default = "default_provider")]
     pub default_provider: String,
     /// Map of provider name to provider configuration
+    #[serde(default)]
     pub providers: HashMap<String, ProviderConfig>,
     /// Fallback configuration for automatic provider switching
     #[serde(default)]
