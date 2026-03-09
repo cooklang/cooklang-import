@@ -122,6 +122,20 @@ fn extract_text_from_html(html: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Check if a URL's domain matches any domain in the list (suffix-matched).
+/// "seriouseats.com" matches "www.seriouseats.com", "m.seriouseats.com", etc.
+fn domain_in_list(url: &str, domains: &[String]) -> bool {
+    let host = url
+        .split("//")
+        .nth(1)
+        .and_then(|s| s.split('/').next())
+        .unwrap_or("");
+
+    domains.iter().any(|domain| {
+        host == domain.as_str() || host.ends_with(&format!(".{}", domain))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +156,35 @@ mod tests {
         assert!(text.contains("Test Recipe"));
         assert!(text.contains("Some ingredients"));
         assert!(text.contains("Some instructions"));
+    }
+
+    #[test]
+    fn test_domain_matches_exact() {
+        let domains = vec!["seriouseats.com".to_string()];
+        assert!(domain_in_list("https://seriouseats.com/recipe", &domains));
+    }
+
+    #[test]
+    fn test_domain_matches_subdomain() {
+        let domains = vec!["seriouseats.com".to_string()];
+        assert!(domain_in_list("https://www.seriouseats.com/recipe", &domains));
+    }
+
+    #[test]
+    fn test_domain_no_match() {
+        let domains = vec!["seriouseats.com".to_string()];
+        assert!(!domain_in_list("https://example.com/recipe", &domains));
+    }
+
+    #[test]
+    fn test_domain_empty_list() {
+        let domains: Vec<String> = vec![];
+        assert!(!domain_in_list("https://seriouseats.com/recipe", &domains));
+    }
+
+    #[test]
+    fn test_domain_invalid_url() {
+        let domains = vec!["seriouseats.com".to_string()];
+        assert!(!domain_in_list("not-a-url", &domains));
     }
 }
