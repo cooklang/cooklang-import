@@ -123,7 +123,7 @@ pub struct PageScriberConfig {
 
 // Default value functions
 fn default_provider() -> String {
-    "openai".to_string()
+    "open_ai".to_string()
 }
 
 fn default_temperature() -> f32 {
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn test_default_values() {
-        assert_eq!(default_provider(), "openai");
+        assert_eq!(default_provider(), "open_ai");
         assert_eq!(default_temperature(), 0.7);
         assert_eq!(default_max_tokens(), 2000);
         assert_eq!(default_retry_attempts(), 3);
