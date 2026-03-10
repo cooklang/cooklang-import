@@ -9,6 +9,7 @@ pub struct AiConfig {
     #[serde(default = "default_provider")]
     pub default_provider: String,
     /// Map of provider name to provider configuration
+    #[serde(default)]
     pub providers: HashMap<String, ProviderConfig>,
     /// Fallback configuration for automatic provider switching
     #[serde(default)]
@@ -19,6 +20,9 @@ pub struct AiConfig {
     /// Converters configuration
     #[serde(default)]
     pub converters: ConvertersConfig,
+    /// Page scriber configuration for browser-based fetching
+    #[serde(default)]
+    pub page_scriber: PageScriberConfig,
     /// Request timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout: u64,
@@ -104,6 +108,17 @@ pub struct ConvertersConfig {
     /// Default converter to use
     #[serde(default)]
     pub default: String,
+}
+
+/// Configuration for the page scriber service (browser-based fetching)
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct PageScriberConfig {
+    /// Base URL of the page scriber service (e.g., "http://localhost:4000")
+    pub url: Option<String>,
+    /// Domains that should use page scriber directly (suffix-matched)
+    /// e.g., ["seriouseats.com", "allrecipes.com"]
+    #[serde(default)]
+    pub domains: Vec<String>,
 }
 
 // Default value functions
@@ -242,6 +257,13 @@ mod tests {
     }
 
     #[test]
+    fn test_page_scriber_config_default() {
+        let config = PageScriberConfig::default();
+        assert!(config.url.is_none());
+        assert!(config.domains.is_empty());
+    }
+
+    #[test]
     fn test_ai_config_structure() {
         // Test that we can construct AiConfig with proper structure
         let mut providers = HashMap::new();
@@ -267,6 +289,7 @@ mod tests {
             fallback: FallbackConfig::default(),
             extractors: ExtractorsConfig::default(),
             converters: ConvertersConfig::default(),
+            page_scriber: PageScriberConfig::default(),
             timeout: default_timeout(),
         };
 
