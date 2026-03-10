@@ -9,7 +9,7 @@ struct SourceRequest {
 
 #[derive(Deserialize)]
 struct SourceResponse {
-    content: String,
+    source: String,
 }
 
 pub struct PageScriberFetcher {
@@ -49,8 +49,8 @@ impl PageScriberFetcher {
             .into());
         }
 
-        let content: SourceResponse = response.json().await?;
-        Ok(content.content)
+        let resp: SourceResponse = response.json().await?;
+        Ok(resp.source)
     }
 }
 
