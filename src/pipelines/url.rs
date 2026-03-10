@@ -157,9 +157,9 @@ fn domain_in_list(url: &str, domains: &[String]) -> bool {
         .and_then(|s| s.split('/').next())
         .unwrap_or("");
 
-    domains.iter().any(|domain| {
-        host == domain.as_str() || host.ends_with(&format!(".{}", domain))
-    })
+    domains
+        .iter()
+        .any(|domain| host == domain.as_str() || host.ends_with(&format!(".{}", domain)))
 }
 
 #[cfg(test)]
@@ -193,7 +193,10 @@ mod tests {
     #[test]
     fn test_domain_matches_subdomain() {
         let domains = vec!["seriouseats.com".to_string()];
-        assert!(domain_in_list("https://www.seriouseats.com/recipe", &domains));
+        assert!(domain_in_list(
+            "https://www.seriouseats.com/recipe",
+            &domains
+        ));
     }
 
     #[test]

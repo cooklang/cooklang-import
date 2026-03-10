@@ -77,6 +77,8 @@ mod tests {
 
     #[test]
     fn test_is_available_with_url() {
-        assert!(PageScriberFetcher::is_available(Some(&"http://localhost:4000".to_string())));
+        assert!(PageScriberFetcher::is_available(Some(
+            &"http://localhost:4000".to_string()
+        )));
     }
 }
