@@ -11,9 +11,12 @@ flowchart TB
     TEXT[Text Input]
     IMAGE[Image Input]
 
+    %% Domain Routing
+    DOMAIN_CHECK{Domain in<br/>page_scriber.domains?}
+
     %% Fetchers
     FETCH_REQ[HTTP Fetcher<br/>reqwest]
-    FETCH_CHROME[Chrome Fetcher<br/>PAGE_SCRIBER_URL]
+    FETCH_PS[Page Scriber Fetcher<br/>POST /api/fetch-source<br/>returns HTML]
 
     %% Processing Stages
     EXTRACT_HTML[HTML Extractors<br/>JSON-LD → MicroData →<br/>HTML Class]
@@ -39,15 +42,20 @@ flowchart TB
     %% FFI Layer
     FFI[UniFFI Bindings<br/>iOS Swift · Android Kotlin]
 
-    %% Flow connections
-    URL --> FETCH_REQ
+    %% Flow connections — URL pipeline with domain-aware routing
+    URL --> DOMAIN_CHECK
+    DOMAIN_CHECK --> |yes| FETCH_PS
+    DOMAIN_CHECK --> |no| FETCH_REQ
     FETCH_REQ --> EXTRACT_HTML
+    FETCH_PS --> EXTRACT_HTML
     EXTRACT_HTML --> |success| RECIPE
-    EXTRACT_HTML --> |all fail,<br/>Chrome available| FETCH_CHROME
-    EXTRACT_HTML --> |all fail,<br/>no Chrome| EXTRACT_PLAIN
-    FETCH_CHROME --> EXTRACT_TEXT
+    EXTRACT_HTML --> |all fail| EXTRACT_PLAIN
+    FETCH_REQ --> |HTTP error,<br/>page scriber configured| FETCH_PS
     EXTRACT_PLAIN --> EXTRACT_TEXT
     EXTRACT_TEXT --> TEXT_FORMAT
+
+    CONFIG -.-> DOMAIN_CHECK
+    CONFIG -.-> FETCH_PS
 
     TEXT --> |pre-formatted| TEXT_FORMAT
     TEXT --> |needs extraction| EXTRACT_TEXT
@@ -77,14 +85,16 @@ flowchart TB
     classDef outputStyle fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
     classDef configStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     classDef ffiStyle fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef routingStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 
     class URL,TEXT,IMAGE inputStyle
-    class FETCH_REQ,FETCH_CHROME fetchStyle
+    class FETCH_REQ,FETCH_PS fetchStyle
     class EXTRACT_HTML,EXTRACT_PLAIN,EXTRACT_TEXT,LANG_DETECT,OCR processStyle
     class RECIPE,TEXT_FORMAT dataStyle
     class RECIPE_OUT,COOKLANG_OUT outputStyle
     class CONFIG,CONVERTERS configStyle
     class FFI ffiStyle
+    class DOMAIN_CHECK routingStyle
 ```
 
 ## Project Structure
@@ -110,7 +120,7 @@ src/
 │   ├── fetchers/
 │   │   ├── mod.rs
 │   │   ├── request.rs          # HTTP fetch (reqwest)
-│   │   └── chrome.rs           # Chrome/Puppeteer fetch
+│   │   └── page_scriber.rs     # Page scriber fetch (HTML source via /api/fetch-source)
 │   ├── html/
 │   │   ├── mod.rs
 │   │   └── extractors/
@@ -152,10 +162,12 @@ scripts/
 
 ### 1. URL → Recipe/Cooklang
 The most common use case where a recipe URL is provided:
-- **Step 1**: Fetch HTML via HTTP request (reqwest)
-- **Step 2**: Try HTML extractors in order: JSON-LD → MicroData → HTML Class
-- **Step 3a**: If all extractors fail and `PAGE_SCRIBER_URL` is set, re-fetch via Chrome then use LLM-based Text Extractor
-- **Step 3b**: If all extractors fail and Chrome is unavailable, extract plain text from already-fetched HTML (`extract_text_from_html`) then use Text Extractor
+- **Step 1**: Check if domain is in `page_scriber.domains` list (from config.toml)
+- **Step 2a**: If domain is listed, fetch HTML via Page Scriber (`/api/fetch-source`)
+- **Step 2b**: Otherwise, fetch HTML via HTTP request (reqwest)
+- **Step 3**: Try HTML extractors in order: JSON-LD → MicroData → HTML Class
+- **Step 4**: If reqwest failed (e.g., HTTP 402/blocked) and page scriber is configured, auto-fallback to Page Scriber, then retry structured extractors
+- **Step 5**: If all extractors fail, extract plain text from HTML (`extract_text_from_html`) then use LLM-based Text Extractor
 - **Output**: Recipe struct (extract_only) or Cooklang format (default)
 
 ### 2. Text → Cooklang
@@ -199,7 +211,7 @@ Instructions text here...
 
 ### Fetchers (url_to_text/fetchers/)
 - **RequestFetcher**: Standard HTTP fetch using reqwest with timeout and user agent
-- **ChromeFetcher**: Headless browser fetch via PAGE_SCRIBER_URL for JS-heavy pages
+- **PageScriberFetcher**: Fetches HTML source via a page scriber service (`POST /api/fetch-source`). Used for sites that block bots (Cloudflare 402, CAPTCHA). Unlike the old ChromeFetcher which returned plain text, this returns raw HTML so structured extractors can still work. Configured via `page_scriber.url` in config.toml.
 
 ### HTML Extractors (url_to_text/html/extractors/)
 Attempt extraction in order of reliability:
@@ -232,6 +244,7 @@ Configuration is loaded from multiple sources (in priority order):
 3. Default values
 
 ### Configurable Options
+- **Page Scriber**: URL of the page scriber service and list of domains that should use it directly
 - **Extractors**: Enable/disable and order of extraction strategies
 - **Converters**: Enable/disable providers, set default, configure fallback order
 - **Fallback**: Enable/disable automatic provider failover with retry attempts and delay
@@ -239,6 +252,10 @@ Configuration is loaded from multiple sources (in priority order):
 - **Provider-specific**: API keys, base URLs, endpoints, model names, project IDs (Google), deployment names (Azure)
 
 ```toml
+[page_scriber]
+url = "http://localhost:4000"
+domains = ["seriouseats.com", "allrecipes.com"]
+
 [extractors]
 enabled = ["json_ld", "microdata", "html_class"]
 order = ["json_ld", "microdata", "html_class"]
