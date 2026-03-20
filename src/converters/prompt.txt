@@ -6,6 +6,8 @@ Here is the recipe you need to convert:
 {{RECIPE}}
 </recipe>
 
+Provide converted recipe in {{LANGUAGE}}.
+
 Below are the Cooklang syntax rules you must follow:
 
 INGREDIENTS
@@ -18,6 +20,7 @@ Use the @ symbol to define ingredients. Always close with curly braces, even for
 - With preparation instructions: @onion{1}(peeled and finely chopped) or @garlic{2%cloves}(minced). Note that there shouldn't be any white space between }(.
 - Optional ingredients. Mark the ingredient as optional with @?: Now you can add @?hash browns{3-4}
 - NEVER modify ingredient amounts from the original recipe (e.g., "3 tbsp oats" stays as @oats{3%tbsp}).
+- IMPORTANT: keep ingredients in {{LANGUAGE}}. Do not translate in other languages.
 
 COOKWARE
 Use the # symbol to define cookware. Always close with curly braces, even for single-word items. Only tag cookware the FIRST time it appears in the recipe.
@@ -66,8 +69,6 @@ COMMENTS
 CONVERSION GUIDELINES:
 
 IMPORTANT: Do NOT include a title or header in your output. Start directly with the recipe steps or sections.
-
-IMPORTANT: The output must be fully in {{LANGUAGE}}. Do not translate to any other language.
 
 1. Remove the original ingredient list entirely. Incorporate each ingredient into the method text using Cooklang syntax.
 
