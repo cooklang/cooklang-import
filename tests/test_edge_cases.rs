@@ -345,3 +345,33 @@ async fn test_author_with_only_id_field() {
     // Author should not be in metadata since it only had an @id
     assert!(!result.metadata.contains("author:"));
 }
+
+#[tokio::test]
+async fn test_name_with_html_tags_produces_single_line() {
+    // Test that HTML in the name field (e.g. <br>, <span>) is cleaned to a single line
+    env::set_var("OPENAI_API_KEY", "test_key");
+    let mut server = mockito::Server::new_async().await;
+
+    let json_ld = r#"
+    {
+        "@type": "Recipe",
+        "name": "Creamy<br>Tomato<br>Soup",
+        "recipeIngredient": ["tomatoes", "cream"],
+        "recipeInstructions": "Blend and heat."
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+    let result = url_to_recipe(&url).await.unwrap();
+
+    // Name should be collapsed to a single line
+    assert!(!result.name.contains('\n'));
+    assert_eq!(result.name, "Creamy Tomato Soup");
+}

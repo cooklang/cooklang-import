@@ -10,6 +10,11 @@ pub struct RecipeComponents {
     pub text: String,
     /// YAML-formatted metadata (without --- delimiters)
     pub metadata: String,
-    /// Recipe name/title
+    /// Recipe name/title (always single-line)
     pub name: String,
+}
+
+/// Collapse any whitespace (newlines, tabs, multiple spaces) into a single space.
+pub fn sanitize_name(name: &str) -> String {
+    name.split_whitespace().collect::<Vec<_>>().join(" ")
 }

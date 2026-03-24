@@ -206,3 +206,78 @@ async fn test_array_with_mixed_case_types() {
     assert!(result.text.contains("ingredient"));
     assert!(result.text.contains("Instructions here"));
 }
+
+#[tokio::test]
+async fn test_array_type_field() {
+    // Test case where @type is an array: "@type": ["Recipe"]
+    // This is common on sites like SeriousEats
+    env::set_var("OPENAI_API_KEY", "test_key");
+
+    let mut server = mockito::Server::new_async().await;
+    let json_ld = r#"
+    {
+        "@context": "https://schema.org",
+        "@type": ["Recipe"],
+        "name": "Homemade Ricotta",
+        "recipeIngredient": ["4 cups whole milk", "2 tbsp lemon juice", "1/2 tsp salt"],
+        "recipeInstructions": [
+            "Heat milk to 200°F.",
+            "Add lemon juice and salt, stir gently.",
+            "Let sit for 5 minutes, then strain through cheesecloth."
+        ]
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+    let result = url_to_recipe(&url).await.unwrap();
+
+    assert_eq!(result.name, "Homemade Ricotta");
+    assert!(result.text.contains("4 cups whole milk"));
+    assert!(result.text.contains("Heat milk to 200°F"));
+}
+
+#[tokio::test]
+async fn test_graph_with_array_type_field() {
+    // Test @graph with @type as array
+    env::set_var("OPENAI_API_KEY", "test_key");
+
+    let mut server = mockito::Server::new_async().await;
+    let json_ld = r#"
+    {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": ["WebSite"],
+                "name": "Serious Eats",
+                "url": "https://www.seriouseats.com"
+            },
+            {
+                "@type": ["Recipe"],
+                "name": "The Best Chocolate Chip Cookies",
+                "recipeIngredient": ["2 cups flour", "1 cup butter", "1 cup chocolate chips"],
+                "recipeInstructions": "Mix ingredients and bake at 375°F for 12 minutes."
+            }
+        ]
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+    let result = url_to_recipe(&url).await.unwrap();
+
+    assert_eq!(result.name, "The Best Chocolate Chip Cookies");
+    assert!(result.text.contains("2 cups flour"));
+}

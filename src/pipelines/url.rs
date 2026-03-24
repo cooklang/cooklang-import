@@ -130,7 +130,7 @@ fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
     RecipeComponents {
         text,
         metadata: metadata_lines.join("\n"),
-        name: recipe.name.clone(),
+        name: super::sanitize_name(&recipe.name),
     }
 }
 

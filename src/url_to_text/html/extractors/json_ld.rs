@@ -732,8 +732,16 @@ fn convert_duration(duration: &str) -> String {
 
 fn is_recipe_type(value: &Value) -> bool {
     if let Some(type_value) = value.get("@type") {
+        // Handle @type as a string: "@type": "Recipe"
         if let Some(type_str) = type_value.as_str() {
             return type_str.eq_ignore_ascii_case("recipe");
+        }
+        // Handle @type as an array: "@type": ["Recipe"]
+        if let Some(type_arr) = type_value.as_array() {
+            return type_arr.iter().any(|t| {
+                t.as_str()
+                    .map_or(false, |s| s.eq_ignore_ascii_case("recipe"))
+            });
         }
     }
     false
