@@ -347,6 +347,107 @@ async fn test_author_with_only_id_field() {
 }
 
 #[tokio::test]
+async fn test_seriouseats_headline_and_duration_objects() {
+    // SeriousEats uses "headline" instead of "name" and object-format durations
+    env::set_var("OPENAI_API_KEY", "test_key");
+    let mut server = mockito::Server::new_async().await;
+
+    let json_ld = r#"
+    {
+        "@context": "https://schema.org",
+        "@type": ["Recipe", "NewsArticle"],
+        "headline": "Slow-Cooker Lentil Soup with Spinach",
+        "description": "A hearty lentil soup",
+        "image": "https://example.com/soup.jpg",
+        "author": {"@type": "Person", "name": "Daniel Gritzer"},
+        "cookTime": {"@type": "Duration", "minValue": "PT330M", "maxValue": "PT510M"},
+        "recipeYield": "8 servings",
+        "recipeIngredient": ["1 lb lentils", "4 cups spinach"],
+        "recipeInstructions": [
+            {"@type": "HowToStep", "text": "Rinse lentils."},
+            {"@type": "HowToStep", "text": "Add to slow cooker."}
+        ]
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+    let result = url_to_recipe(&url).await.unwrap();
+
+    // Should use headline as name
+    assert_eq!(result.name, "Slow-Cooker Lentil Soup with Spinach");
+    // Should extract maxValue from duration object
+    assert!(result.metadata.contains("cook time: 8 hours 30 minutes"));
+    // Should extract author
+    assert!(result.metadata.contains("author: Daniel Gritzer"));
+    // Should have ingredients
+    assert!(result.text.contains("lentils"));
+}
+
+#[tokio::test]
+async fn test_headline_fallback_when_name_missing() {
+    // When name is absent, headline should be used
+    env::set_var("OPENAI_API_KEY", "test_key");
+    let mut server = mockito::Server::new_async().await;
+
+    let json_ld = r#"
+    {
+        "@type": "Recipe",
+        "headline": "My Headline Recipe",
+        "recipeIngredient": ["test"],
+        "recipeInstructions": "test"
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+    let result = url_to_recipe(&url).await.unwrap();
+
+    assert_eq!(result.name, "My Headline Recipe");
+}
+
+#[tokio::test]
+async fn test_name_preferred_over_headline() {
+    // When both name and headline exist, name should be preferred
+    env::set_var("OPENAI_API_KEY", "test_key");
+    let mut server = mockito::Server::new_async().await;
+
+    let json_ld = r#"
+    {
+        "@type": "Recipe",
+        "name": "The Name Field",
+        "headline": "The Headline Field",
+        "recipeIngredient": ["test"],
+        "recipeInstructions": "test"
+    }
+    "#;
+
+    let _m = server
+        .mock("GET", "/recipe")
+        .with_status(200)
+        .with_header("content-type", "text/html")
+        .with_body(create_recipe_html(json_ld))
+        .create();
+
+    let url = format!("{}/recipe", server.url());
+    let result = url_to_recipe(&url).await.unwrap();
+
+    assert_eq!(result.name, "The Name Field");
+}
+
+#[tokio::test]
 async fn test_name_with_html_tags_produces_single_line() {
     // Test that HTML in the name field (e.g. <br>, <span>) is cleaned to a single line
     env::set_var("OPENAI_API_KEY", "test_key");

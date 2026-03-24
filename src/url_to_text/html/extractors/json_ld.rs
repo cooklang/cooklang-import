@@ -12,6 +12,7 @@ pub struct JsonLdExtractor;
 
 impl JsonLdExtractor {
     fn convert_to_recipe(&self, json_ld_recipe: JsonLdRecipe, url: &str) -> Recipe {
+        let recipe_name = json_ld_recipe.recipe_name();
         let mut metadata = HashMap::new();
 
         // Add source URL (primary key: source)
@@ -301,7 +302,7 @@ impl JsonLdExtractor {
         };
 
         Recipe {
-            name: decode_html_symbols(&json_ld_recipe.name),
+            name: decode_html_symbols(&recipe_name),
             description: json_ld_recipe.description.and_then(|desc| match desc {
                 DescriptionType::String(d) => {
                     let decoded = decode_html_symbols(&d);
@@ -338,7 +339,11 @@ impl JsonLdExtractor {
 
 #[derive(Debug, Deserialize)]
 struct JsonLdRecipe {
-    name: String,
+    /// Recipe name — some sites (SeriousEats) use "headline" instead of "name"
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    headline: Option<String>,
     description: Option<DescriptionType>,
     image: Option<ImageType>,
     #[serde(rename = "recipeIngredient")]
@@ -347,11 +352,12 @@ struct JsonLdRecipe {
     recipe_instructions: Option<RecipeInstructions>,
     #[serde(rename = "recipeYield")]
     recipe_yield: Option<RecipeYield>,
-    #[serde(rename = "prepTime")]
+    /// Duration fields can be a string ("PT30M") or an object ({"@type": "Duration", ...})
+    #[serde(rename = "prepTime", deserialize_with = "deserialize_duration", default)]
     prep_time: Option<String>,
-    #[serde(rename = "cookTime")]
+    #[serde(rename = "cookTime", deserialize_with = "deserialize_duration", default)]
     cook_time: Option<String>,
-    #[serde(rename = "totalTime")]
+    #[serde(rename = "totalTime", deserialize_with = "deserialize_duration", default)]
     total_time: Option<String>,
     #[serde(rename = "suitableForDiet")]
     suitable_for_diet: Option<SuitableForDiet>,
@@ -362,6 +368,40 @@ struct JsonLdRecipe {
     keywords: Option<Keywords>,
     author: Option<Author>,
     nutrition: Option<NutritionInformation>,
+}
+
+impl JsonLdRecipe {
+    /// Get recipe name, preferring "name" over "headline"
+    fn recipe_name(&self) -> String {
+        self.name
+            .clone()
+            .or_else(|| self.headline.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// Deserialize a duration field that can be a string or a Duration object.
+/// SeriousEats uses: {"@type": "Duration", "minValue": "PT330M", "maxValue": "PT510M"}
+fn deserialize_duration<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s)),
+        Some(Value::Object(map)) => {
+            // Try maxValue first, then minValue, then any string value
+            if let Some(Value::String(s)) = map.get("maxValue") {
+                Ok(Some(s.clone()))
+            } else if let Some(Value::String(s)) = map.get("minValue") {
+                Ok(Some(s.clone()))
+            } else {
+                Ok(None)
+            }
+        }
+        _ => Ok(None),
+    }
 }
 
 #[derive(Debug, Deserialize)]
