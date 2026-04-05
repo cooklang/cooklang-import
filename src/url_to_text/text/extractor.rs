@@ -51,11 +51,11 @@ impl TextExtractor {
         let name = json["title"].as_str().unwrap_or("").to_string();
 
         // Build metadata YAML from available fields
-        let mut metadata_lines = vec![format!("source: {}", source)];
+        let mut metadata_lines = vec![format!("source: {}", crate::pipelines::yaml_escape(source))];
         for field in ["servings", "prep_time", "cook_time", "total_time"] {
             if let Some(val) = json[field].as_str() {
                 if !val.is_empty() {
-                    metadata_lines.push(format!("{}: {}", field, val));
+                    metadata_lines.push(format!("{}: {}", field, crate::pipelines::yaml_escape(val)));
                 }
             }
         }

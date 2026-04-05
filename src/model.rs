@@ -1,3 +1,4 @@
+use crate::pipelines::yaml_escape;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -33,7 +34,7 @@ impl Recipe {
         if !metadata.is_empty() {
             output.push_str("---\n");
             for (key, value) in &metadata {
-                output.push_str(&format!("{}: {}\n", key, value));
+                output.push_str(&format!("{}: {}\n", key, yaml_escape(value)));
             }
             output.push_str("---\n\n");
         }

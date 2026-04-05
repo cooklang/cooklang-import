@@ -364,7 +364,7 @@ impl RecipeImporterBuilder {
         if has_name || has_metadata {
             output.push_str("---\n");
             if has_name {
-                output.push_str(&format!("title: {}\n", components.name));
+                output.push_str(&format!("title: {}\n", crate::pipelines::yaml_escape(&components.name)));
             }
             if has_metadata {
                 output.push_str(&components.metadata);
