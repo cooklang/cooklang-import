@@ -353,11 +353,23 @@ struct JsonLdRecipe {
     #[serde(rename = "recipeYield")]
     recipe_yield: Option<RecipeYield>,
     /// Duration fields can be a string ("PT30M") or an object ({"@type": "Duration", ...})
-    #[serde(rename = "prepTime", deserialize_with = "deserialize_duration", default)]
+    #[serde(
+        rename = "prepTime",
+        deserialize_with = "deserialize_duration",
+        default
+    )]
     prep_time: Option<String>,
-    #[serde(rename = "cookTime", deserialize_with = "deserialize_duration", default)]
+    #[serde(
+        rename = "cookTime",
+        deserialize_with = "deserialize_duration",
+        default
+    )]
     cook_time: Option<String>,
-    #[serde(rename = "totalTime", deserialize_with = "deserialize_duration", default)]
+    #[serde(
+        rename = "totalTime",
+        deserialize_with = "deserialize_duration",
+        default
+    )]
     total_time: Option<String>,
     #[serde(rename = "suitableForDiet")]
     suitable_for_diet: Option<SuitableForDiet>,
@@ -778,10 +790,9 @@ fn is_recipe_type(value: &Value) -> bool {
         }
         // Handle @type as an array: "@type": ["Recipe"]
         if let Some(type_arr) = type_value.as_array() {
-            return type_arr.iter().any(|t| {
-                t.as_str()
-                    .map_or(false, |s| s.eq_ignore_ascii_case("recipe"))
-            });
+            return type_arr
+                .iter()
+                .any(|t| t.as_str().is_some_and(|s| s.eq_ignore_ascii_case("recipe")));
         }
     }
     false

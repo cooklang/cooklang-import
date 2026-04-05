@@ -55,7 +55,11 @@ impl TextExtractor {
         for field in ["servings", "prep_time", "cook_time", "total_time"] {
             if let Some(val) = json[field].as_str() {
                 if !val.is_empty() {
-                    metadata_lines.push(format!("{}: {}", field, crate::pipelines::yaml_escape(val)));
+                    metadata_lines.push(format!(
+                        "{}: {}",
+                        field,
+                        crate::pipelines::yaml_escape(val)
+                    ));
                 }
             }
         }
