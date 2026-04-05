@@ -83,7 +83,7 @@ async fn test_recipe_without_instructions() {
     assert!(result
         .metadata
         .contains("time required: 5 hours 30 minutes"));
-    assert!(result.metadata.contains("servings: 8"));
+    assert!(result.metadata.contains("servings: '8'"));
 }
 
 #[tokio::test]
@@ -195,7 +195,7 @@ async fn test_recipe_with_empty_ingredients_array() {
     assert!(result
         .metadata
         .contains("time required: 2 hours 30 minutes"));
-    assert!(result.metadata.contains("servings: 4"));
+    assert!(result.metadata.contains("servings: '4'"));
     assert!(result
         .metadata
         .contains("tags: Asiatiskt, Tillbehör, Grönsaker, Frukt"));
