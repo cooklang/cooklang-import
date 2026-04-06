@@ -96,7 +96,7 @@ async fn test_author_with_only_id() {
     assert!(result.metadata.contains("time required: 40 minutes"));
     assert!(result.metadata.contains("course: Salad, Side Dish"));
     assert!(result.metadata.contains("cuisine: American"));
-    assert!(result.metadata.contains("servings: 10"));
+    assert!(result.metadata.contains("servings: '10'"));
     assert!(result.metadata.contains(
         "tags: Barbecue, BLT pasta salad, Food for a Crowd, pasta, pasta salad, Potluck"
     ));

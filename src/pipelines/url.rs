@@ -115,21 +115,21 @@ fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
     text.push_str(recipe.instructions.trim_start());
 
     // Build metadata YAML (without --- delimiters)
-    let mut metadata_lines = Vec::new();
+    let mut entries = Vec::new();
     if let Some(desc) = &recipe.description {
-        metadata_lines.push(format!("description: {}", desc));
+        entries.push(("description".to_string(), desc.clone()));
     }
     // Only use the first image if multiple are available
     if let Some(first_image) = recipe.image.first() {
-        metadata_lines.push(format!("image: {}", first_image));
+        entries.push(("image".to_string(), first_image.clone()));
     }
     for (key, value) in &recipe.metadata {
-        metadata_lines.push(format!("{}: {}", key, value));
+        entries.push((key.clone(), value.clone()));
     }
 
     RecipeComponents {
         text,
-        metadata: metadata_lines.join("\n"),
+        metadata: super::metadata_to_yaml(&entries),
         name: super::sanitize_name(&recipe.name),
     }
 }

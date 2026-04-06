@@ -186,7 +186,7 @@ async fn test_recipe_yield_variations() {
 
     let url4 = format!("{}/recipe4", server.url());
     let result4 = url_to_recipe(&url4).await.unwrap();
-    assert!(result4.metadata.contains("servings: 6"));
+    assert!(result4.metadata.contains("servings: '6'"));
 }
 
 #[tokio::test]

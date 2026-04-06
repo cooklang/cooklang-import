@@ -51,15 +51,15 @@ impl TextExtractor {
         let name = json["title"].as_str().unwrap_or("").to_string();
 
         // Build metadata YAML from available fields
-        let mut metadata_lines = vec![format!("source: {}", source)];
+        let mut entries = vec![("source".to_string(), source.to_string())];
         for field in ["servings", "prep_time", "cook_time", "total_time"] {
             if let Some(val) = json[field].as_str() {
                 if !val.is_empty() {
-                    metadata_lines.push(format!("{}: {}", field, val));
+                    entries.push((field.to_string(), val.to_string()));
                 }
             }
         }
-        let metadata = metadata_lines.join("\n");
+        let metadata = crate::pipelines::metadata_to_yaml(&entries);
 
         // Format ingredients as newline-separated list
         let ingredients = json["ingredients"]
@@ -144,7 +144,7 @@ mod tests {
 
         assert_eq!(components.name, "Test Recipe");
         assert!(components.metadata.contains("source: test-source"));
-        assert!(components.metadata.contains("servings: 4"));
+        assert!(components.metadata.contains("servings: '4'"));
         assert!(components.metadata.contains("prep_time: 10 min"));
         assert!(components.metadata.contains("cook_time: 20 min"));
         assert!(components.metadata.contains("total_time: 30 min"));

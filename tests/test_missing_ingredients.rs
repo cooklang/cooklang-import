@@ -84,7 +84,7 @@ async fn test_recipe_without_ingredients() {
     assert!(result.metadata.contains("time required: 25 minutes"));
     assert!(result.metadata.contains("course: Main Course"));
     assert!(result.metadata.contains("cuisine: Indian"));
-    assert!(result.metadata.contains("servings: 2"));
+    assert!(result.metadata.contains("servings: '2'"));
 
     // Verify instructions were parsed
     assert!(result.text.contains("iron kadai"));

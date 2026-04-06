@@ -90,7 +90,7 @@ async fn test_lowercase_recipe_type() {
     assert!(result.metadata.contains("prep time: 10 minutes"));
     assert!(result.metadata.contains("cook time: 30 minutes"));
     assert!(result.metadata.contains("time required: 40 minutes"));
-    assert!(result.metadata.contains("servings: 6"));
+    assert!(result.metadata.contains("servings: '6'"));
     assert!(result.metadata.contains("course: Soup"));
     assert!(result.metadata.contains("cuisine: Mexican"));
     assert!(result

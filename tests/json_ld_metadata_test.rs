@@ -109,7 +109,7 @@ async fn test_metadata_with_numeric_yield() {
     let url = format!("{}/recipe", server.url());
     let result = url_to_recipe(&url).await.unwrap();
 
-    assert!(result.metadata.contains("servings: 4"));
+    assert!(result.metadata.contains("servings: '4'"));
 }
 
 #[tokio::test]

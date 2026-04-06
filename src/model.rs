@@ -1,3 +1,4 @@
+use crate::pipelines::metadata_to_yaml;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -16,24 +17,28 @@ impl Recipe {
     pub fn to_text_with_metadata(&self) -> String {
         let mut output = String::new();
 
-        // Build metadata including name
-        let mut metadata = self.metadata.clone();
+        // Build metadata entries including name
+        let mut entries: Vec<(String, String)> = Vec::new();
         if !self.name.is_empty() {
-            metadata.insert("title".to_string(), self.name.clone());
+            entries.push(("title".to_string(), self.name.clone()));
         }
         if let Some(desc) = &self.description {
-            metadata.insert("description".to_string(), desc.clone());
+            entries.push(("description".to_string(), desc.clone()));
         }
-        // Preserve image array as comma-separated string
         if !self.image.is_empty() {
-            metadata.insert("__image__".to_string(), self.image.join(", "));
+            entries.push(("__image__".to_string(), self.image.join(", ")));
+        }
+        for (key, value) in &self.metadata {
+            entries.push((key.clone(), value.clone()));
         }
 
         // YAML frontmatter
-        if !metadata.is_empty() {
+        let yaml = metadata_to_yaml(&entries);
+        if !yaml.is_empty() {
             output.push_str("---\n");
-            for (key, value) in &metadata {
-                output.push_str(&format!("{}: {}\n", key, value));
+            output.push_str(&yaml);
+            if !yaml.ends_with('\n') {
+                output.push('\n');
             }
             output.push_str("---\n\n");
         }

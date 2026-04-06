@@ -161,7 +161,11 @@ pub async fn text_to_cooklang(components: &RecipeComponents) -> Result<String, I
             if has_name || has_metadata {
                 let mut frontmatter = String::from("---\n");
                 if has_name {
-                    frontmatter.push_str(&format!("title: {}\n", components.name));
+                    let title_yaml = crate::pipelines::metadata_to_yaml(&[(
+                        "title".to_string(),
+                        components.name.clone(),
+                    )]);
+                    frontmatter.push_str(&title_yaml);
                 }
                 if has_metadata {
                     frontmatter.push_str(&components.metadata);
