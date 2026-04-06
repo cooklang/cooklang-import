@@ -19,12 +19,6 @@ pub fn sanitize_name(name: &str) -> String {
     name.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Serialize a YAML scalar value using serde_yaml.
-pub fn yaml_escape(value: &str) -> String {
-    let yaml = serde_yaml::to_string(&value).unwrap_or_else(|_| value.to_string());
-    yaml.trim_end().to_string()
-}
-
 /// Build a YAML metadata string from a Recipe's fields.
 /// Handles nested values (e.g. nutrition) by parsing pre-formatted YAML blocks.
 pub fn metadata_to_yaml(entries: &[(String, String)]) -> String {
@@ -56,29 +50,6 @@ pub fn metadata_to_yaml(entries: &[(String, String)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_yaml_escape_plain_value() {
-        assert_eq!(yaml_escape("hello world"), "hello world");
-    }
-
-    #[test]
-    fn test_yaml_escape_colon() {
-        assert_eq!(yaml_escape("test : sub"), "'test : sub'");
-    }
-
-    #[test]
-    fn test_yaml_escape_url() {
-        assert_eq!(
-            yaml_escape("http://example.com/recipe"),
-            "http://example.com/recipe"
-        );
-    }
-
-    #[test]
-    fn test_yaml_escape_hash() {
-        assert_eq!(yaml_escape("value # comment"), "'value # comment'");
-    }
 
     #[test]
     fn test_metadata_to_yaml_simple() {
