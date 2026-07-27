@@ -1,0 +1,105 @@
+[
+  {
+    "text": "Core, seed, and dice tomato. Peel, halve, and thinly slice onion.",
+    "tokens": [
+      "Core",
+      ",",
+      "seed",
+      ",",
+      "and",
+      "dice",
+      "tomato",
+      ".",
+      "Peel",
+      ",",
+      "halve",
+      ",",
+      "and",
+      "thinly",
+      "slice",
+      "onion",
+      "."
+    ]
+  },
+  {
+    "text": "0.25 cup unsalted butter, softened",
+    "tokens": [
+      "0.25",
+      "cup",
+      "unsalted",
+      "butter",
+      ",",
+      "softened"
+    ]
+  },
+  {
+    "text": "½ cup Cheddar Cheese",
+    "tokens": [
+      "½",
+      "cup",
+      "Cheddar",
+      "Cheese"
+    ]
+  },
+  {
+    "text": "cook, tossing, until softened, 4-5 minutes",
+    "tokens": [
+      "cook",
+      ",",
+      "tossing",
+      ",",
+      "until",
+      "softened",
+      ",",
+      "4-5",
+      "minutes"
+    ]
+  },
+  {
+    "text": "Preheat the oven to 500 degrees F (260 degrees C).",
+    "tokens": [
+      "Preheat",
+      "the",
+      "oven",
+      "to",
+      "500",
+      "degrees",
+      "F",
+      "(",
+      "260",
+      "degrees",
+      "C",
+      ")",
+      "."
+    ]
+  },
+  {
+    "text": "1 (4 pound) prime rib roast",
+    "tokens": [
+      "1",
+      "(",
+      "4",
+      "pound",
+      ")",
+      "prime",
+      "rib",
+      "roast"
+    ]
+  },
+  {
+    "text": "Season with salt and pepper. Roast for 20 minutes.",
+    "tokens": [
+      "Season",
+      "with",
+      "salt",
+      "and",
+      "pepper",
+      ".",
+      "Roast",
+      "for",
+      "20",
+      "minutes",
+      "."
+    ]
+  }
+]

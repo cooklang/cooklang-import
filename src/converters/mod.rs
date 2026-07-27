@@ -3,7 +3,7 @@ mod azure_openai;
 mod evaluator;
 mod google;
 #[cfg(feature = "local-model")]
-mod local;
+pub(crate) mod local;
 mod ollama;
 mod open_ai;
 mod prompt;
