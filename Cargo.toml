@@ -27,6 +27,7 @@ required-features = ["uniffi-cli"]
 uniffi-cli = ["uniffi", "uniffi/cli"]
 default = []
 uniffi = ["dep:uniffi"]
+local-model = ["dep:ort", "dep:ndarray", "dep:libloading", "dep:tokenizers", "dep:cooklang", "dep:dirs", "dep:sha2"]
 
 [dependencies]
 async-trait = "0.1.83"
@@ -48,6 +49,17 @@ whatlang = "0.16"
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs"] }
 uniffi = { version = "0.28", optional = true }
 serde_yaml = "0.9"
+
+# --- local-model feature (ONNX recipe parser) ---
+# ort pin mirrors db/crates/ingredient-tagger: api-24 sets the MINIMUM onnxruntime
+# version; too-old runtimes deadlock ort's OnceLock init (hence the preflight dlopen).
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "load-dynamic", "api-24"], optional = true }
+ndarray = { version = "0.17", optional = true }
+libloading = { version = "0.9", optional = true }
+tokenizers = { version = "0.20", default-features = false, features = ["onig"], optional = true }
+cooklang = { version = "0.18", optional = true }
+dirs = { version = "5", optional = true }
+sha2 = { version = "0.10", optional = true }
 
 [dev-dependencies]
 mockito = "1.5.0"
