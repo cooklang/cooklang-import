@@ -68,7 +68,10 @@ pub async fn ensure_artifacts(
             .bytes()
             .await
             .map_err(|e| e.to_string())?;
-        let tmp = dir.join(format!("{f}.part"));
+        // PID-unique tmp name: two processes racing on a cold cache must not
+        // truncate each other's in-progress write; the final rename is atomic
+        // and last-writer-wins is safe once each writer owns its tmp file.
+        let tmp = dir.join(format!("{f}.{}.part", std::process::id()));
         std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, dir.join(f)).map_err(|e| e.to_string())?;
     }
