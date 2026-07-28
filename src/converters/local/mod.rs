@@ -1,5 +1,6 @@
 //! Local ONNX-model converter: recipe text -> Cooklang without any API calls.
 
+pub mod assemble;
 pub mod bio;
 pub mod entry;
 pub mod linker;
