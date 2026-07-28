@@ -18,6 +18,17 @@ crate-type = ["lib", "cdylib", "staticlib"]
 name = "cooklang-import"
 path = "src/main.rs"
 
+# Both examples touch `cooklang_import::convert_text_local` and the `cooklang`
+# crate, which only exist under the `local-model` feature — gate them so a
+# plain `cargo test` (default features, no ORT/model available) still builds.
+[[example]]
+name = "convert_one"
+required-features = ["local-model"]
+
+[[example]]
+name = "eval_local"
+required-features = ["local-model"]
+
 [[bin]]
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"
