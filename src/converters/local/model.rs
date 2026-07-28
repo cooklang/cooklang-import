@@ -122,6 +122,19 @@ impl Tagger {
         let labels: Vec<String> = serde_json::from_str(&labels_json)
             .map_err(|e| ModelError::Artifact(format!("failed to parse labels.json: {e}")))?;
 
+        // The model was trained on [CLS] ... [SEP]-wrapped input; a
+        // tokenizer.json missing its post-processor would silently degrade
+        // every prediction, so verify it once here at load time.
+        let probe = tokenizer
+            .encode(EncodeInput::from(vec!["probe".to_string()]), true)
+            .map_err(|e| ModelError::Artifact(format!("tokenizer probe failed: {e}")))?;
+        if probe.get_tokens().first().map(String::as_str) != Some("[CLS]") {
+            return Err(ModelError::Artifact(
+                "tokenizer.json lacks the [CLS]/[SEP] post-processor the model was trained with"
+                    .to_string(),
+            ));
+        }
+
         Ok(Self {
             session: Mutex::new(session),
             tokenizer,
@@ -146,12 +159,7 @@ impl Tagger {
             .encode(EncodeInput::from(word_texts), true)
             .map_err(|e| ModelError::Inference(format!("tokenization failed: {e}")))?;
 
-        debug_assert_eq!(
-            enc.get_tokens().first().map(String::as_str),
-            Some("[CLS]"),
-            "tokenizer must apply the [CLS]/[SEP] post-processor"
-        );
-
+        // [CLS]/[SEP] presence is verified once at load time (see load()).
         let mut ids: Vec<i64> = enc.get_ids().iter().map(|&i| i as i64).collect();
         let mut mask: Vec<i64> = enc.get_attention_mask().iter().map(|&i| i as i64).collect();
         let mut type_ids: Vec<i64> = enc.get_type_ids().iter().map(|&i| i as i64).collect();
