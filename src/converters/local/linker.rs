@@ -50,7 +50,7 @@ fn norm(word: &str) -> String {
     if let Some(s) = w.strip_suffix("ies") {
         return format!("{s}y");
     }
-    for suf in ["oes", "es", "s"] {
+    for suf in ["es", "s"] {
         if let Some(stripped) = w.strip_suffix(suf) {
             if stripped.len() >= 3 {
                 return stripped.to_string();
@@ -120,6 +120,17 @@ mod tests {
     fn links_plural_mention_to_singular_entry() {
         let e = vec![entry("Brioche Buns")];
         assert_eq!(link("bun", &e), Some(0));
+    }
+
+    #[test]
+    fn links_oes_plural_mention_to_o_stem_entry() {
+        // Regression: "oes" must not be stripped as a suffix — that eats the
+        // stem's trailing "o" ("tomatoes" -> "tomat" instead of "tomato"),
+        // so the singular entry never links.
+        let e = vec![entry("Tomato")];
+        assert_eq!(link("tomatoes", &e), Some(0));
+        let e = vec![entry("Potato")];
+        assert_eq!(link("potatoes", &e), Some(0));
     }
 
     #[test]

@@ -5,6 +5,7 @@ use super::entry::Entry;
 use super::linker::{is_unit_word, link};
 use super::timer::parse_timer;
 use super::words::Word;
+use std::sync::OnceLock;
 
 /// Amount-resolution rules per ING mention — see module tests.
 pub fn assemble_paragraph(
@@ -70,6 +71,11 @@ pub fn assemble_paragraph(
 
 /// Detect "<qty> [unit]" immediately before word index `i`; returns the
 /// amount string (qty%unit or bare qty) and the byte offset where it begins.
+///
+/// v1 scope: only numeric or vulgar-fraction quantities are recognized
+/// ("2", "4-5", "½"). Word-quantifiers ("a", "half", "some") are not
+/// detected here and intentionally fall through to the ingredient-list
+/// amount rule in `assemble_paragraph`.
 fn local_amount(words: &[Word], i: usize) -> Option<(String, usize)> {
     fn is_qty(t: &str) -> bool {
         t.chars().next().is_some_and(|c| c.is_ascii_digit())
@@ -94,11 +100,19 @@ fn clean(s: &str) -> String {
         .collect()
 }
 
+/// Cached parser: upstream docs note `CooklangParser` construction can be
+/// heavy (it builds the unit-conversion tables), and `validate_or_plain` is
+/// called once per converted paragraph — build it once, not per call.
+fn parser() -> &'static cooklang::CooklangParser {
+    static PARSER: OnceLock<cooklang::CooklangParser> = OnceLock::new();
+    PARSER.get_or_init(|| {
+        cooklang::CooklangParser::new(cooklang::Extensions::all(), cooklang::Converter::default())
+    })
+}
+
 /// Parse-check a converted paragraph; fall back to plain source on error.
 pub fn validate_or_plain(converted: &str, plain: &str) -> String {
-    let parser =
-        cooklang::CooklangParser::new(cooklang::Extensions::all(), cooklang::Converter::default());
-    let (_, report) = parser.parse(converted).into_tuple();
+    let (_, report) = parser().parse(converted).into_tuple();
     if report.has_errors() {
         plain.to_string()
     } else {
@@ -186,5 +200,21 @@ mod tests {
         // the cooklang 0.18 parser directly): unit given with no value before `%`.
         let out = validate_or_plain("@x{%cup}", "plain text");
         assert!(out.contains("plain"), "{out}");
+    }
+
+    #[test]
+    fn validate_or_plain_reuses_cached_parser_across_calls() {
+        // The parser is a lazily-initialized OnceLock; calling validate_or_plain
+        // repeatedly (as the paragraph-by-paragraph pipeline does) must keep
+        // giving correct, independent results rather than reusing stale state.
+        assert_eq!(
+            validate_or_plain("Add @salt{1%tsp}.", "plain"),
+            "Add @salt{1%tsp}."
+        );
+        assert_eq!(validate_or_plain("@x{%cup}", "plain"), "plain");
+        assert_eq!(
+            validate_or_plain("Add @salt{1%tsp}.", "plain"),
+            "Add @salt{1%tsp}."
+        );
     }
 }
