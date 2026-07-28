@@ -45,7 +45,11 @@ pub fn is_unit_word(w: &str) -> bool {
     matches!(w, "T" | "t") || UNITS.contains(&w.to_lowercase().as_str())
 }
 
-fn norm(word: &str) -> String {
+/// Lowercase + light plural fold ("berries" -> "berry", "buns" -> "bun").
+/// Public so other passes that need the same normalization (e.g. the
+/// unmentioned-entry recovery scan) stay in lockstep with `link`'s notion of
+/// "the same word".
+pub fn norm(word: &str) -> String {
     let w = word.to_lowercase();
     if let Some(s) = w.strip_suffix("ies") {
         return format!("{s}y");

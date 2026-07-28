@@ -6,6 +6,7 @@ pub mod bio;
 pub mod entry;
 pub mod linker;
 pub mod model;
+pub mod recover;
 pub mod timer;
 pub mod words;
 
@@ -17,9 +18,10 @@ use tokio::sync::OnceCell;
 
 use super::{ConversionMetadata, ConversionResult, Converter};
 use assemble::{assemble_paragraph, validate_or_plain};
-use bio::decode;
+use bio::{decode, Span};
 use entry::Entry;
 use model::Tagger;
+use words::Word;
 
 const MIN_CONFIDENCE: f32 = 0.5;
 
@@ -81,24 +83,74 @@ fn segment(body: &str) -> (Vec<String>, Vec<String>) {
     }
 }
 
+/// A step paragraph plus its tagged words and decoded spans, tracked
+/// together so the recovery pass (below) can search across every step
+/// before assembly runs.
+struct StepData {
+    text: String,
+    words: Vec<Word>,
+    spans: Vec<Span>,
+}
+
 fn convert_sync(tagger: &Tagger, body: &str) -> Result<String, String> {
     let (ing_lines, steps) = segment(body);
 
     let mut entries: Vec<Entry> = Vec::new();
     for line in &ing_lines {
         let tagged = tagger.tag(line).map_err(|e| e.to_string())?;
-        if let Some(e) = Entry::from_tagged(&tagged.words, &tagged.tags) {
+        if let Some(mut e) = Entry::from_tagged(&tagged.words, &tagged.tags) {
+            entry::repair_qty_unit(&mut e, &tagged.words);
             entries.push(e);
         }
     }
     let mut used = vec![false; entries.len()];
 
-    let mut out_paras = Vec::new();
+    // Tag every step up front (rather than assembling paragraph-by-paragraph
+    // as before) so the recovery pass below can search the whole recipe for
+    // a missed mention, not just the paragraph currently being assembled.
+    let mut step_data = Vec::with_capacity(steps.len());
     for step in &steps {
         let tagged = tagger.tag(step).map_err(|e| e.to_string())?;
         let spans = decode(&tagged.tags, MIN_CONFIDENCE);
-        let converted = assemble_paragraph(step, &tagged.words, &spans, &mut entries, &mut used);
-        out_paras.push(validate_or_plain(&converted, step));
+        step_data.push(StepData {
+            text: step.clone(),
+            words: tagged.words,
+            spans,
+        });
+    }
+
+    // Dry-run link() over every ING span's surface text to find which
+    // entries the tagger's own tagging already covers somewhere in the
+    // recipe (this mirrors, without mutating anything, what assembly's own
+    // linking will do later).
+    let mut covered = vec![false; entries.len()];
+    for sd in &step_data {
+        for span in &sd.spans {
+            if span.kind != "ING" {
+                continue;
+            }
+            let surface = &sd.text[sd.words[span.start].start..sd.words[span.end - 1].end];
+            if let Some(i) = linker::link(surface, &entries) {
+                covered[i] = true;
+            }
+        }
+    }
+
+    // Recover entries the tagger missed but whose name literally appears in
+    // some step's text — this never fabricates an amount, it only supplies
+    // the missing span so the existing deterministic linking/amount rules
+    // apply exactly as they would for a tagger-produced span. Entries whose
+    // names genuinely never occur anywhere stay uncovered (and get the
+    // "never mentioned" warning below, which is correct).
+    for sd in &mut step_data {
+        recover::recover_unmentioned(&sd.words, &mut sd.spans, &entries, &mut covered);
+        sd.spans.sort_by_key(|s| s.start);
+    }
+
+    let mut out_paras = Vec::with_capacity(step_data.len());
+    for sd in &step_data {
+        let converted = assemble_paragraph(&sd.text, &sd.words, &sd.spans, &mut entries, &mut used);
+        out_paras.push(validate_or_plain(&converted, &sd.text));
     }
 
     for (e, u) in entries.iter().zip(&used) {
