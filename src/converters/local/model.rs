@@ -110,7 +110,7 @@ impl Tagger {
         preflight_dylib(std::env::var_os("ORT_DYLIB_PATH"), dlopen_check)?;
 
         let session = Session::builder()
-            .map_err(|e| ModelError::Inference(e.to_string()))?
+            .map_err(|e| ModelError::Runtime(format!("onnxruntime session init failed: {e}")))?
             .commit_from_file(dir.join("model.onnx"))
             .map_err(|e| ModelError::Artifact(format!("failed to load model.onnx: {e}")))?;
 
@@ -153,7 +153,7 @@ impl Tagger {
             });
         }
 
-        let word_texts: Vec<String> = words.iter().map(|w| w.text.clone()).collect();
+        let word_texts: Vec<&str> = words.iter().map(|w| w.text.as_str()).collect();
         let enc = self
             .tokenizer
             .encode(EncodeInput::from(word_texts), true)
