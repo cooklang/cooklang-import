@@ -12,6 +12,8 @@ pub use anthropic::AnthropicConverter;
 pub use azure_openai::AzureOpenAiConverter;
 pub use evaluator::{inject_evaluation, COOKLANG_EVALUATOR_PROMPT};
 pub use google::GoogleConverter;
+#[cfg(feature = "local-model")]
+pub use local::LocalConverter;
 pub use ollama::OllamaConverter;
 pub use open_ai::OpenAiConverter;
 pub use prompt::{inject_recipe, COOKLANG_CONVERTER_PROMPT};
@@ -91,6 +93,31 @@ pub fn create_converter(
         "ollama" => OllamaConverter::new(config)
             .ok()
             .map(|c| Box::new(c) as Box<dyn Converter>),
+        #[cfg(feature = "local-model")]
+        "local" => Some(Box::new(local::LocalConverter::new()) as Box<dyn Converter>),
         _ => None,
+    }
+}
+
+#[cfg(all(test, feature = "local-model"))]
+mod local_registration_tests {
+    use super::*;
+
+    #[test]
+    fn create_converter_recognizes_local() {
+        let config = crate::config::ProviderConfig {
+            enabled: true,
+            model: String::new(),
+            temperature: 0.0,
+            max_tokens: 0,
+            api_key: None,
+            base_url: None,
+            endpoint: None,
+            deployment_name: None,
+            api_version: None,
+            project_id: None,
+        };
+        let converter = create_converter("local", &config).expect("local converter registered");
+        assert_eq!(converter.name(), "local");
     }
 }

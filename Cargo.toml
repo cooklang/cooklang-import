@@ -46,7 +46,8 @@ serde_json = "1.0"
 thiserror = "1.0"
 whatlang = "0.16"
 # Only enable required tokio features - saves ~100KB
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs"] }
+# "sync" is needed by the local-model converter's tokio::sync::OnceCell.
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 uniffi = { version = "0.28", optional = true }
 serde_yaml = "0.9"
 
