@@ -11,6 +11,8 @@ pub mod url_to_text;
 pub mod uniffi_bindings;
 
 #[cfg(feature = "local-model")]
+pub use converters::local::model as local_model;
+#[cfg(feature = "local-model")]
 pub use converters::local::words as local_words;
 
 // Re-export UniFFI types when feature is enabled
