@@ -110,14 +110,42 @@ fn parser() -> &'static cooklang::CooklangParser {
     })
 }
 
-/// Parse-check a converted paragraph; fall back to plain source on error.
+fn parses_clean(text: &str) -> bool {
+    !parser().parse(text).into_tuple().1.has_errors()
+}
+
+/// Parse-check a converted paragraph; fall back to the unmarked source on
+/// error. That fallback is normally safe (no markup means nothing for the
+/// parser to trip on) — except when the *source recipe itself* contains a
+/// literal cooklang metacharacter in ordinary prose (an old recipe footer's
+/// "~or-", a stray "@handle", a "#1" callout), which can make even the
+/// unmarked text fail to parse. In that last-resort case, sanitize just
+/// enough of it to parse rather than giving up the "never emit unparseable
+/// output" guarantee.
 pub fn validate_or_plain(converted: &str, plain: &str) -> String {
-    let (_, report) = parser().parse(converted).into_tuple();
-    if report.has_errors() {
-        plain.to_string()
-    } else {
-        converted.to_string()
+    if parses_clean(converted) {
+        return converted.to_string();
     }
+    if parses_clean(plain) {
+        return plain.to_string();
+    }
+    // Replace the three "opens a construct" metacharacters with readable
+    // ASCII lookalikes — favors legibility over outright deletion, and
+    // resolves the common case (no unmatched `{`/`}` involved).
+    let lookalikes = plain
+        .replace('~', "-")
+        .replace('@', "at ")
+        .replace('#', "No. ");
+    if parses_clean(&lookalikes) {
+        return lookalikes;
+    }
+    // Still broken — a `{`/`}` pair (or a metachar in a spot the above
+    // didn't fix) is also in play. Strip every cooklang metachar outright;
+    // some text loss is preferable to an unparseable recipe.
+    lookalikes
+        .chars()
+        .filter(|c| !matches!(c, '@' | '#' | '~' | '{' | '}'))
+        .collect()
 }
 
 #[cfg(test)]
@@ -200,6 +228,32 @@ mod tests {
         // the cooklang 0.18 parser directly): unit given with no value before `%`.
         let out = validate_or_plain("@x{%cup}", "plain text");
         assert!(out.contains("plain"), "{out}");
+    }
+
+    #[test]
+    fn validate_or_plain_sanitizes_stray_metachars_when_plain_itself_wont_parse() {
+        // Regression: real recipe source text (an old MasterCook-era footer)
+        // containing a literal "~or-" and "@" addresses in plain prose, with
+        // no markup ever inserted around them (the paragraph had no spans at
+        // all, so `converted == plain` — the old fallback couldn't rescue it
+        // since both attempts were the exact same broken string).
+        let text = "jpmd44a@prodigy.com ~or- MAD-SQUAD@prodigy.net";
+        let out = validate_or_plain(text, text);
+        assert!(parses_clean(&out), "expected parseable output, got {out:?}");
+        assert!(!out.contains('~'), "{out}");
+        assert!(!out.contains('@'), "{out}");
+        // Lookalike substitution should be enough here (no `{`/`}` involved),
+        // so the human-readable text is still mostly recognizable.
+        assert!(out.contains("prodigy.com"), "{out}");
+    }
+
+    #[test]
+    fn validate_or_plain_strips_unmatched_braces_as_last_resort() {
+        // A brace with no opening metachar before it (so the lookalike swap
+        // alone can't fix it) still must not survive into unparseable output.
+        let text = "Preheat to 350{F} and set timer, no closing brace here.";
+        let out = validate_or_plain(text, text);
+        assert!(parses_clean(&out), "expected parseable output, got {out:?}");
     }
 
     #[test]
