@@ -101,5 +101,30 @@
       "minutes",
       "."
     ]
+  },
+  {
+    "text": "1½ cups sugar and 2¾ cups flour",
+    "tokens": [
+      "1½",
+      "cups",
+      "sugar",
+      "and",
+      "2¾",
+      "cups",
+      "flour"
+    ]
+  },
+  {
+    "text": "a--b 4- café 1.2.3",
+    "tokens": [
+      "a",
+      "-",
+      "-",
+      "b",
+      "4",
+      "-",
+      "café",
+      "1.2.3"
+    ]
   }
 ]

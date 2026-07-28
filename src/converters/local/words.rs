@@ -58,10 +58,11 @@ pub fn word_tokenize(text: &str) -> Vec<Word> {
 }
 
 fn is_word_char(c: char) -> bool {
-    // Python \w ≈ alphanumeric or underscore; ½ etc are category No -> NOT \w in Python
-    (c.is_alphanumeric()
-        && !matches!(
-            c, '½' | '¼' | '¾' | '⅓' | '⅔' | '⅛' | '⅜' | '⅝' | '⅞'
-        ))
-        || c == '_'
+    // Python \w matches everything str.isalnum() does, INCLUDING category-No
+    // characters like ½ (so "1½" is one token). Rust's is_alphanumeric()
+    // covers the same alphabetic + Nd/Nl/No set — no exclusions needed.
+    // (An earlier version wrongly excluded vulgar fractions based on a stale
+    // comment in the Python source; the parity fixture's "1½ cups" case
+    // guards the corrected behavior.)
+    c.is_alphanumeric() || c == '_'
 }
