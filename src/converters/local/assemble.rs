@@ -28,7 +28,19 @@ pub fn assemble_paragraph(
                 let linked = link(surface, entries);
                 let local = local_amount(words, span.start);
                 match (linked, local) {
-                    (Some(i), Some((amt, amt_start))) if amt_start >= cursor => {
+                    // Rule 1: local "<qty> [unit]" immediately before the
+                    // mention. Skip this rule — falling through to the plain
+                    // rule below — when the entry is already used AND the
+                    // word right after the mention is a portion noun ("2
+                    // lemon wedges"): a count before a mention followed by a
+                    // portion noun portions the SAME ingredient, so treating
+                    // it as a fresh split-usage amount would double-count
+                    // nutrition. A first-use mention keeps the local amount
+                    // regardless — it's still the best grounding we have.
+                    (Some(i), Some((amt, amt_start)))
+                        if amt_start >= cursor
+                            && !(used[i] && next_is_portion_noun(words, span.end)) =>
+                    {
                         start = amt_start;
                         Some(format!("@{}{{{}}}", clean(&entries[i].name), amt))
                     }
@@ -36,12 +48,14 @@ pub fn assemble_paragraph(
                         start = amt_start;
                         Some(format!("@{}{{{}}}", clean(surface), amt))
                     }
+                    // Rule 2: fall back to the entry's own list qty/unit.
                     (Some(i), _) if !used[i] => {
                         used[i] = true;
                         let e = &entries[i];
+                        let qty_ok = e.qty.as_deref().is_some_and(plausible_qty);
                         let amount = match (&e.qty, &e.unit) {
-                            (Some(q), Some(u)) => format!("{q}%{u}"),
-                            (Some(q), None) => q.clone(),
+                            (Some(q), Some(u)) if qty_ok => format!("{q}%{u}"),
+                            (Some(q), None) if qty_ok => q.clone(),
                             _ => String::new(),
                         };
                         let mut m = format!("@{}{{{}}}", clean(&e.name), amount);
@@ -91,6 +105,44 @@ fn local_amount(words: &[Word], i: usize) -> Option<(String, usize)> {
         return Some((words[i - 1].text.clone(), words[i - 1].start));
     }
     None
+}
+
+/// Is the word-token at index `after` (the word immediately following an ING
+/// mention span) a portion noun ("2 lemon wedges", "3 orange slices")? Used
+/// to detect when a preceding number portions an already-used ingredient
+/// rather than grounding a genuine additional usage — see `assemble_paragraph`.
+fn next_is_portion_noun(words: &[Word], after: usize) -> bool {
+    words.get(after).is_some_and(|w| is_portion_noun(&w.text))
+}
+
+fn is_portion_noun(w: &str) -> bool {
+    matches!(
+        w.to_lowercase().as_str(),
+        "wedge"
+            | "wedges"
+            | "slice"
+            | "slices"
+            | "half"
+            | "halves"
+            | "quarter"
+            | "quarters"
+            | "piece"
+            | "pieces"
+            | "chunk"
+            | "chunks"
+    )
+}
+
+/// Is `q` a plausible ingredient-list quantity? A model mis-tag can put a
+/// garbage token (e.g. "for") into `Entry.qty`, which would otherwise leak
+/// straight into emitted markup as `@scallions{for}`. Require at least one
+/// ascii digit, a vulgar-fraction glyph, or the word "taste" (to preserve
+/// "to taste") before trusting a qty enough to emit it.
+fn plausible_qty(q: &str) -> bool {
+    q.chars().any(|c| c.is_ascii_digit())
+        || q.chars()
+            .any(|c| matches!(c, '½' | '¼' | '¾' | '⅓' | '⅔' | '⅛' | '⅜' | '⅝' | '⅞'))
+        || q.to_lowercase().contains("taste")
 }
 
 /// Strip cooklang metachars from emitted names/notes.
@@ -254,6 +306,98 @@ mod tests {
         let text = "Preheat to 350{F} and set timer, no closing brace here.";
         let out = validate_or_plain(text, text);
         assert!(parses_clean(&out), "expected parseable output, got {out:?}");
+    }
+
+    // -- Fix 1: amount sanity filter -----------------------------------
+
+    #[test]
+    fn plausible_qty_rejects_garbage_tag_leak() {
+        assert!(!plausible_qty("for"));
+        assert!(!plausible_qty("and"));
+        assert!(!plausible_qty(""));
+    }
+
+    #[test]
+    fn plausible_qty_accepts_digits_fractions_and_taste() {
+        assert!(plausible_qty("2"));
+        assert!(plausible_qty("4-5"));
+        assert!(plausible_qty("½"));
+        assert!(plausible_qty("¼"));
+        assert!(plausible_qty("¾"));
+        assert!(plausible_qty("⅓"));
+        assert!(plausible_qty("⅔"));
+        assert!(plausible_qty("⅛"));
+        assert!(plausible_qty("⅜"));
+        assert!(plausible_qty("⅝"));
+        assert!(plausible_qty("⅞"));
+        assert!(plausible_qty("to taste"));
+        assert!(plausible_qty("Taste"));
+    }
+
+    #[test]
+    fn garbage_qty_tag_leak_is_dropped_from_emitted_markup() {
+        // Regression: a model mis-tag can put a stray token like "for" into
+        // Entry.qty, which without a sanity filter leaks straight into the
+        // markup as `@scallions{for}` — nonsense that still parses, so
+        // nothing else catches it.
+        let text = "Add scallions now.";
+        let words = word_tokenize(text);
+        let spans = vec![span("ING", 1, 2)];
+        let mut entries = vec![entry("scallions", Some("for"), None, None)];
+        let mut used = vec![false];
+        let out = assemble_paragraph(text, &words, &spans, &mut entries, &mut used);
+        assert_eq!(out, "Add @scallions{} now.");
+    }
+
+    #[test]
+    fn to_taste_qty_is_preserved() {
+        let text = "Add scallions now.";
+        let words = word_tokenize(text);
+        let spans = vec![span("ING", 1, 2)];
+        let mut entries = vec![entry("scallions", Some("to taste"), None, None)];
+        let mut used = vec![false];
+        let out = assemble_paragraph(text, &words, &spans, &mut entries, &mut used);
+        assert_eq!(out, "Add @scallions{to taste} now.");
+    }
+
+    #[test]
+    fn numeric_qty_is_unaffected_by_the_sanity_filter() {
+        let text = "Add scallions now.";
+        let words = word_tokenize(text);
+        let spans = vec![span("ING", 1, 2)];
+        let mut entries = vec![entry("scallions", Some("2"), None, None)];
+        let mut used = vec![false];
+        let out = assemble_paragraph(text, &words, &spans, &mut entries, &mut used);
+        assert_eq!(out, "Add @scallions{2} now.");
+    }
+
+    // -- Fix 2: portion-noun guard ---------------------------------------
+
+    #[test]
+    fn already_used_entry_followed_by_portion_noun_falls_through_to_plain() {
+        // Regression: "juice from 2 lemon wedges" after the lemon was
+        // already zested/quartered elsewhere must not be re-marked as
+        // `@Lemon{2}` — that "2" portions the SAME lemon, not a second one.
+        let text = "juice from 2 lemon wedges now";
+        let words = word_tokenize(text);
+        let spans = vec![span("ING", 3, 4)];
+        let mut entries = vec![entry("Lemon", Some("1"), None, None)];
+        let mut used = vec![true];
+        let out = assemble_paragraph(text, &words, &spans, &mut entries, &mut used);
+        assert_eq!(out, "juice from 2 lemon wedges now");
+    }
+
+    #[test]
+    fn first_use_before_portion_noun_still_gets_local_amount() {
+        // Same shape, but this is the first (only) mention — the best
+        // grounding available is still "2 lemon wedges" itself.
+        let text = "juice from 2 lemon wedges now";
+        let words = word_tokenize(text);
+        let spans = vec![span("ING", 3, 4)];
+        let mut entries = vec![entry("Lemon", Some("1"), None, None)];
+        let mut used = vec![false];
+        let out = assemble_paragraph(text, &words, &spans, &mut entries, &mut used);
+        assert_eq!(out, "juice from @Lemon{2} wedges now");
     }
 
     #[test]
