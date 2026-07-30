@@ -21,7 +21,8 @@ Use the @ symbol to define ingredients. Always close with curly braces, even for
 - Optional ingredients. Mark the ingredient as optional with @?: Now you can add @?hash browns{3-4}. Always close with curly braces: @?boba{} not @?boba.
 - The quantity and unit inside braces MUST be separated by % with no spaces: @flour{200%g}, never @flour{200 g} or @flour{200g}.
 - Quantity ranges keep the range: "2-3 cloves garlic" → @garlic{2-3%cloves}. Do NOT collapse ranges to a single number.
-- NEVER modify ingredient amounts from the original recipe (e.g., "3 tbsp oats" stays as @oats{3%tbsp}).
+- NEVER modify ingredient amounts or units from the original recipe (e.g., "3 tbsp oats" stays as @oats{3%tbsp}). Do NOT convert units: "12 g salt" stays @salt{12%g}, never @salt{1%tsp}.
+- The token REPLACES the original words - never write the ingredient name both as plain text and as a token: "add the ziti pasta" → "add the @ziti pasta{}", NOT "add the ziti pasta @ziti pasta{}".
 - NEVER invent an amount the original does not give. Unquantified ingredients get empty braces: "a splash of water" → a splash of @water{}, "salt to taste" → @salt{} to taste.
 - Tag each ingredient's quantity EXACTLY ONCE - at its first use. If the same ingredient appears again later, write it as plain text (or @name{} with empty braces when tagging helps). Repeating the quantity double-counts the ingredient in shopping lists. For divided amounts ("1 cup sugar, divided"), split the real amounts across the steps where they are used so they sum to the original total.
 - Only tag real ingredients. NEVER create @ tokens for oven temperatures (@180C), equipment, intermediate mixtures (@dough, @batter, @cake), or bare measurements (@200g).
@@ -33,6 +34,7 @@ Use the # symbol to define cookware. Always close with curly braces, even for si
 - Multi-word: #potato masher{} or #baking sheet{}
 - Include size/descriptors as part of the cookware name: "#9.5-10-inch stainless steel pan{}" or "#small saucepan{}" (NOT "small #saucepan{}" or "9.5-10-inch #stainless steel pan{}")
 - Do NOT tag common kitchen items like bowls, plates, knives, spoons, forks, cutting boards.
+- The token REPLACES the original words - never write the cookware name both as plain text and as a token: "heat a skillet" → "heat a #skillet{}", NOT "heat a skillet #skillet{}".
 
 TIMERS
 Use the ~ symbol to define timers. Always close with curly braces. Format must be ~{number%units} or ~name{number%units}. Convert all durations to a single unit.
@@ -52,7 +54,7 @@ STEPS
 Each paragraph is a cooking step. Steps must be separated by an empty line (two newlines). Limit lines to 80-100 characters when practical.
 
 SECTIONS
-For recipes with multiple components, use section headers. Do NOT use sections if the recipe has only one component.
+For recipes with multiple components, use section headers. Do NOT use sections if the recipe has only one component. Only use section names the original recipe actually has - NEVER invent a section header as a title for the recipe (no "== Pasta Dish ==" wrapping the whole recipe).
 == Section Name ==
 
 Example:
