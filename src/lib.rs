@@ -17,8 +17,7 @@ pub use uniffi_bindings::*;
 // Public API re-exports
 pub use config::AiConfig;
 pub use converters::{
-    inject_evaluation, ConversionMetadata, ConversionResult, TokenUsage,
-    COOKLANG_EVALUATOR_PROMPT,
+    inject_evaluation, ConversionMetadata, ConversionResult, TokenUsage, COOKLANG_EVALUATOR_PROMPT,
 };
 pub use error::ImportError;
 pub use images_to_text::ImageSource;

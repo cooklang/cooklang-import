@@ -8,10 +8,10 @@ mod prompt;
 
 pub use anthropic::AnthropicConverter;
 pub use azure_openai::AzureOpenAiConverter;
+pub use evaluator::{inject_evaluation, COOKLANG_EVALUATOR_PROMPT};
 pub use google::GoogleConverter;
 pub use ollama::OllamaConverter;
 pub use open_ai::OpenAiConverter;
-pub use evaluator::{inject_evaluation, COOKLANG_EVALUATOR_PROMPT};
 pub use prompt::{inject_recipe, COOKLANG_CONVERTER_PROMPT};
 
 use async_trait::async_trait;
