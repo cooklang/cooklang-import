@@ -72,7 +72,9 @@ async fn test_comprehensive_metadata_extraction() {
     assert!(result.metadata.contains("prep time: 30 minutes"));
     assert!(result.metadata.contains("cook time: 45 minutes"));
     assert!(result.metadata.contains("time required: 1 hour 15 minutes"));
-    assert!(result.metadata.contains("servings: 12 servings"));
+    // Descriptive yield is reduced to numeric servings, original kept as yield
+    assert!(result.metadata.contains("servings: 12"));
+    assert!(result.metadata.contains("yield: 12 servings"));
     assert!(result.metadata.contains("course: Dessert"));
     assert!(result.metadata.contains("cuisine: French"));
     assert!(result.metadata.contains("diet: GlutenFree, Vegetarian"));
@@ -109,7 +111,10 @@ async fn test_metadata_with_numeric_yield() {
     let url = format!("{}/recipe", server.url());
     let result = url_to_recipe(&url).await.unwrap();
 
-    assert!(result.metadata.contains("servings: '4'"));
+    // Numeric servings must stay a bare YAML number (the Cooklang parser
+    // warns on quoted strings like servings: '4')
+    assert!(result.metadata.contains("servings: 4"));
+    assert!(!result.metadata.contains("servings: '4'"));
 }
 
 #[tokio::test]

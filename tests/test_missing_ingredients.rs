@@ -84,7 +84,7 @@ async fn test_recipe_without_ingredients() {
     assert!(result.metadata.contains("time required: 25 minutes"));
     assert!(result.metadata.contains("course: Main Course"));
     assert!(result.metadata.contains("cuisine: Indian"));
-    assert!(result.metadata.contains("servings: '2'"));
+    assert!(result.metadata.contains("servings: 2"));
 
     // Verify instructions were parsed
     assert!(result.text.contains("iron kadai"));
@@ -209,7 +209,8 @@ async fn test_recipe_with_ingredient_objects() {
     // Verify metadata
     assert!(result.metadata.contains("author: Nigella Lawson"));
     assert!(result.metadata.contains("cuisine: Spanish"));
-    assert!(result.metadata.contains("servings: Gives 8-12 slices"));
+    assert!(result.metadata.contains("servings: 8"));
+    assert!(result.metadata.contains("yield: Gives 8-12 slices"));
 
     // Empty category array should not create metadata
     assert!(!result.metadata.contains("course:"));
@@ -286,7 +287,8 @@ async fn test_recipe_with_nested_sections() {
     // Verify metadata
     assert!(result.metadata.contains("course: Brokuły"));
     assert!(result.metadata.contains("cuisine: Kuchnia polska"));
-    assert!(result.metadata.contains("servings: 1 - 2"));
+    assert!(result.metadata.contains("servings: 1"));
+    assert!(result.metadata.contains("yield: 1 - 2"));
     assert!(result.metadata.contains("time required: 15 minutes"));
 }
 
