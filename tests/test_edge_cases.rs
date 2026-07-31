@@ -138,7 +138,8 @@ async fn test_recipe_yield_variations() {
 
     let url1 = format!("{}/recipe1", server.url());
     let result1 = url_to_recipe(&url1).await.unwrap();
-    assert!(result1.metadata.contains("servings: 15 Stück"));
+    assert!(result1.metadata.contains("servings: 15"));
+    assert!(result1.metadata.contains("yield: 15 Stück"));
 
     // Test 2: Simple string yield
     let json_ld = r#"
@@ -162,7 +163,8 @@ async fn test_recipe_yield_variations() {
 
     let url3 = format!("{}/recipe3", server.url());
     let result3 = url_to_recipe(&url3).await.unwrap();
-    assert!(result3.metadata.contains("servings: 8 portions"));
+    assert!(result3.metadata.contains("servings: 8"));
+    assert!(result3.metadata.contains("yield: 8 portions"));
 
     // Test 3: Numeric yield
     let json_ld = r#"
@@ -186,7 +188,7 @@ async fn test_recipe_yield_variations() {
 
     let url4 = format!("{}/recipe4", server.url());
     let result4 = url_to_recipe(&url4).await.unwrap();
-    assert!(result4.metadata.contains("servings: '6'"));
+    assert!(result4.metadata.contains("servings: 6"));
 }
 
 #[tokio::test]

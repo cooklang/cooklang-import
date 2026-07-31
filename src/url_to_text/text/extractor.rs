@@ -10,6 +10,10 @@ Sometimes the text is not a recipe - in that case specify that in the error fiel
 
 IMPORTANT: Only extract information that is EXPLICITLY present in the text. Do NOT invent, guess, or estimate any values. If a field is not mentioned in the text, use null.
 
+IMPORTANT: Keep the recipe's original language. Copy ingredients and instructions verbatim - never translate, paraphrase, or add wording of your own.
+
+If the text contains only an ingredient list with no cooking instructions, return the ingredients and an empty instructions array - do NOT invent instructions.
+
 Given the text, output only this JSON without any other characters:
 
 {
@@ -50,12 +54,20 @@ impl TextExtractor {
         // Extract title (fallback to empty string)
         let name = json["title"].as_str().unwrap_or("").to_string();
 
-        // Build metadata YAML from available fields
+        // Build metadata YAML from available fields, mapping the extractor's JSON
+        // field names to canonical Cooklang metadata keys.
         let mut entries = vec![("source".to_string(), source.to_string())];
-        for field in ["servings", "prep_time", "cook_time", "total_time"] {
+        if let Some(val) = json["servings"].as_str() {
+            entries.extend(crate::pipelines::servings_entries(val));
+        }
+        for (field, key) in [
+            ("prep_time", "prep time"),
+            ("cook_time", "cook time"),
+            ("total_time", "time required"),
+        ] {
             if let Some(val) = json[field].as_str() {
                 if !val.is_empty() {
-                    entries.push((field.to_string(), val.to_string()));
+                    entries.push((key.to_string(), val.to_string()));
                 }
             }
         }
@@ -112,6 +124,7 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error + Send + Sync>
         .header("Authorization", format!("Bearer {api_key}"))
         .json(&serde_json::json!({
             "model": MODEL,
+            "response_format": { "type": "json_object" },
             "messages": [
                 { "role": "system", "content": PROMPT },
                 { "role": "user", "content": texts }
@@ -122,9 +135,16 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error + Send + Sync>
         .json::<Value>()
         .await?;
 
-    let content = response["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or("Failed to get response content")?;
+    let content = match response["choices"][0]["message"]["content"].as_str() {
+        Some(content) => content,
+        None => {
+            // Surface the API's own error message instead of a generic failure
+            let detail = response["error"]["message"]
+                .as_str()
+                .unwrap_or("no content in response");
+            return Err(format!("Failed to get response content: {}", detail).into());
+        }
+    };
 
     serde_json::from_str(content).map_err(|e| e.into())
 }
@@ -144,10 +164,10 @@ mod tests {
 
         assert_eq!(components.name, "Test Recipe");
         assert!(components.metadata.contains("source: test-source"));
-        assert!(components.metadata.contains("servings: '4'"));
-        assert!(components.metadata.contains("prep_time: 10 min"));
-        assert!(components.metadata.contains("cook_time: 20 min"));
-        assert!(components.metadata.contains("total_time: 30 min"));
+        assert!(components.metadata.contains("servings: 4"));
+        assert!(components.metadata.contains("prep time: 10 min"));
+        assert!(components.metadata.contains("cook time: 20 min"));
+        assert!(components.metadata.contains("time required: 30 min"));
         assert!(components.text.contains("pasta"));
         assert!(components.text.contains("sauce"));
         assert!(components.text.contains("Cook pasta with sauce"));

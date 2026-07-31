@@ -1,5 +1,6 @@
 mod anthropic;
 mod azure_openai;
+mod evaluator;
 mod google;
 mod ollama;
 mod open_ai;
@@ -7,6 +8,7 @@ mod prompt;
 
 pub use anthropic::AnthropicConverter;
 pub use azure_openai::AzureOpenAiConverter;
+pub use evaluator::{inject_evaluation, COOKLANG_EVALUATOR_PROMPT};
 pub use google::GoogleConverter;
 pub use ollama::OllamaConverter;
 pub use open_ai::OpenAiConverter;

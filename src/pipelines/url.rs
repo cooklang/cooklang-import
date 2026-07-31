@@ -124,7 +124,13 @@ fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
         entries.push(("image".to_string(), first_image.clone()));
     }
     for (key, value) in &recipe.metadata {
-        entries.push((key.clone(), value.clone()));
+        if key == "servings" {
+            // Reduce free-form yields ("Makes 12", "4 personnes") to a numeric
+            // servings value; the original text is kept under `yield`.
+            entries.extend(super::servings_entries(value));
+        } else {
+            entries.push((key.clone(), value.clone()));
+        }
     }
 
     RecipeComponents {

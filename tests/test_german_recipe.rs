@@ -113,7 +113,8 @@ async fn test_german_recipe_with_sections_and_array_yield() {
     );
 
     // Check that yield array was handled correctly - should prefer "15 Stück" over "15"
-    assert!(result.metadata.contains("servings: 15 Stück"));
+    assert!(result.metadata.contains("servings: 15"));
+    assert!(result.metadata.contains("yield: 15 Stück"));
 
     // Check that category array was handled
     assert!(result.metadata.contains("course: Dessert, Kuchen, Snack"));
@@ -183,5 +184,6 @@ async fn test_recipe_yield_variations() {
     let result = url_to_recipe(&url).await.unwrap();
 
     // Should pick "4 servings" because it contains alphabetic characters
-    assert!(result.metadata.contains("servings: 4 servings"));
+    assert!(result.metadata.contains("servings: 4"));
+    assert!(result.metadata.contains("yield: 4 servings"));
 }

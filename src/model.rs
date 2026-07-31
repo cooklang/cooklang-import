@@ -29,7 +29,13 @@ impl Recipe {
             entries.push(("__image__".to_string(), self.image.join(", ")));
         }
         for (key, value) in &self.metadata {
-            entries.push((key.clone(), value.clone()));
+            if key == "servings" {
+                // Reduce free-form yields to a numeric servings value; the
+                // original text is kept under `yield`.
+                entries.extend(crate::pipelines::servings_entries(value));
+            } else {
+                entries.push((key.clone(), value.clone()));
+            }
         }
 
         // YAML frontmatter

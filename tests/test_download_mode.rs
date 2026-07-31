@@ -75,7 +75,8 @@ async fn test_download_mode_with_metadata() {
     assert!(stdout.contains("time required: 45 minutes"));
     assert!(stdout.contains("course: Main Course"));
     assert!(stdout.contains("cuisine: Italian"));
-    assert!(stdout.contains("servings: 4 servings"));
+    assert!(stdout.contains("servings: 4"));
+    assert!(stdout.contains("yield: 4 servings"));
     assert!(stdout.contains("tags: test, recipe, metadata"));
     assert!(stdout.contains(&format!("source: {}", url)));
     assert!(stdout.contains("title: Test Recipe"));
