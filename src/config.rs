@@ -127,7 +127,10 @@ fn default_provider() -> String {
 }
 
 fn default_temperature() -> f32 {
-    0.7
+    // Recipe conversion is a deterministic transformation; higher temperatures
+    // measurably increase run-to-run variance (dropped notes/steps, reshaped
+    // tokens) on the same input.
+    0.2
 }
 
 fn default_max_tokens() -> u32 {
@@ -200,7 +203,7 @@ mod tests {
     #[test]
     fn test_default_values() {
         assert_eq!(default_provider(), "open_ai");
-        assert_eq!(default_temperature(), 0.7);
+        assert_eq!(default_temperature(), 0.2);
         assert_eq!(default_max_tokens(), 2000);
         assert_eq!(default_retry_attempts(), 3);
         assert_eq!(default_retry_delay_ms(), 1000);

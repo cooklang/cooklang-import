@@ -1,4 +1,4 @@
-use super::{inject_recipe, ConversionMetadata, ConversionResult, Converter, TokenUsage};
+use super::{prompt_for_model, ConversionMetadata, ConversionResult, Converter, TokenUsage};
 use crate::config::ProviderConfig;
 use async_trait::async_trait;
 use log::debug;
@@ -55,7 +55,7 @@ impl OpenAiConverter {
             api_key,
             base_url: "https://api.openai.com".to_string(),
             model,
-            temperature: 0.9,
+            temperature: 0.2,
             max_tokens: 2000,
         })
     }
@@ -67,7 +67,7 @@ impl OpenAiConverter {
             api_key,
             base_url,
             model,
-            temperature: 0.9,
+            temperature: 0.2,
             max_tokens: 2000,
         }
     }
@@ -93,7 +93,7 @@ impl Converter for OpenAiConverter {
             .json(&json!({
                 "model": self.model,
                 "messages": [
-                    {"role": "user", "content": inject_recipe(content)}
+                    {"role": "user", "content": prompt_for_model(&self.model, content)}
                 ],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
