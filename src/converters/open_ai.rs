@@ -55,7 +55,7 @@ impl OpenAiConverter {
             api_key,
             base_url: "https://api.openai.com".to_string(),
             model,
-            temperature: 0.9,
+            temperature: 0.2,
             max_tokens: 2000,
         })
     }
@@ -67,7 +67,7 @@ impl OpenAiConverter {
             api_key,
             base_url,
             model,
-            temperature: 0.9,
+            temperature: 0.2,
             max_tokens: 2000,
         }
     }
