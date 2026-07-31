@@ -156,6 +156,15 @@ pub async fn text_to_cooklang(components: &RecipeComponents) -> Result<String, I
         .await?
     {
         ImportResult::Cooklang { mut content, .. } => {
+            // The converter prompt (and fine-tuned models trained on it) answer
+            // "no recipe" when the input has no usable cooking method — surface
+            // that as an error instead of storing it as recipe content.
+            if content.trim().to_lowercase() == "no recipe" {
+                return Err(ImportError::ExtractionError(
+                    "No recipe found in the text".to_string(),
+                ));
+            }
+
             // Prepend frontmatter if we have name or metadata
             let has_name = !components.name.is_empty();
             let has_metadata = !components.metadata.is_empty();
