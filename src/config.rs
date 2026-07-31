@@ -126,7 +126,7 @@ fn default_provider() -> String {
     "open_ai".to_string()
 }
 
-fn default_temperature() -> f32 {
+pub(crate) fn default_temperature() -> f32 {
     // Recipe conversion is a deterministic transformation; higher temperatures
     // measurably increase run-to-run variance (dropped notes/steps, reshaped
     // tokens) on the same input.
