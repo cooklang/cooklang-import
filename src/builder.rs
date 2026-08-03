@@ -428,7 +428,10 @@ impl RecipeImporterBuilder {
                     .map(|c| c.model.clone())
                     .unwrap_or_else(|| default_model_for_provider(provider_name).to_string())
             }),
-            temperature: base_config.as_ref().map(|c| c.temperature).unwrap_or(0.7),
+            temperature: base_config
+                .as_ref()
+                .map(|c| c.temperature)
+                .unwrap_or_else(crate::config::default_temperature),
             max_tokens: base_config.as_ref().map(|c| c.max_tokens).unwrap_or(4000),
             api_key: self
                 .api_key
