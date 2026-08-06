@@ -24,7 +24,10 @@ pub async fn process(
 
     // Try structured extraction if API key available
     if TextExtractor::is_available() {
-        TextExtractor::extract(&combined, &source).await
+        // Scanned recipes frequently have no stated title — normalize/generate.
+        let mut components = TextExtractor::extract(&combined, &source).await?;
+        super::title::ensure_title(&mut components).await;
+        Ok(components)
     } else {
         // Fallback: return raw OCR text
         Ok(RecipeComponents {
