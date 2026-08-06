@@ -17,7 +17,16 @@ use std::time::Duration;
 /// 3. Try structured extractors (JSON-LD → MicroData → HtmlClass)
 /// 4. If RequestFetcher failed (402/blocked), auto-fallback to PageScriberFetcher
 /// 5. Final fallback: TextExtractor (LLM) on extracted text
+///
+/// The extracted title is normalized afterwards (SEO padding stripped,
+/// generated when the page provides none).
 pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
+    let mut components = fetch_and_extract(url).await?;
+    super::title::ensure_title(&mut components).await;
+    Ok(components)
+}
+
+async fn fetch_and_extract(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     let page_scriber_config = load_config()
         .ok()
         .map(|c| c.page_scriber)

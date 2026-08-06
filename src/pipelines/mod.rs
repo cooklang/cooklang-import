@@ -1,5 +1,6 @@
 pub mod image;
 pub mod text;
+pub mod title;
 pub mod url;
 
 /// Components extracted from a recipe source.

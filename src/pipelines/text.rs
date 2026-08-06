@@ -8,7 +8,9 @@ pub async fn process(
 ) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     if extract {
         // Run through LLM extractor - returns RecipeComponents directly
-        TextExtractor::extract(text, "direct-input").await
+        let mut components = TextExtractor::extract(text, "direct-input").await?;
+        super::title::ensure_title(&mut components).await;
+        Ok(components)
     } else {
         // Assume already formatted, parse it into components
         Ok(parse_text_to_components(text))
