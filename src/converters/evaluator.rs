@@ -2,8 +2,8 @@
 ///
 /// It instructs an LLM to compare a Cooklang conversion against the original
 /// recipe text across ingredient coverage, quantity fidelity, step fidelity,
-/// syntax, metadata, and language, and lists the failure modes observed in
-/// production conversions. The model returns a JSON object with a
+/// syntax, metadata, language, and token hygiene, and lists the failure modes
+/// observed in production conversions. The model returns a JSON object with a
 /// `good`/`bad` verdict, a 1-5 score, concrete issues, and a summary note —
 /// matching the review taxonomy used by the cook.md admin quality page.
 ///

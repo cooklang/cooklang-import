@@ -26,6 +26,8 @@ Compare the conversion against the original on these dimensions:
 
 6. LANGUAGE - the output stays entirely in the original's language, including every ingredient token (in a German recipe @Salz{}, not @salt{}).
 
+7. TOKEN HYGIENE - each real ingredient resolves to ONE shopping-list entry. The same item is not split across spelling variants, and units live inside the braces rather than in a prep note or in the surrounding prose.
+
 COMMON ISSUES to check for explicitly (each of these has occurred in production):
 
 - Raw source text passed through with no Cooklang markup at all
@@ -42,6 +44,38 @@ COMMON ISSUES to check for explicitly (each of these has occurred in production)
 - Timer ranges collapsed to a single endpoint, or natural units converted awkwardly (12 hours as 720 minutes)
 - The original ingredient list appended verbatim as a bogus final step
 - Recipe truncated before the final step
+
+Double-counting and split entries:
+- Substitutes that BOTH carry the full quantity: "@rigatoni{12%ounces} or @spaghetti{12%ounces}", "@lamb mince{500%g} or @beef mince{500%g}", "@red wine vinegar{1%cup} or @chicken stock{1%cup}". Only one alternative should carry the amount.
+- One ingredient split across spelling variants, producing two shopping-list lines: @orange{1} plus @oranges{2}, @oeuf{1} plus @oeufs{2}, @asperges vertes{500%g} then @asperge verte{}, @frango{3} vs @frango peito{3}.
+- A garnish or serving amount re-tagged with its full quantity in a later step (@feta{75%g} in the mix and @feta{} at the end while 200g was listed; @beurre mou{100%g} tagged twice).
+
+Malformed tokens (these break parsing or the shopping list):
+- Note or parenthetical placed INSIDE the quantity braces: @parsley{(chopped)}, @pepitas{toasted}, @provolone cheese{1(slice)}, @fromage{(brousse, ricotta, parmesan)}. Notes belong after the braces: @parsley{}(chopped).
+- A stray second brace pair: @ciboulette{20%brins}{}, @sucre glace{?}{}.
+- Malformed optional marker: @?:Schnittlauch{15%g} instead of @?Schnittlauch{15%g}.
+- Unit or size demoted to a prep note instead of being the unit: @garlic{1}(clove), @eggs{2}(large), @bread{4}(slices), @cannelle{2}(bâtons), @brocoli{1}(tête). These should be @garlic{1%clove}, @eggs{2%large}, and so on.
+- Quantity left stranded in the prose beside an empty-braced token: "25 cl d'@eau{}", "80g d'@beurre{}", "@huile d'olive{} (15 cl)". The amount must move inside the braces.
+- A bare % surviving in step text ("diluer le bouillon dans 200%ml d'eau") or a % inside the ingredient NAME (@crème liquide à 3% de matières grasses{40%cl}) - both break the parser.
+- Cookware carrying a quantity: #teglia{18 cm}, #ovenproof dish{1.5-1.7 litre/2.5-3 pint}. Size belongs in the cookware name.
+- A token written next to the plain word it was meant to replace: "Dans une casserole #casserole{}".
+- Preparation folded into the ingredient NAME rather than a note: @chopped tomatoes{}, @melted butter{}, @shredded cheese{}, or "Add cooked @uncooked basmati rice{300%g}".
+- Instruction text swallowed into a prep note: @citron{1/2}(et verser le jus sur la préparation), @oignon{2}(pelés et émincés) right after "Peler et émincer les".
+- Cooklang tokens used inside a > note, which the note syntax forbids.
+
+Metadata hygiene:
+- Placeholder junk emitted as a value: "cook time: 'null'", "diet: ''", an empty "nutrition:", "source: base64-image", "source: direct-input" when the record has a real URL, or a tilde leaking in ("cook time: ~20 mins").
+- Frontmatter key drift: source_url instead of source, total_time: PT30M instead of "time required", snake_case where the rest of the corpus uses spaced keys.
+- HTML entities left undecoded in description, tags or author: &eacute;, &aacute;, &amp;, &amp;gt;, &nbsp;.
+- Times that do not add up: "time required" smaller than prep + cook, or "cook time: 0 minutes" for a dish that bakes.
+- Blog preamble dumped into description as multiple paragraphs instead of a one-line summary.
+- An image URL that belongs to a different site than the source.
+
+Structure and invention:
+- Input that contained only an ingredient list and no method, converted into a full invented procedure instead of returning "no recipe". Doubly wrong when the invented method is in a different language than the recipe (a German ingredient list given Norwegian or Swedish steps) or describes the wrong technique for the dish.
+- Boilerplate closing notes the source never had: "This dish is perfect for a cozy dinner with friends or family!", "Cette recette utilise X pour un plat savoureux."
+- Step granularity that ignores the source: the whole method collapsed into one long paragraph, or every single sentence broken out as its own step.
+- "Add all of the ingredients" left literal while the ingredients it refers to are never tagged.
 
 Weigh issues by impact on a cook actually using the recipe: wrong or double-counted quantities, missing ingredients, invented content, and unusable structure are disqualifying; stylistic choices (unnamed timers, note phrasing, whether salt is scaling-locked) are not.
 
