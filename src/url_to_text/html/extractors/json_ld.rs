@@ -798,6 +798,18 @@ fn is_recipe_type(value: &Value) -> bool {
     false
 }
 
+/// Whether a JSON-LD node carries actual recipe content rather than SEO-only
+/// metadata. Sites commonly emit a Recipe block with just name/image/author.
+fn has_recipe_content(value: &Value) -> bool {
+    let non_empty = |key: &str| match value.get(key) {
+        Some(Value::Array(a)) => !a.is_empty(),
+        Some(Value::String(s)) => !s.trim().is_empty(),
+        Some(Value::Object(o)) => !o.is_empty(),
+        _ => false,
+    };
+    non_empty("recipeIngredient") || non_empty("ingredients") || non_empty("recipeInstructions")
+}
+
 impl Extractor for JsonLdExtractor {
     fn parse(&self, context: &ParsingContext) -> Result<Recipe, Box<dyn std::error::Error>> {
         debug!("JsonLdExtractor: Starting parse for URL: {}", context.url);
@@ -829,12 +841,18 @@ impl Extractor for JsonLdExtractor {
                     let recipe_json = if json_ld.is_array() {
                         debug!("JsonLdExtractor: JSON-LD is an array");
                         json_ld.as_array().and_then(|arr| {
+                            // Prefer an entry that actually carries recipe content;
+                            // fall back to any Recipe-typed entry only if none does.
                             arr.iter()
-                                .find(|item| {
-                                    let has_instructions = item.get("recipeInstructions").is_some();
-                                    let is_recipe = is_recipe_type(item);
-                                    debug!("JsonLdExtractor: Array item - has_instructions: {}, is_recipe: {}", has_instructions, is_recipe);
-                                    has_instructions || is_recipe
+                                .find(|item| is_recipe_type(item) && has_recipe_content(item))
+                                .or_else(|| {
+                                    arr.iter().find(|item| {
+                                        let has_instructions =
+                                            item.get("recipeInstructions").is_some();
+                                        let is_recipe = is_recipe_type(item);
+                                        debug!("JsonLdExtractor: Array item - has_instructions: {}, is_recipe: {}", has_instructions, is_recipe);
+                                        has_instructions || is_recipe
+                                    })
                                 })
                         })
                     } else if is_recipe_type(&json_ld) {
@@ -843,11 +861,18 @@ impl Extractor for JsonLdExtractor {
                     } else if let Some(graph) = json_ld.get("@graph") {
                         debug!("JsonLdExtractor: Found @graph");
                         graph.as_array().and_then(|arr| {
-                            arr.iter().find(|item| {
-                                let is_recipe = is_recipe_type(item);
-                                debug!("JsonLdExtractor: @graph item - is_recipe: {}", is_recipe);
-                                is_recipe
-                            })
+                            arr.iter()
+                                .find(|item| is_recipe_type(item) && has_recipe_content(item))
+                                .or_else(|| {
+                                    arr.iter().find(|item| {
+                                        let is_recipe = is_recipe_type(item);
+                                        debug!(
+                                            "JsonLdExtractor: @graph item - is_recipe: {}",
+                                            is_recipe
+                                        );
+                                        is_recipe
+                                    })
+                                })
                         })
                     } else {
                         debug!("JsonLdExtractor: No recipe found in this JSON-LD");
@@ -859,7 +884,24 @@ impl Extractor for JsonLdExtractor {
                         match JsonLdRecipe::try_from(recipe) {
                             Ok(recipe) => {
                                 debug!("JsonLdExtractor: Successfully converted to JsonLdRecipe");
-                                return Ok(self.convert_to_recipe(recipe, &context.url));
+                                let converted = self.convert_to_recipe(recipe, &context.url);
+                                // Many sites publish an SEO-only Recipe block: name,
+                                // image, author and times, but no recipeIngredient and
+                                // no recipeInstructions. Returning that as a success
+                                // hands the caller an empty recipe and stops the
+                                // pipeline before microdata, html_class and the LLM
+                                // fallback ever run. Keep scanning instead.
+                                if converted.ingredients.is_empty()
+                                    && converted.instructions.trim().is_empty()
+                                {
+                                    debug!(
+                                        "JsonLdExtractor: Script {} is an SEO stub \
+                                         (no ingredients, no instructions) - skipping",
+                                        index
+                                    );
+                                } else {
+                                    return Ok(converted);
+                                }
                             }
                             Err(e) => {
                                 debug!("JsonLdExtractor: Failed to convert to JsonLdRecipe: {}", e);
@@ -980,6 +1022,91 @@ mod tests {
             </html>
             "#
         )
+    }
+
+    // --- Regression: SEO-stub Recipe blocks (production failures 2026-08-17..24) ---
+    //
+    // joshuaweissman.com, uitpaulineskeuken.nl, saborintenso.com and others ship a
+    // JSON-LD Recipe carrying only SEO metadata (name/image/author/times) with no
+    // recipeIngredient and no recipeInstructions. Accepting those as a successful
+    // extraction short-circuits the whole pipeline: microdata, html_class and the
+    // LLM fallback never run, and the caller gets an empty recipe that surfaces as
+    // "No recipe found in the text".
+
+    #[test]
+    fn test_stub_recipe_without_ingredients_or_instructions_is_rejected() {
+        // Shape taken verbatim from joshuaweissman.com's cuban-sandwich page.
+        let json_ld = r#"{
+            "@context": "https://schema.org",
+            "@type": "Recipe",
+            "name": "The Best Cuban Sandwich",
+            "image": "https://example.com/img.jpg",
+            "author": {"@type": "Person", "name": "Joshua Weissman"},
+            "prepTime": "PT20M",
+            "cookTime": "PT30M",
+            "recipeYield": "4"
+        }"#;
+        let html = create_html_document(json_ld);
+        let context = ParsingContext {
+            url: "https://www.joshuaweissman.com/recipes/the-best-cuban-sandwich-recipe"
+                .to_string(),
+            document: Html::parse_document(&html),
+            texts: None,
+        };
+        let result = JsonLdExtractor.parse(&context);
+        assert!(
+            result.is_err(),
+            "stub Recipe with no ingredients and no instructions must not count as \
+             a successful extraction, got: {:?}",
+            result.map(|r| (r.name, r.ingredients, r.instructions))
+        );
+    }
+
+    #[test]
+    fn test_stub_recipe_falls_through_to_later_script_with_real_recipe() {
+        // A page can carry a stub block first and the real recipe in a later block.
+        // The stub must not stop the scan.
+        let html = format!(
+            r#"<!DOCTYPE html><html><head>
+               <script type="application/ld+json">{stub}</script>
+               <script type="application/ld+json">{real}</script>
+               </head><body></body></html>"#,
+            stub = r#"{"@context":"https://schema.org","@type":"Recipe","name":"Stub"}"#,
+            real = r#"{"@context":"https://schema.org","@type":"Recipe","name":"Real Recipe",
+                       "recipeIngredient":["200 g flour","2 eggs"],
+                       "recipeInstructions":[{"@type":"HowToStep","text":"Mix and bake."}]}"#,
+        );
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document: Html::parse_document(&html),
+            texts: None,
+        };
+        let recipe = JsonLdExtractor
+            .parse(&context)
+            .expect("should skip the stub and find the real recipe");
+        assert_eq!(recipe.name, "Real Recipe");
+        assert_eq!(recipe.ingredients.len(), 2);
+    }
+
+    #[test]
+    fn test_recipe_with_only_ingredients_is_still_accepted() {
+        // Ingredient-only recipes are legitimate; only *both* fields empty is a stub.
+        let json_ld = r#"{
+            "@context": "https://schema.org",
+            "@type": "Recipe",
+            "name": "Spice Mix",
+            "recipeIngredient": ["1 tbsp cumin", "1 tsp salt"]
+        }"#;
+        let html = create_html_document(json_ld);
+        let context = ParsingContext {
+            url: "http://example.com".to_string(),
+            document: Html::parse_document(&html),
+            texts: None,
+        };
+        let recipe = JsonLdExtractor
+            .parse(&context)
+            .expect("ingredient-only recipe is valid");
+        assert_eq!(recipe.ingredients.len(), 2);
     }
 
     #[test]
