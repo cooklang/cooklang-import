@@ -1,3 +1,8 @@
+use super::Fetcher;
+
+use super::domain_in_list;
+use crate::config::{load_config, PageScriberConfig};
+use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -13,28 +18,41 @@ struct SourceResponse {
 }
 
 pub struct PageScriberFetcher {
-    endpoint: String,
     client: Client,
+    config: PageScriberConfig,
 }
 
 impl PageScriberFetcher {
-    pub fn new(page_scriber_url: Option<String>) -> Option<Self> {
-        let base_url = page_scriber_url?;
-        let endpoint = format!("{}/api/fetch-source", base_url);
+    pub fn new(config: PageScriberConfig) -> Self {
         let client = Client::new();
-        Some(Self { endpoint, client })
+        Self { config, client }
     }
 
-    pub fn is_available(page_scriber_url: Option<&String>) -> bool {
-        page_scriber_url.is_some()
+    pub fn from_env() -> Self {
+        let config = load_config()
+            .ok()
+            .map(|c| c.page_scriber)
+            .unwrap_or_default();
+        Self::new(config)
     }
 
+    pub(crate) fn empty() -> Self {
+        Self::new(PageScriberConfig::default())
+    }
+}
+
+#[async_trait]
+impl Fetcher for PageScriberFetcher {
     /// Fetch HTML source from a URL via the page scriber service.
     /// Returns raw HTML that can be parsed by structured extractors.
-    pub async fn fetch(&self, url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+    async fn fetch(&self, url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let endpoint = match &self.config.url {
+            Some(ep) => ep.to_string(),
+            None => return Err("Pagescriber not configured".into()),
+        };
         let response = self
             .client
-            .post(&self.endpoint)
+            .post(endpoint)
             .json(&SourceRequest {
                 url: url.to_string(),
             })
@@ -52,33 +70,86 @@ impl PageScriberFetcher {
         let resp: SourceResponse = response.json().await?;
         Ok(resp.source)
     }
+
+    fn is_available(&self) -> bool {
+        self.config.url.is_some()
+    }
+
+    fn is_configured(&self, url: &str) -> bool {
+        domain_in_list(url, &self.config.domains)
+    }
+
+    fn name(&self) -> &str {
+        "page_scriber"
+    }
+
+    fn fallback(&self) -> bool {
+        true
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_new_returns_none_without_url() {
-        let fetcher = PageScriberFetcher::new(None);
-        assert!(fetcher.is_none());
-    }
-
-    #[test]
-    fn test_new_returns_some_with_url() {
-        let fetcher = PageScriberFetcher::new(Some("http://localhost:4000".to_string()));
-        assert!(fetcher.is_some());
-    }
-
-    #[test]
     fn test_is_available_without_url() {
-        assert!(!PageScriberFetcher::is_available(None));
+        let fetcher = PageScriberFetcher::empty();
+        assert!(!fetcher.is_available());
     }
 
     #[test]
     fn test_is_available_with_url() {
-        assert!(PageScriberFetcher::is_available(Some(
-            &"http://localhost:4000".to_string()
-        )));
+        let fetcher = PageScriberFetcher::new(PageScriberConfig {
+            url: Some("http://localhost:4000".to_string()),
+            domains: vec![],
+        });
+        assert!(fetcher.is_available());
+    }
+
+    fn match_configured(url: &str, domains: &Vec<&str>) -> bool {
+        let fetcher = PageScriberFetcher::new(PageScriberConfig {
+            url: Some("http://localhost:4000".to_string()),
+            domains: domains.iter().map(|s| s.to_string()).collect(),
+        });
+
+        fetcher.is_configured(url)
+    }
+    #[test]
+    fn test_domain_matches_exact() {
+        let domains = vec!["seriouseats.com"];
+        assert!(match_configured("https://seriouseats.com/recipe", &domains));
+    }
+
+    #[test]
+    fn test_domain_matches_subdomain() {
+        let domains = vec!["seriouseats.com"];
+
+        assert!(match_configured(
+            "https://www.seriouseats.com/recipe",
+            &domains
+        ));
+    }
+
+    #[test]
+    fn test_domain_no_match() {
+        let domains = vec!["seriouseats.com"];
+        assert!(!match_configured("https://example.com/recipe", &domains));
+    }
+
+    #[test]
+    fn test_domain_empty_list() {
+        let domains = vec![];
+        assert!(!match_configured(
+            "https://seriouseats.com/recipe",
+            &domains
+        ));
+    }
+
+    #[test]
+    fn test_domain_invalid_url() {
+        let domains = vec!["seriouseats.com"];
+        assert!(!match_configured("not-a-url", &domains));
     }
 }
