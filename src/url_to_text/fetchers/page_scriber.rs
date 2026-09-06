@@ -88,7 +88,6 @@ impl Fetcher for PageScriberFetcher {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
