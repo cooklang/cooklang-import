@@ -1,6 +1,5 @@
 use super::RecipeComponents;
-use crate::config::load_config;
-use crate::url_to_text::fetchers::{PageScriberFetcher, RequestFetcher};
+use crate::url_to_text::fetchers::{DynFetcher, Fetcher, PageScriberFetcher, RequestFetcher};
 use crate::url_to_text::html::extractors::{
     Extractor, HtmlClassExtractor, JsonLdExtractor, MicroDataExtractor, ParsingContext,
 };
@@ -23,81 +22,103 @@ use std::time::Duration;
 /// The extracted title is normalized afterwards (SEO padding stripped,
 /// generated when the page provides none).
 pub async fn process(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
-    let mut components = fetch_and_extract(url).await?;
+    let fetchers: Vec<DynFetcher> = vec![
+        Box::new(RequestFetcher::new(Some(Duration::from_secs(30)))),
+        Box::new(PageScriberFetcher::from_env()),
+    ];
+    let mut components = fetch_and_extract_with(url, fetchers).await?;
     super::title::ensure_title(&mut components).await;
     Ok(components)
 }
 
-async fn fetch_and_extract(url: &str) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
-    let page_scriber_config = load_config()
-        .ok()
-        .map(|c| c.page_scriber)
-        .unwrap_or_default();
+pub async fn process_with(
+    url: &str,
+    fetchers: Vec<DynFetcher>,
+) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
+    let mut components = fetch_and_extract_with(url, fetchers).await?;
 
-    let use_page_scriber_first = domain_in_list(url, &page_scriber_config.domains);
+    super::title::ensure_title(&mut components).await;
+    Ok(components)
+}
 
-    // Step 1: Fetch HTML — either via page scriber (for listed domains) or reqwest
-    let (html_result, used_page_scriber) = if use_page_scriber_first {
-        match PageScriberFetcher::new(page_scriber_config.url.clone()) {
-            Some(fetcher) => (fetcher.fetch(url).await, true),
-            None => {
-                // Page scriber not configured despite domain being listed — fall back to reqwest
-                let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
-                (fetcher.fetch(url).await, false)
+fn order_fetchers(url: &str, fetchers: Vec<DynFetcher>) -> Vec<Box<dyn Fetcher>> {
+    // filters out any unavailable fetchers, and any fetcher which is not configured for the url
+    // and should not be used as fallback, then stable sorts the list based on the fetchers being
+    // configured for the specific url (putting matches first).
+    let mut new_fetchers = fetchers
+        .into_iter()
+        .filter(|f| {
+            if !f.is_available() {
+                return false;
             }
-        }
-    } else {
-        let fetcher = RequestFetcher::new(Some(Duration::from_secs(30)));
-        (fetcher.fetch(url).await, false)
-    };
 
-    // Step 2: If we got HTML, try structured extractors
-    if let Ok(html_content) = &html_result {
-        if let Some(components) = try_structured_extractors(html_content, url) {
-            return Ok(components);
-        }
+            // If not specifically configured for this url and the fetcher should not
+            // be used as a fallback method
+            if !f.is_configured(url) & !f.fallback() {
+                return false;
+            }
+
+            true
+        })
+        .collect::<Vec<_>>();
+
+    new_fetchers.sort_by_key(|b| std::cmp::Reverse(b.is_configured(url)));
+
+    new_fetchers
+}
+
+async fn try_fetch_and_extract(
+    url: &str,
+    fetcher: &DynFetcher,
+) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
+    let html = fetcher.fetch(url).await?;
+    if let Some(components) = try_structured_extractors(&html, url) {
+        return Ok(components);
     }
 
     // Some sites answer a plain HTTP client with 200 and a bot-challenge or
     // JavaScript-shell page. That is a failed fetch in every sense that matters, so
-    // demote it to an error and let the page-scriber fallback below handle it.
+    // demote it to an error.
     //
     // This runs *after* the structured extractors above, deliberately: a page whose
     // body is rendered client-side still ships usable JSON-LD in <head>, and that is
     // a successful extraction, not a blocked fetch.
-    let html_result = match html_result {
-        Ok(html) if !used_page_scriber && looks_blocked(&html) => {
-            debug!("Fetch for {url} returned a challenge/empty page - retrying via page scriber");
-            Err("Blocked or empty page returned by direct fetch".into())
-        }
-        other => other,
-    };
-
-    // Step 3: If reqwest failed, auto-fallback to page scriber
-    if !used_page_scriber && html_result.is_err() {
-        if let Some(fetcher) = PageScriberFetcher::new(page_scriber_config.url.clone()) {
-            if let Ok(html_content) = fetcher.fetch(url).await {
-                if let Some(components) = try_structured_extractors(&html_content, url) {
-                    return Ok(components);
-                }
-                // Structured extractors failed on page scriber HTML — try LLM
-                if TextExtractor::is_available() {
-                    let plain_text = extract_text_from_html(&html_content);
-                    return TextExtractor::extract(&plain_text, url).await;
-                }
-            }
-        }
+    if looks_blocked(&html) {
+        return Err("Blocked or empty page returned by direct fetch".into());
     }
-
-    // Step 4: Final fallback — LLM text extraction from whatever HTML we have
-    let html_content = html_result?;
 
     if !TextExtractor::is_available() {
         return Err("No recipe found on page. Structured data extractors failed and LLM extraction is not configured.".into());
     }
 
-    let plain_text = extract_text_from_html(&html_content);
-    TextExtractor::extract(&plain_text, url).await
+    TextExtractor::extract(&extract_text_from_html(&html), url).await
+}
+
+// Try all fetchers starting with fetchers configured for the url (otherwise stable ordering),
+async fn fetch_and_extract_with(
+    url: &str,
+    fetchers: Vec<Box<dyn Fetcher>>,
+) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
+    let mut iter = order_fetchers(url, fetchers).into_iter().peekable();
+
+    while let Some(fetcher) = iter.next() {
+        let last = iter.peek().is_none();
+        match try_fetch_and_extract(url, &fetcher).await {
+            Ok(components) => return Ok(components),
+            Err(e) => {
+                if last {
+                    // No more fetchers to try, just return the latest error
+                    return Err(e);
+                }
+                debug!(
+                    "Fetching {url} with {} failed: {e}. Retrying...",
+                    fetcher.name()
+                );
+            }
+        }
+    }
+
+    unreachable!()
 }
 
 /// Try all structured extractors on HTML content.
@@ -280,23 +301,135 @@ pub(crate) fn looks_blocked(html: &str) -> bool {
     extract_text_from_html(html).len() < 500
 }
 
-/// Check if a URL's domain matches any domain in the list (suffix-matched).
-/// "seriouseats.com" matches "www.seriouseats.com", "m.seriouseats.com", etc.
-fn domain_in_list(url: &str, domains: &[String]) -> bool {
-    let host = url
-        .split("//")
-        .nth(1)
-        .and_then(|s| s.split('/').next())
-        .unwrap_or("");
-
-    domains
-        .iter()
-        .any(|domain| host == domain.as_str() || host.ends_with(&format!(".{}", domain)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::config::PageScriberConfig;
+    use crate::url_to_text::fetchers::domain_in_list;
+
+    fn to_string_vec<S: AsRef<str>>(arr: &[S]) -> Vec<String> {
+        arr.iter()
+            .map(|s: &S| s.as_ref().to_string())
+            .collect::<Vec<String>>()
+    }
+
+    #[track_caller]
+    fn assert_fetcher_order(url: &str, fetchers: Vec<DynFetcher>, expected: &[&str]) {
+        let ordered = order_fetchers(url, fetchers);
+
+        let names = ordered
+            .iter()
+            .map(|f| f.name().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, to_string_vec(expected));
+    }
+
+    struct MockFetcher {
+        name: String,
+        available: bool,
+        fallback: bool,
+        domains: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl Fetcher for MockFetcher {
+        async fn fetch(
+            &self,
+            _url: &str,
+        ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+            unimplemented!()
+        }
+
+        fn is_available(&self) -> bool {
+            self.available
+        }
+
+        fn is_configured(&self, url: &str) -> bool {
+            domain_in_list(url, &self.domains)
+        }
+
+        fn fallback(&self) -> bool {
+            self.fallback
+        }
+
+        fn name(&self) -> &str {
+            &self.name
+        }
+    }
+
+    fn mock_fetcher_no_fallback(name: &str, domains: &[&str]) -> DynFetcher {
+        Box::new(MockFetcher {
+            name: name.to_string(),
+            domains: to_string_vec(domains),
+            fallback: false,
+            available: true,
+        })
+    }
+
+    #[test]
+    fn test_order_fetchers() {
+        let new_page_scriber = |domains: &[&str]| {
+            PageScriberFetcher::new(PageScriberConfig {
+                url: Some("http://localhost:4000".to_string()),
+                domains: to_string_vec(domains),
+            })
+        };
+
+        // Pagescriber is not available -> should only try `request`
+        assert_fetcher_order(
+            "https://www.seriouseats.com/recipe",
+            vec![
+                Box::new(RequestFetcher::default()),
+                Box::new(PageScriberFetcher::new(PageScriberConfig::default())),
+            ],
+            &["request"],
+        );
+
+        // Pagescriber is available but not configured for the url -> keep same order
+        assert_fetcher_order(
+            "https://www.seriouseats.com/recipe",
+            vec![
+                Box::new(RequestFetcher::default()),
+                Box::new(new_page_scriber(&[])),
+            ],
+            &["request", "page_scriber"],
+        );
+
+        // Pagescriber is available and configured for the url -> order page_scriber first
+        assert_fetcher_order(
+            "https://www.seriouseats.com/recipe",
+            vec![
+                Box::new(RequestFetcher::default()),
+                Box::new(new_page_scriber(&["seriouseats.com"])),
+            ],
+            &["page_scriber", "request"],
+        );
+
+        // Fetcher without fallback that does not match
+        assert_fetcher_order(
+            "https://www.seriouseats.com/recipe",
+            vec![
+                mock_fetcher_no_fallback("special", &["example.com"]),
+                Box::new(RequestFetcher::default()),
+                Box::new(new_page_scriber(&["seriouseats.com"])),
+            ],
+            &["page_scriber", "request"],
+        );
+
+        // Fetcher with fallback that matches
+        assert_fetcher_order(
+            "https://www.seriouseats.com/recipe",
+            vec![
+                mock_fetcher_no_fallback("special", &["seriouseats.com"]),
+                mock_fetcher_no_fallback("special-2", &["seriouseats.com"]),
+                Box::new(RequestFetcher::default()),
+                Box::new(new_page_scriber(&["seriouseats.com"])),
+            ],
+            &["special", "special-2", "page_scriber", "request"],
+        );
+    }
 
     // --- Regression: LLM fallback input hygiene (production failures 2026-08-17..24) ---
     //
@@ -450,38 +583,5 @@ mod tests {
         assert!(text.contains("Test Recipe"));
         assert!(text.contains("Some ingredients"));
         assert!(text.contains("Some instructions"));
-    }
-
-    #[test]
-    fn test_domain_matches_exact() {
-        let domains = vec!["seriouseats.com".to_string()];
-        assert!(domain_in_list("https://seriouseats.com/recipe", &domains));
-    }
-
-    #[test]
-    fn test_domain_matches_subdomain() {
-        let domains = vec!["seriouseats.com".to_string()];
-        assert!(domain_in_list(
-            "https://www.seriouseats.com/recipe",
-            &domains
-        ));
-    }
-
-    #[test]
-    fn test_domain_no_match() {
-        let domains = vec!["seriouseats.com".to_string()];
-        assert!(!domain_in_list("https://example.com/recipe", &domains));
-    }
-
-    #[test]
-    fn test_domain_empty_list() {
-        let domains: Vec<String> = vec![];
-        assert!(!domain_in_list("https://seriouseats.com/recipe", &domains));
-    }
-
-    #[test]
-    fn test_domain_invalid_url() {
-        let domains = vec!["seriouseats.com".to_string()];
-        assert!(!domain_in_list("not-a-url", &domains));
     }
 }

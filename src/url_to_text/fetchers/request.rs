@@ -1,3 +1,5 @@
+use super::Fetcher;
+use async_trait::async_trait;
 use reqwest::Client;
 use std::error::Error;
 use std::time::Duration;
@@ -81,6 +83,12 @@ pub struct RequestFetcher {
     client: Client,
 }
 
+impl Default for RequestFetcher {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
 impl RequestFetcher {
     pub fn new(timeout: Option<Duration>) -> Self {
         let timeout = timeout.unwrap_or(Duration::from_secs(30));
@@ -93,8 +101,11 @@ impl RequestFetcher {
 
         Self { client }
     }
+}
 
-    pub async fn fetch(&self, url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
+#[async_trait]
+impl Fetcher for RequestFetcher {
+    async fn fetch(&self, url: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
         let response = self.client.get(url).send().await?;
         let status = response.status();
         if !status.is_success() {
@@ -134,6 +145,19 @@ impl RequestFetcher {
 
         let html = response.text().await?;
         Ok(html)
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+    fn is_configured(&self, _url: &str) -> bool {
+        false
+    }
+    fn name(&self) -> &str {
+        "request"
+    }
+    fn fallback(&self) -> bool {
+        true
     }
 }
 
