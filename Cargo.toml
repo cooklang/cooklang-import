@@ -38,7 +38,12 @@ env_logger = { version = "0.11", default-features = false }
 html-escape = "0.2"
 log = "0.4"
 # Use rustls with bundled Mozilla CA certs - more reliable across platforms (including Android)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+# gzip/brotli/deflate are not optional niceties: some CDNs answer with
+# `content-encoding: gzip` even when the request sends no `Accept-Encoding`
+# (hostthetoast.com, 2026-09-06), and an undecoded body reaches the HTML parser as
+# mojibake. Enabling them also makes reqwest advertise Accept-Encoding, which is one
+# of the browser headers WAFs look for.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots", "gzip", "brotli", "deflate"] }
 scraper = "0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -50,6 +55,7 @@ uniffi = { version = "0.28", optional = true }
 serde_yaml = "0.9"
 
 [dev-dependencies]
+flate2 = "1.1"
 mockito = "1.5.0"
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "test-util"] }
 
