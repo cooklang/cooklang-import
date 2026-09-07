@@ -120,10 +120,20 @@ fn try_structured_extractors(html_content: &str, url: &str) -> Option<RecipeComp
     for extractor in extractors {
         if let Ok(recipe) = extractor.parse(&context) {
             let components = recipe_to_components(&recipe);
-            // A structured hit with no ingredients and no instructions is worse than
-            // no hit at all: it stops the pipeline before the remaining extractors and
-            // the LLM fallback run, and the caller ends up converting an empty recipe.
-            if components.text.trim().is_empty() {
+            // A hit that is missing either half is worse than no hit at all: it stops
+            // the pipeline before the remaining extractors and the LLM fallback run,
+            // and the caller converts a partial recipe.
+            //
+            // Instructions are the half that matters most here. A page yielding
+            // ingredients and nothing else still produces non-empty text, so it used
+            // to be returned as a success — and the converter, handed a list of
+            // ingredients with no method, answered "no recipe". Thirteen of the 55
+            // failures in the 2026-08-31..09-07 window carry that byte-identical
+            // message, papillesetpupilles.fr (8 ingredients, 0 instructions) and
+            // chefkoch.de (16 and 0) among them. Both pages *do* publish their method;
+            // the extractor simply missed it, and stopping here denied the later
+            // extractors and the LLM their chance to find it.
+            if components.text.trim().is_empty() || recipe.instructions.trim().is_empty() {
                 continue;
             }
             return Some(components);
