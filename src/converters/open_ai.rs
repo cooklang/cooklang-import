@@ -115,7 +115,7 @@ impl Converter for OpenAiConverter {
             format!(
                 "Failed to parse JSON: {}. Raw response: {}",
                 e,
-                &response_text[..response_text.len().min(500)]
+                crate::pipelines::truncate_on_char_boundary(response_text.clone(), 500)
             )
         })?;
 
@@ -214,6 +214,39 @@ mod tests {
 
         let result = converter.convert(content).await;
         assert!(result.is_err());
+        mock.assert();
+    }
+
+    // Regression: the "Raw response" excerpt in the parse-failure message sliced
+    // the body at a fixed byte offset. Any non-JSON response longer than the excerpt
+    // whose 500th byte fell inside a multi-byte character panicked the worker thread
+    // while building the error message for a failure it was about to report anyway.
+    #[tokio::test]
+    async fn test_convert_reports_unparseable_body_without_panicking() {
+        let mut server = Server::new_async().await;
+        // 499 ASCII bytes, then a 2-byte character straddling index 500.
+        let body = format!("{}{}", "a".repeat(499), "é".repeat(20));
+        let mock = server
+            .mock("POST", "/v1/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/html")
+            .with_body(&body)
+            .create();
+
+        let converter = OpenAiConverter::with_base_url(
+            "fake_api_key".to_string(),
+            server.url(),
+            "gpt-3.5-turbo".to_string(),
+        );
+
+        let err = converter
+            .convert("ingredient\n\nstep")
+            .await
+            .expect_err("a non-JSON body must be reported as an error");
+        assert!(
+            err.to_string().contains("Failed to parse JSON"),
+            "got: {err}"
+        );
         mock.assert();
     }
 

@@ -15,6 +15,25 @@ pub struct RecipeComponents {
     pub name: String,
 }
 
+/// Truncate `s` to at most `max_bytes`, stopping at the nearest UTF-8 character
+/// boundary at or below the cap.
+///
+/// Every size cap in this crate is a byte count, but `String::truncate` and string
+/// slicing panic unless the index lands on a character boundary. Truncating blindly
+/// killed the worker thread on any page whose text crossed the cap mid-character
+/// (hostthetoast.com, 2026-09-06).
+pub(crate) fn truncate_on_char_boundary(mut s: String, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let end = (0..=max_bytes)
+        .rev()
+        .find(|&i| s.is_char_boundary(i))
+        .unwrap_or(0);
+    s.truncate(end);
+    s
+}
+
 /// Collapse any whitespace (newlines, tabs, multiple spaces) into a single space.
 pub fn sanitize_name(name: &str) -> String {
     name.split_whitespace().collect::<Vec<_>>().join(" ")

@@ -41,6 +41,42 @@ pub(crate) fn size_is_sane(content_length: Option<u64>) -> bool {
     content_length.is_none_or(|len| len <= MAX_RESPONSE_BYTES)
 }
 
+const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+/// The headers a real Chrome navigation sends alongside its user agent.
+///
+/// A Chrome UA with none of these is a stock bot fingerprint, and WAFs answer it
+/// with 403 (thekitchn.com, 2026-09-05: 403 to the bare UA, 200 and three JSON-LD
+/// Recipe blocks with the full set). `Accept-Encoding` is deliberately absent —
+/// reqwest sets it from its own decompression features and overriding it would make
+/// it advertise encodings it cannot decode.
+fn browser_headers() -> reqwest::header::HeaderMap {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+    const HEADERS: [(&str, &str); 8] = [
+        (
+            "accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        ),
+        ("accept-language", "en-US,en;q=0.9"),
+        ("upgrade-insecure-requests", "1"),
+        ("sec-fetch-dest", "document"),
+        ("sec-fetch-mode", "navigate"),
+        ("sec-fetch-site", "none"),
+        ("sec-fetch-user", "?1"),
+        ("sec-ch-ua-platform", "\"macOS\""),
+    ];
+
+    let mut headers = HeaderMap::new();
+    for (name, value) in HEADERS {
+        headers.insert(
+            HeaderName::from_static(name),
+            HeaderValue::from_static(value),
+        );
+    }
+    headers
+}
+
 pub struct RequestFetcher {
     client: Client,
 }
@@ -50,7 +86,8 @@ impl RequestFetcher {
         let timeout = timeout.unwrap_or(Duration::from_secs(30));
         let client = Client::builder()
             .timeout(timeout)
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .user_agent(USER_AGENT)
+            .default_headers(browser_headers())
             .build()
             .expect("Failed to create HTTP client");
 
@@ -191,6 +228,86 @@ mod tests {
             .await
             .expect_err("an oversized body must be refused before reading it");
         assert!(err.to_string().contains("too large"), "got: {err}");
+    }
+
+    // Regression: thekitchn.com, 2026-09-05.
+    //
+    // The client sent a Chrome user agent and nothing else. A "Chrome" that omits
+    // Accept, Accept-Language and the Sec-Fetch-* set is a stock bot fingerprint, and
+    // WAFs answer it with 403 — thekitchn.com returns 403 to the bare UA and 200 with
+    // three valid JSON-LD Recipe blocks once the rest of a real navigation is present.
+    #[tokio::test]
+    async fn test_fetch_sends_a_complete_browser_header_set() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/recipe")
+            .match_header("accept", mockito::Matcher::Regex("text/html".into()))
+            .match_header("accept-language", mockito::Matcher::Any)
+            .match_header("accept-encoding", mockito::Matcher::Regex("gzip".into()))
+            .match_header("upgrade-insecure-requests", "1")
+            .match_header("sec-fetch-dest", "document")
+            .match_header("sec-fetch-mode", "navigate")
+            .match_header("sec-fetch-site", "none")
+            .match_header("sec-fetch-user", "?1")
+            .with_status(200)
+            .with_header("content-type", "text/html")
+            .with_body("<html><body><h1>Salad</h1></body></html>")
+            .create_async()
+            .await;
+
+        let html = RequestFetcher::new(None)
+            .fetch(&format!("{}/recipe", server.url()))
+            .await
+            .expect("the request must carry a full browser header set");
+
+        assert!(html.contains("Salad"));
+        mock.assert_async().await;
+    }
+
+    // Regression: hostthetoast.com, 2026-09-06.
+    //
+    // Some CDNs (Sucuri here) answer with `content-encoding: gzip` even when the
+    // request carries no `Accept-Encoding` header. Without reqwest's decompression
+    // features the gzip stream was decoded as text, producing mojibake that parsed
+    // into a garbage "page" — which then blew the LLM input cap and panicked the
+    // worker thread.
+    #[tokio::test]
+    async fn test_fetch_decompresses_gzip_the_server_sent_unasked() {
+        use flate2::{write::GzEncoder, Compression};
+        use std::io::Write;
+
+        // Repetitive filler so deflate emits a real compressed block: on a short,
+        // incompressible body it falls back to a *stored* block, and the marker
+        // strings below would survive in the raw bytes whether or not the client
+        // decompressed anything.
+        let filler = "<p>stir the dough until it is smooth</p>".repeat(200);
+        let page =
+            format!("<html><body><h1>Garlic Naan</h1>{filler}<p>500 g flour</p></body></html>");
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(page.as_bytes()).unwrap();
+        let gzipped = encoder.finish().unwrap();
+        assert!(
+            !String::from_utf8_lossy(&gzipped).contains("Garlic Naan"),
+            "body was stored uncompressed - the test would pass without decompression"
+        );
+
+        let mut server = mockito::Server::new_async().await;
+        let _m = server
+            .mock("GET", "/naan")
+            .with_status(200)
+            .with_header("content-type", "text/html; charset=UTF-8")
+            .with_header("content-encoding", "gzip")
+            .with_body(gzipped)
+            .create_async()
+            .await;
+
+        let html = RequestFetcher::new(None)
+            .fetch(&format!("{}/naan", server.url()))
+            .await
+            .expect("a gzipped page must be fetchable");
+
+        assert!(html.contains("Garlic Naan"), "not decompressed: {html:?}");
+        assert!(html.contains("500 g flour"), "not decompressed: {html:?}");
     }
 
     #[tokio::test]

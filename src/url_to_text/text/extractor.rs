@@ -50,14 +50,7 @@ const NON_ERRORS: [&str; 6] = ["null", "none", "nil", "n/a", "na", "-"];
 
 /// Clamp text to [`MAX_INPUT_CHARS`] on a character boundary.
 pub(crate) fn clamp_input(text: &str) -> String {
-    if text.len() <= MAX_INPUT_CHARS {
-        return text.to_string();
-    }
-    let end = (0..=MAX_INPUT_CHARS)
-        .rev()
-        .find(|&i| text.is_char_boundary(i))
-        .unwrap_or(0);
-    text[..end].to_string()
+    crate::pipelines::truncate_on_char_boundary(text.to_string(), MAX_INPUT_CHARS)
 }
 
 /// Pull the completion text out of an OpenAI chat response, distinguishing the

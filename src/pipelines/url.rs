@@ -223,8 +223,7 @@ fn extract_text_from_html(html: &str) -> String {
             }
             out.push_str(word);
             if out.len() >= MAX_LLM_INPUT_CHARS {
-                out.truncate(MAX_LLM_INPUT_CHARS);
-                return out;
+                return crate::pipelines::truncate_on_char_boundary(out, MAX_LLM_INPUT_CHARS);
             }
         }
     }
@@ -295,6 +294,27 @@ mod tests {
     // plain text handed to the LLM was 69-99% minified JavaScript on every failing
     // page sampled. That both drowned the recipe ("No recipe found in the text") and
     // blew the model's context window (one page reached 924,697 tokens).
+
+    // Regression: hostthetoast.com, 2026-09-06, "Internal error: thread panicked".
+    //
+    // `String::truncate` takes a *byte* index and panics unless it lands on a UTF-8
+    // character boundary. The cap is a byte count, so any page whose text crosses
+    // MAX_LLM_INPUT_CHARS in the middle of a multi-byte character killed the worker
+    // thread instead of returning a truncated page.
+    #[test]
+    fn test_extract_text_from_html_truncates_on_a_char_boundary() {
+        // Land the cap inside a 2-byte character: the filler leaves the buffer one
+        // byte short of the cap, so the following "e" straddles index
+        // MAX_LLM_INPUT_CHARS.
+        let filler = "a".repeat(MAX_LLM_INPUT_CHARS - 2);
+        let html = format!("<html><body>{filler} ééé</body></html>");
+
+        let text = extract_text_from_html(&html);
+
+        assert!(text.len() <= MAX_LLM_INPUT_CHARS);
+        // The real assertion is that the call above returned at all.
+        assert!(text.starts_with("aaa"));
+    }
 
     #[test]
     fn test_extract_text_from_html_drops_script_and_style() {
