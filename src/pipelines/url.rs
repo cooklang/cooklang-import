@@ -42,7 +42,9 @@ pub async fn process_with(
 }
 
 fn order_fetchers(url: &str, fetchers: Vec<DynFetcher>) -> Vec<Box<dyn Fetcher>> {
-    // filters out any unavailable fetchers, and any fetcher which is not configured for the url and should not be used as fallback, then stable sorts the list based on the fetchers being configured for the specific url (putting matches first).
+    // filters out any unavailable fetchers, and any fetcher which is not configured for the url
+    // and should not be used as fallback, then stable sorts the list based on the fetchers being
+    // configured for the specific url (putting matches first).
     let mut new_fetchers = fetchers
         .into_iter()
         .filter(|f| {
@@ -50,17 +52,17 @@ fn order_fetchers(url: &str, fetchers: Vec<DynFetcher>) -> Vec<Box<dyn Fetcher>>
                 return false;
             }
 
-            // If specifically configured for the url and should not be used as a fallback method
+            // If not specifically configured for this url and the fetcher should not
+            // be used as a fallback method
             if !f.is_configured(url) & !f.fallback() {
                 return false;
             }
 
-            return true;
+            true
         })
         .collect::<Vec<_>>();
 
-    new_fetchers
-        .sort_by(|a: &DynFetcher, b: &DynFetcher| b.is_configured(url).cmp(&a.is_configured(url)));
+    new_fetchers.sort_by_key(|b| std::cmp::Reverse(b.is_configured(url)));
 
     new_fetchers
 }
@@ -326,7 +328,7 @@ mod tests {
     impl Fetcher for MockFetcher {
         async fn fetch(
             &self,
-            url: &str,
+            _url: &str,
         ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
             unimplemented!()
         }
@@ -371,7 +373,7 @@ mod tests {
             "https://www.seriouseats.com/recipe",
             vec![
                 Box::new(RequestFetcher::default()),
-                Box::new(PageScriberFetcher::empty()),
+                Box::new(PageScriberFetcher::new(PageScriberConfig::default())),
             ],
             &["request"],
         );

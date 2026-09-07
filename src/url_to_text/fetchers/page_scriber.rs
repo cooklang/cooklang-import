@@ -35,10 +35,6 @@ impl PageScriberFetcher {
             .unwrap_or_default();
         Self::new(config)
     }
-
-    pub(crate) fn empty() -> Self {
-        Self::new(PageScriberConfig::default())
-    }
 }
 
 #[async_trait]
@@ -94,7 +90,7 @@ mod tests {
 
     #[test]
     fn test_is_available_without_url() {
-        let fetcher = PageScriberFetcher::empty();
+        let fetcher = PageScriberFetcher::new(PageScriberConfig::default());
         assert!(!fetcher.is_available());
     }
 

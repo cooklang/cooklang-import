@@ -47,10 +47,13 @@ pub struct RequestFetcher {
     client: Client,
 }
 
-impl RequestFetcher {
-    pub fn default() -> Self {
+impl Default for RequestFetcher {
+    fn default() -> Self {
         Self::new(None)
     }
+}
+
+impl RequestFetcher {
     pub fn new(timeout: Option<Duration>) -> Self {
         let timeout = timeout.unwrap_or(Duration::from_secs(30));
         let client = Client::builder()
