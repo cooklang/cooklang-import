@@ -513,8 +513,32 @@ struct HowToStep {
 struct HowToSection {
     /// Section name/title (e.g., "How to Make Meat Sauce")
     name: Option<String>,
-    #[serde(rename = "itemListElement")]
+    /// schema.org lets a single-valued property be written as the bare object
+    /// instead of a one-element array, and sites do: cooking.nytimes.com writes
+    /// every section that way. Typing this as a plain sequence made serde reject
+    /// the entire recipe, and the untagged `RecipeInstructions` enum swallowed the
+    /// reason ("did not match any variant").
+    #[serde(rename = "itemListElement", deserialize_with = "one_or_many")]
     item_list_element: Vec<HowToStep>,
+}
+
+/// Accept either a single `T` or a sequence of them, always yielding a `Vec`.
+fn one_or_many<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany<T> {
+        One(T),
+        Many(Vec<T>),
+    }
+
+    Ok(match OneOrMany::<T>::deserialize(deserializer)? {
+        OneOrMany::One(item) => vec![item],
+        OneOrMany::Many(items) => items,
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -838,46 +862,34 @@ impl Extractor for JsonLdExtractor {
                         index, json_ld
                     );
 
-                    let recipe_json = if json_ld.is_array() {
+                    // Every node the document can carry a recipe in: the root
+                    // itself, the members of a top-level array, and the members of
+                    // @graph. These are gathered before any is chosen because a
+                    // document can be several of them at once — thekitchn.com
+                    // publishes an empty `@type: Recipe` at the root *and* the real
+                    // recipe inside @graph, and matching the root on type alone
+                    // selected the stub and never looked further.
+                    let mut candidates: Vec<&Value> = vec![&json_ld];
+                    if let Some(arr) = json_ld.as_array() {
                         debug!("JsonLdExtractor: JSON-LD is an array");
-                        json_ld.as_array().and_then(|arr| {
-                            // Prefer an entry that actually carries recipe content;
-                            // fall back to any Recipe-typed entry only if none does.
-                            arr.iter()
-                                .find(|item| is_recipe_type(item) && has_recipe_content(item))
-                                .or_else(|| {
-                                    arr.iter().find(|item| {
-                                        let has_instructions =
-                                            item.get("recipeInstructions").is_some();
-                                        let is_recipe = is_recipe_type(item);
-                                        debug!("JsonLdExtractor: Array item - has_instructions: {}, is_recipe: {}", has_instructions, is_recipe);
-                                        has_instructions || is_recipe
-                                    })
-                                })
-                        })
-                    } else if is_recipe_type(&json_ld) {
-                        debug!("JsonLdExtractor: Found Recipe type in root");
-                        Some(&json_ld)
-                    } else if let Some(graph) = json_ld.get("@graph") {
+                        candidates.extend(arr.iter());
+                    }
+                    if let Some(arr) = json_ld.get("@graph").and_then(|g| g.as_array()) {
                         debug!("JsonLdExtractor: Found @graph");
-                        graph.as_array().and_then(|arr| {
-                            arr.iter()
-                                .find(|item| is_recipe_type(item) && has_recipe_content(item))
-                                .or_else(|| {
-                                    arr.iter().find(|item| {
-                                        let is_recipe = is_recipe_type(item);
-                                        debug!(
-                                            "JsonLdExtractor: @graph item - is_recipe: {}",
-                                            is_recipe
-                                        );
-                                        is_recipe
-                                    })
-                                })
-                        })
-                    } else {
-                        debug!("JsonLdExtractor: No recipe found in this JSON-LD");
-                        None
-                    };
+                        candidates.extend(arr.iter());
+                    }
+
+                    // Prefer a node that actually carries recipe content; fall back
+                    // to a Recipe-typed node only if none does.
+                    let recipe_json = candidates
+                        .iter()
+                        .copied()
+                        .find(|item| is_recipe_type(item) && has_recipe_content(item))
+                        .or_else(|| {
+                            candidates.iter().copied().find(|item| {
+                                is_recipe_type(item) || item.get("recipeInstructions").is_some()
+                            })
+                        });
 
                     if let Some(recipe) = recipe_json {
                         debug!("JsonLdExtractor: Found recipe JSON: {:#?}", recipe);

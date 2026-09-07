@@ -43,9 +43,22 @@ fn create_recipe_html(json_ld: &str) -> String {
     )
 }
 
+/// A Recipe block with real ingredients but no instructions no longer ends the
+/// pipeline.
+///
+/// This test previously asserted the opposite - that ingredients alone were a
+/// successful extraction. That expectation was what let papillesetpupilles.fr (8
+/// ingredients, 0 instructions) and chefkoch.de (16 and 0) short-circuit the chain
+/// in the 2026-08-31..09-07 window and then fail conversion with "No recipe found in
+/// the text": both pages publish their method, the extractor just missed it.
+///
+/// The trade-off is deliberate and worth stating. A page that genuinely has no
+/// method - this Dishoom daal is a real example - now falls through to the LLM and,
+/// if that finds no instructions either, fails instead of saving an ingredient list.
+/// Recovering the many pages whose instructions were merely missed was judged worth
+/// losing the few that never had any.
 #[tokio::test]
-async fn test_recipe_without_instructions() {
-    // Test case where recipe has no recipeInstructions field
+async fn test_recipe_without_instructions_falls_through() {
     env::set_var("OPENAI_API_KEY", "test_key");
 
     let mut server = mockito::Server::new_async().await;
@@ -85,28 +98,17 @@ async fn test_recipe_without_instructions() {
         .mock("GET", "/recipe")
         .with_status(200)
         .with_header("content-type", "text/html")
-        .with_body(create_recipe_html(json_ld))
+        .with_body(create_recipe_html_with_body(json_ld))
         .create();
 
     let url = format!("{}/recipe", server.url());
     let result = url_to_recipe(&url).await.unwrap();
 
-    // Verify the recipe was parsed successfully (ingredients only, no instructions)
-    assert_eq!(result.name, "Dishoom's House Black Daal");
-
-    // Verify ingredients were parsed
-    assert!(result.text.contains("300g whole black urad daal"));
-    assert!(result.text.contains("12g garlic paste"));
-    assert!(result.text.contains("90ml double cream"));
-
-    // Verify metadata
-    assert!(result.metadata.contains("author: HotCooking"));
-    assert!(result.metadata.contains("cook time: 5 hours"));
-    assert!(result.metadata.contains("prep time: 15 minutes"));
-    assert!(result
-        .metadata
-        .contains("time required: 5 hours 30 minutes"));
-    assert!(result.metadata.contains("servings: 8"));
+    assert_ne!(
+        result.name, "Dishoom's House Black Daal",
+        "an instruction-less hit must not short-circuit the pipeline"
+    );
+    assert!(!result.text.trim().is_empty());
 }
 
 /// A JSON-LD Recipe carrying neither ingredients nor instructions is an SEO stub,
@@ -168,6 +170,7 @@ async fn test_long_cook_time() {
         "@type": "Recipe",
         "name": "Slow Cooked Recipe",
         "recipeIngredient": ["test"],
+        "recipeInstructions": "Cook it low and slow.",
         "prepTime": "PT15M",
         "cookTime": "PT5H",
         "totalTime": "PT5H15M"
