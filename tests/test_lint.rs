@@ -532,3 +532,13 @@ fn autofix_never_touches_something_not_flagged() {
     let doc = "Add @water{2 to 3 cups}.";
     assert_eq!(fixed(doc), doc);
 }
+
+#[test]
+fn fixes_double_encoded_html_entities_to_a_fixed_point() {
+    let doc = "---\ntitle: T\ncourse: Pâtes &amp;amp; nouilles\n---\n\nStep.\n";
+    let after = autofix(doc);
+    assert!(!after.contains("&amp;"), "{after}");
+    assert!(after.contains("Pâtes & nouilles"), "{after}");
+    let issues = lint("", &after);
+    assert!(issues.iter().all(|i| !i.autofixable), "{issues:#?}");
+}

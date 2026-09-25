@@ -134,10 +134,21 @@ fn fix_frontmatter(fm: &str) -> String {
         }
         kept.push(line.to_string());
     }
-    let joined = kept.join("\n");
-    ENTITY
-        .replace_all(&joined, |c: &Captures| html_escape::decode_html_entities(&c[0]).into_owned())
-        .into_owned()
+    // Real exports sometimes double-encode ("&amp;amp;" for a literal "&"):
+    // decoding once only turns that into "&amp;", which is itself still a
+    // (now unescaped) HtmlEntity issue. Decode to a fixed point instead of
+    // a single pass, capped so a pathological input can't loop forever.
+    let mut result = kept.join("\n");
+    for _ in 0..10 {
+        let next = ENTITY.replace_all(&result, |c: &Captures| {
+            html_escape::decode_html_entities(&c[0]).into_owned()
+        });
+        if next == result {
+            break;
+        }
+        result = next.into_owned();
+    }
+    result
 }
 
 /// Applies the safe mechanical fixes. Never changes a number, drops a step,
