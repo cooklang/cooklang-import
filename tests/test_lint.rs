@@ -79,3 +79,30 @@ fn flags_percent_in_text_and_phantom_and_tilde() {
     assert!(body_kinds("Cut into ~2 cm pieces.").contains(&Kind::TildeApprox));
     assert!(!body_kinds("Bake ~{20%minutes}.").contains(&Kind::TildeApprox));
 }
+
+fn fm_kinds(fm: &str) -> Vec<Kind> {
+    kinds(&lint("", &format!("---\n{fm}\n---\n\nBoil @eggs{{2}}.\n")))
+}
+
+#[test]
+fn flags_empty_metadata() {
+    assert!(fm_kinds("title: T\nauthor: 'null'").contains(&Kind::EmptyMetadata));
+    assert!(fm_kinds("title: T\nprep time: ''").contains(&Kind::EmptyMetadata));
+    assert!(fm_kinds("title: T\nnutrition:").contains(&Kind::EmptyMetadata));
+}
+
+#[test]
+fn flags_html_entities_and_key_drift() {
+    assert!(fm_kinds("title: Cr&egrave;me &amp; co").contains(&Kind::HtmlEntity));
+    assert!(fm_kinds("title: T\nsource_url: https://x.y").contains(&Kind::MetadataKeyDrift));
+}
+
+#[test]
+fn flags_invalid_yaml() {
+    assert!(fm_kinds("title: a: b: c").contains(&Kind::InvalidFrontmatter));
+}
+
+#[test]
+fn nested_metadata_is_not_empty() {
+    assert!(!fm_kinds("title: T\nnutrition:\n  calories: 480 kcal").contains(&Kind::EmptyMetadata));
+}
