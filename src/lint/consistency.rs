@@ -100,7 +100,12 @@ fn similar(a: &str, b: &str) -> bool {
 /// scripts), or they share a `similar` word, or — when the token has no
 /// (non-stop) words of its own, e.g. a bare "Öl" that's also generic — the
 /// token's whole name appears in the source line.
-fn covers(token: &str, src: &SourceIngredient) -> bool {
+///
+/// `src_words` is `src.line`'s word set, computed once by the caller — with
+/// N sources and M tagged names, splitting it fresh on every call here made
+/// this O(N × M) string-split operations instead of O(N), which is the
+/// difference between milliseconds and seconds on a page-sized dump.
+fn covers(token: &str, src: &SourceIngredient, src_words: &[String]) -> bool {
     if token.chars().any(is_cjk) {
         let src_cjk: std::collections::HashSet<char> = src.line.chars().filter(|c| is_cjk(*c)).collect();
         if token.chars().filter(|c| is_cjk(*c)).any(|c| src_cjk.contains(&c)) {
@@ -108,7 +113,6 @@ fn covers(token: &str, src: &SourceIngredient) -> bool {
         }
     }
     let tok_words = words(token);
-    let src_words = words(&src.line);
     if !tok_words.is_empty() {
         return tok_words.iter().any(|w| src_words.iter().any(|s| similar(w, s)));
     }
@@ -154,9 +158,12 @@ fn norm_unit(u: &str) -> String {
 
 /// A source line that explicitly splits its quantity across the recipe
 /// ("2 tbsp oil, divided") — tagging it more than once is correct, not a
-/// double count.
+/// double count. Deliberately excludes "split" on its own: the `regex`
+/// crate has no lookaround to write `\bsplit\b(?!\s+peas)`, and "split" as a
+/// prep verb (rather than "divided") is rare enough that a plain ingredient
+/// name like "split peas" isn't worth risking.
 static DIVIDED: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)divided|plus more|\+|split|reserved|geteilt|en deux|dividido").unwrap());
+    std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)divided|plus more|\+|reserved|geteilt|en deux|dividido").unwrap());
 
 /// Finds `needle` in `haystack` as a whole word (bounded by non-alphanumeric
 /// characters or the string edges) — "salt" matches "salt, pepper" but not
@@ -186,17 +193,86 @@ fn word_boundary_match(haystack: &str, needle: &str) -> bool {
     false
 }
 
+/// Above this many extracted "sources", the original isn't an ingredient
+/// list at all — it's a page-sized dump (a scraped page, a pasted PDF, raw
+/// HTML) that happened to produce thousands of short, list-shaped lines.
+/// Coverage checking is O(sources × names) in the worst case, so it's
+/// skipped entirely rather than risk turning `lint` quadratic on garbage
+/// input that was never going to be a real ingredient list anyway.
+const MAX_SOURCES_FOR_COVERAGE: usize = 200;
+/// However uncovered a recipe's source ingredients are, one recipe is never
+/// worth more than this many `MissingIngredient` issues — past this point
+/// every additional one is the same underlying defect (a botched or
+/// abandoned conversion), not new information.
+const MAX_MISSING_INGREDIENT_ISSUES: usize = 20;
+/// Below this many words, the original doesn't carry enough text to judge
+/// language overlap from at all (empty, or just a source URL) — every
+/// ingredient name would trivially "not be found", firing on every such
+/// recipe with 3+ ingredients regardless of the actual conversion quality.
+const MIN_WORDS_FOR_LANGUAGE_CHECK: usize = 20;
+
 pub(super) fn check(original: &str, _body: &str, recipe: &Recipe) -> Vec<Issue> {
     let mut issues = Vec::new();
     let sources = source_ingredients(original);
     let names: Vec<String> = recipe.ingredients.iter().map(|i| normalize(&i.name)).collect();
 
+    // Language: with 3+ distinct ingredient names, most of them should share
+    // a word with the original text — a wholesale translation instead of a
+    // conversion. A mostly-CJK original is exempted: unspaced scripts don't
+    // segment into comparable words the same way. Computed before coverage
+    // so a fired LanguageMismatch can suppress the (redundant) per-line
+    // MissingIngredient reports below. Skipped for a page-sized dump for the
+    // same reason coverage is (see `MAX_SOURCES_FOR_COVERAGE`) — this scan
+    // is O(names × original word count), and a page dump can make the
+    // original word count itself huge.
+    let mut distinct_names: Vec<String> = names.clone();
+    distinct_names.sort();
+    distinct_names.dedup();
+    let mut language_mismatch = false;
+    if distinct_names.len() >= 3
+        && original.split_whitespace().count() >= MIN_WORDS_FOR_LANGUAGE_CHECK
+        && sources.len() <= MAX_SOURCES_FOR_COVERAGE
+        && !is_mostly_cjk(original)
+    {
+        let orig_lower = fold_ligatures(original).to_lowercase();
+        let orig_words = words_raw(original);
+        let hits = distinct_names
+            .iter()
+            .filter(|n| {
+                let nw = words(n);
+                if nw.is_empty() {
+                    orig_words.iter().any(|w| similar(w, n)) || orig_lower.contains(n.as_str())
+                } else {
+                    nw.iter().any(|w| orig_words.iter().any(|o| similar(w, o)))
+                }
+            })
+            .count();
+        if (hits as f64) < 0.5 * distinct_names.len() as f64 {
+            let sample: Vec<&str> = distinct_names.iter().take(5).map(String::as_str).collect();
+            let evidence = format!("ingredient names not found in source: {}", sample.join(", "));
+            issues.push(Issue::new(Kind::LanguageMismatch, Severity::Error, evidence, false));
+            language_mismatch = true;
+        }
+    }
+
     // Coverage: every *quantified* source ingredient is tagged somewhere. A
     // source line with no quantity ("salt to taste") is skipped outright —
-    // too easy to conflate with something else, not worth the noise.
-    for src in &sources {
-        if src.qty.is_some() && !names.iter().any(|n| covers(n, src)) {
-            issues.push(Issue::new(Kind::MissingIngredient, Severity::Error, &src.line, false));
+    // too easy to conflate with something else, not worth the noise. Each
+    // source line's words are computed once up front (not once per name, as
+    // `covers` used to do internally) — the dominant cost on a page-sized
+    // dump. Skipped entirely above `MAX_SOURCES_FOR_COVERAGE`, and once a
+    // LanguageMismatch already explains the whole recipe.
+    if !language_mismatch && sources.len() <= MAX_SOURCES_FOR_COVERAGE {
+        let source_words: Vec<Vec<String>> = sources.iter().map(|s| words(&s.line)).collect();
+        let mut missing = 0;
+        for (src, src_words) in sources.iter().zip(&source_words) {
+            if missing >= MAX_MISSING_INGREDIENT_ISSUES {
+                break;
+            }
+            if src.qty.is_some() && !names.iter().any(|n| covers(n, src, src_words)) {
+                issues.push(Issue::new(Kind::MissingIngredient, Severity::Error, &src.line, false));
+                missing += 1;
+            }
         }
     }
 
@@ -247,34 +323,6 @@ pub(super) fn check(original: &str, _body: &str, recipe: &Recipe) -> Vec<Issue> 
         issues.push(Issue::new(Kind::SpellingVariant, Severity::Warning, evidence, false));
     }
 
-    // Language: with 3+ distinct ingredient names, most of them should share
-    // a word with the original text — a wholesale translation instead of a
-    // conversion. A mostly-CJK original is exempted: unspaced scripts don't
-    // segment into comparable words the same way.
-    let mut distinct_names: Vec<String> = names.clone();
-    distinct_names.sort();
-    distinct_names.dedup();
-    if distinct_names.len() >= 3 && !is_mostly_cjk(original) {
-        let orig_lower = fold_ligatures(original).to_lowercase();
-        let orig_words = words_raw(original);
-        let hits = distinct_names
-            .iter()
-            .filter(|n| {
-                let nw = words(n);
-                if nw.is_empty() {
-                    orig_words.iter().any(|w| similar(w, n)) || orig_lower.contains(n.as_str())
-                } else {
-                    nw.iter().any(|w| orig_words.iter().any(|o| similar(w, o)))
-                }
-            })
-            .count();
-        if (hits as f64) < 0.5 * distinct_names.len() as f64 {
-            let sample: Vec<&str> = distinct_names.iter().take(5).map(String::as_str).collect();
-            let evidence = format!("ingredient names not found in source: {}", sample.join(", "));
-            issues.push(Issue::new(Kind::LanguageMismatch, Severity::Error, evidence, false));
-        }
-    }
-
     issues
 }
 
@@ -296,12 +344,19 @@ mod tests {
         assert!(!similar("salt", "unsalted"));
     }
 
+    /// Test-only convenience: `covers` takes the caller's precomputed source
+    /// words in production (see its doc comment), but tests just want to
+    /// assert on a single token/source pair.
+    fn cov(token: &str, src: &SourceIngredient) -> bool {
+        covers(token, src, &words(&src.line))
+    }
+
     #[test]
     fn covers_allows_two_character_words() {
         let src = SourceIngredient { line: "1 Ei".into(), name: "ei".into(), qty: Some(1.0), unit: None };
-        assert!(covers("ei", &src));
+        assert!(cov("ei", &src));
         let src = SourceIngredient { line: "1 EL Öl".into(), name: "öl".into(), qty: Some(1.0), unit: Some("EL".into()) };
-        assert!(covers("öl", &src));
+        assert!(cov("öl", &src));
     }
 
     /// Regression (found against real data, row 470): "œufs" (with the
@@ -311,14 +366,14 @@ mod tests {
     #[test]
     fn covers_folds_french_ligatures() {
         let src = SourceIngredient { line: "2 œufs".into(), name: "œufs".into(), qty: Some(2.0), unit: None };
-        assert!(covers("oeufs", &src));
+        assert!(cov("oeufs", &src));
     }
 
     #[test]
     fn covers_matches_cjk_by_character_containment() {
         let src = SourceIngredient { line: "洋葱 一个".into(), name: "洋葱".into(), qty: Some(1.0), unit: None };
-        assert!(covers("洋葱", &src));
-        assert!(!covers("胡萝卜", &src));
+        assert!(cov("洋葱", &src));
+        assert!(!cov("胡萝卜", &src));
     }
 
     #[test]

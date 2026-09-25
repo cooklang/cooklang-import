@@ -399,3 +399,66 @@ fn language_mismatch_exempts_mostly_cjk_originals() {
     let doc = "---\ntitle: T\n---\n\nStir-fry the @onion{1}, @carrot{2} and @potato{3} until tender.\n";
     assert!(!kinds(&lint(orig, doc)).contains(&Kind::LanguageMismatch));
 }
+
+/// Coordinator fix 1: an empty or URL-only original has far too few words
+/// to judge language overlap from — every name would trivially "not be
+/// found", firing LanguageMismatch on every recipe with 3+ ingredients
+/// whenever the original text is missing or just a URL.
+#[test]
+fn language_mismatch_skipped_when_original_has_too_few_words() {
+    let doc = "---\ntitle: T\n---\n\n@flour{200%g}, @salt{1%tsp} and @water{100%ml}.\n";
+    assert!(!kinds(&lint("", doc)).contains(&Kind::LanguageMismatch));
+    assert!(!kinds(&lint("https://example.com/recipe", doc)).contains(&Kind::LanguageMismatch));
+}
+
+/// Coordinator fix 3: once LanguageMismatch has fired (a wholesale
+/// translation), every source line would otherwise also read as "missing" —
+/// don't double-report the same underlying defect.
+#[test]
+fn missing_ingredient_is_skipped_once_language_mismatch_has_fired() {
+    let orig = "500 g Kartoffeln\n1 Zwiebel\n1 Karotte\n\nDie Kartoffeln waschen und in Würfel schneiden. \
+        Die Zwiebel schälen und fein hacken. Die Karotte raspeln, dann alles in einer Pfanne braten.";
+    let doc = "---\ntitle: T\n---\n\nWash the @potatoes{500%g}, peel the @onion{1} and grate the @carrot{1}, \
+        then fry everything in a pan.\n";
+    let issues = lint(orig, doc);
+    assert!(kinds(&issues).contains(&Kind::LanguageMismatch));
+    assert!(!kinds(&issues).contains(&Kind::MissingIngredient));
+}
+
+/// Coordinator fix 5: DIVIDED must not treat "split peas" as a divided
+/// quantity just because it contains the word "split".
+#[test]
+fn double_count_still_fires_for_split_peas() {
+    let orig = "1 pound split peas\n1 onion\n\nRinse the split peas. Cook the split peas until tender.";
+    let doc = "---\ntitle: T\n---\n\nRinse @split peas{1%pound}. Cook @split peas{1%pound} until tender. Add @onion{1}.\n";
+    assert!(kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+/// Coordinator fix 2: a page-sized dump (way more "sources" than any real
+/// ingredient list) must not make `lint` quadratic — coverage is skipped
+/// entirely past a source-count cap, so this must run in well under a
+/// second even though the naive approach recomputes source-line words for
+/// every source×token pair.
+#[test]
+fn lint_stays_fast_on_a_page_sized_dump() {
+    let original: String = (0..40_000).map(|i| format!("{} item{}\n", i % 9 + 1, i)).collect();
+    let body: String = (0..300).map(|i| format!("@item{}{{1}}\n", i * 100)).collect();
+    let doc = format!("---\ntitle: T\n---\n\n{body}");
+
+    let start = std::time::Instant::now();
+    let issues = lint(&original, &doc);
+    let elapsed = start.elapsed();
+
+    assert!(elapsed.as_secs_f64() < 1.0, "lint took {elapsed:?}, expected well under 1s");
+    assert!(issues.iter().filter(|i| i.kind == Kind::MissingIngredient).count() <= 20);
+}
+
+/// Coordinator fix 2: even below the page-dump cap, MissingIngredient never
+/// reports more than 20 issues for a single recipe.
+#[test]
+fn missing_ingredient_is_capped_at_twenty_per_recipe() {
+    let original: String = (0..50).map(|i| format!("1 onlyinsource{i}\n")).collect();
+    let doc = "---\ntitle: T\n---\n\n@nothing tagged{1}.\n";
+    let issues = lint(&original, doc);
+    assert_eq!(issues.iter().filter(|i| i.kind == Kind::MissingIngredient).count(), 20);
+}
