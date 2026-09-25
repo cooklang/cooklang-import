@@ -295,11 +295,81 @@ fn flags_double_count_against_single_listing() {
     assert!(kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
 }
 
+/// Item 14: the source line says "divided" and the *sum* of tagged amounts
+/// (4 tbsp) exceeds the single source listing (2 tbsp) — without the
+/// divided-skip this would flag; with it, it must not.
 #[test]
 fn divided_amounts_are_not_double_counted() {
-    let orig = "2 tablespoons olive oil, divided\n1 onion\n\nHeat oil. Add onion. Add more oil.";
-    let doc = "---\ntitle: T\n---\n\nHeat @olive oil{1%tablespoon}. Add @onion{1}. Add @olive oil{1%tablespoon}.\n";
+    let orig = "2 tbsp olive oil, divided\n1 onion\n\nHeat oil. Add onion. Add more oil.";
+    let doc = "---\ntitle: T\n---\n\nHeat @olive oil{2%tbsp}. Add @onion{1}. Add @olive oil{2%tbsp}.\n";
     assert!(!kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+/// Item 3: a source line whose unit doesn't match (after normalization) the
+/// doc's aggregated unit is skipped — cloves are a count, grams are a mass,
+/// and this checker doesn't attempt cross-unit conversion.
+#[test]
+fn double_count_skipped_when_normalized_units_differ() {
+    let orig = "2 cloves garlic\n1 onion\n\nMince the garlic and chop the onion.";
+    let doc = "---\ntitle: T\n---\n\nMince @garlic{10%g}. Chop @onion{1}. Add more @garlic{10%g}.\n";
+    assert!(!kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+/// Item 3: the same amount expressed in a different (but not obviously
+/// equivalent, from this checker's point of view) unit than the source —
+/// skipped rather than guessed at.
+#[test]
+fn double_count_skipped_when_source_uses_a_different_unit_for_an_equivalent_amount() {
+    let orig = "1/4 cup olive oil\n1 onion\n\nHeat the oil in a pan and add the onion.";
+    let doc = "---\ntitle: T\n---\n\nHeat @olive oil{2%tbsp}, add @onion{1} and more @olive oil{2%tbsp}.\n";
+    assert!(!kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+/// Item 10: the word-boundary name lookup in double-count must not let
+/// "unsalted butter" contribute to the listing for "salt".
+#[test]
+fn double_count_word_boundary_does_not_confuse_salt_with_unsalted_butter() {
+    let orig = "2 tsp salt\n1 cup unsalted butter\n\nMelt the butter and season with salt.";
+    let doc = "---\ntitle: T\n---\n\nMelt the @unsalted butter{1%cup}. Season with @salt{1%tsp}. \
+        Add more @salt{1%tsp} to taste. Add a final @salt{1%tsp}.\n";
+    assert!(kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+/// Item 2: a source line with no quantity ("salt to taste") is never
+/// flagged as missing, even when it's never tagged.
+#[test]
+fn skips_missing_ingredient_without_a_quantity() {
+    let orig = "2 eggs\nsalt to taste\n\nBoil the eggs and season with salt.";
+    let doc = "---\ntitle: T\n---\n\nBoil @eggs{2}.\n";
+    assert!(!kinds(&lint(orig, doc)).contains(&Kind::MissingIngredient));
+}
+
+/// Item 4: a bare two-character ingredient name ("Ei") must still count as
+/// coverage evidence.
+#[test]
+fn coverage_matches_two_character_words() {
+    let orig = "1 Ei\n200 g Mehl\n\nEi und Mehl verrühren.";
+    let doc = "---\ntitle: T\n---\n\n@Ei{1} und @Mehl{200%g} verrühren.\n";
+    assert_eq!(kinds(&lint(orig, doc)), vec![]);
+}
+
+/// Item 4 + 5: "Zwiebel" (doc) covers "Zwiebeln" (source) via the
+/// common-prefix rule, and "Öl" (2 chars) still counts.
+#[test]
+fn coverage_matches_german_plural_and_two_character_words() {
+    let orig = "2 Zwiebeln\n1 EL Öl\n\nHacken.";
+    let doc = "---\ntitle: T\n---\n\n@Zwiebel{2} in @Öl{1%EL} hacken.\n";
+    assert_eq!(kinds(&lint(orig, doc)), vec![]);
+}
+
+/// Item 5: "tomato" (doc) covers "tomatoes" (source) via the common-prefix
+/// rule — the old trailing-"s" stem alone ("tomatoe" vs "tomato") missed
+/// this.
+#[test]
+fn coverage_matches_english_plural_via_prefix_similarity() {
+    let orig = "2 tomatoes\n1 onion\n\nChop everything finely before serving.";
+    let doc = "---\ntitle: T\n---\n\nChop @tomato{2} and @onion{1}.\n";
+    assert_eq!(kinds(&lint(orig, doc)), vec![]);
 }
 
 #[test]
@@ -309,11 +379,23 @@ fn flags_spelling_variants() {
     assert!(kinds(&lint(orig, doc)).contains(&Kind::SpellingVariant));
 }
 
+/// Item 11: with 3+ distinct ingredient names, most of them should share a
+/// word with the original — this doc is a wholesale English rewrite of a
+/// German original, not a conversion.
 #[test]
 fn flags_language_mismatch() {
-    let orig = "500 g Kartoffeln\n1 Zwiebel\n\nDie Kartoffeln waschen und in Würfel schneiden. \
-        Die Zwiebel schälen und fein hacken, dann alles in einer Pfanne braten.";
-    let doc = "---\ntitle: T\n---\n\nWash the @potatoes{500%g} and cut them into cubes. \
-        Peel the @onion{1} and chop finely, then fry everything in a pan.\n";
+    let orig = "500 g Kartoffeln\n1 Zwiebel\n1 Karotte\n\nDie Kartoffeln waschen und in Würfel schneiden. \
+        Die Zwiebel schälen und fein hacken. Die Karotte raspeln, dann alles in einer Pfanne braten.";
+    let doc = "---\ntitle: T\n---\n\nWash the @potatoes{500%g}, peel the @onion{1} and grate the @carrot{1}, \
+        then fry everything in a pan.\n";
     assert!(kinds(&lint(orig, doc)).contains(&Kind::LanguageMismatch));
+}
+
+/// Item 11: a mostly-CJK original is exempted from the word-overlap
+/// language check (unspaced scripts don't segment into comparable words).
+#[test]
+fn language_mismatch_exempts_mostly_cjk_originals() {
+    let orig = "洋葱 一个\n胡萝卜 两根\n土豆 三个\n\n将洋葱、胡萝卜、土豆切块后翻炒均匀即可食用。";
+    let doc = "---\ntitle: T\n---\n\nStir-fry the @onion{1}, @carrot{2} and @potato{3} until tender.\n";
+    assert!(!kinds(&lint(orig, doc)).contains(&Kind::LanguageMismatch));
 }
