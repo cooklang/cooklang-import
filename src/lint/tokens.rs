@@ -37,8 +37,14 @@ static PCT_TEXT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\d%(?:g|kg|mg|ml|cl|dl|l|tsp|tbsp|cups?|oz|lb|el|tl|min|minutes?|hours?)\b")
         .unwrap()
 });
-static PHANTOM: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"@\d|@[^@#~{}\n]*\d+\s*(?:°|g|ml|C|F)\{").unwrap());
+/// An ingredient "name" that's actually a bare temperature or mass, e.g.
+/// `@180C{}` or `@350°F{}` — the converter dropped the real ingredient name.
+/// Requires the digits to be immediately (no separator) followed by the
+/// unit, so a genuine name that merely starts with a digit — `@7-spice
+/// mix{1%tsp}`, `@00 Mehl{500%g}` — isn't flagged.
+static PHANTOM: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"@\d+(?:[.,]\d+)?\s*(?:°\s*[CF]?|[CF]\b|g\b|kg\b|ml\b)").unwrap()
+});
 static TILDE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"~\s*\d").unwrap());
 
 pub(super) fn strip_tokens(text: &str) -> String {

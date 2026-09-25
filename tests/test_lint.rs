@@ -87,6 +87,16 @@ fn percent_in_text_ignores_german_adjective_suffix() {
     assert!(body_kinds("Dilute in 200%ml water.").contains(&Kind::PercentInText));
 }
 
+#[test]
+fn phantom_token_ignores_digit_led_ingredient_names() {
+    assert!(!body_kinds("Add @7-spice mix{1%tsp}.").contains(&Kind::PhantomToken));
+    assert!(!body_kinds("Add @5-spice powder{}.").contains(&Kind::PhantomToken));
+    assert!(!body_kinds("Add @00 Mehl{500%g}.").contains(&Kind::PhantomToken));
+    assert!(body_kinds("Heat to @180C{}.").contains(&Kind::PhantomToken));
+    assert!(body_kinds("Add @200g{}.").contains(&Kind::PhantomToken));
+    assert!(body_kinds("Heat to @350°F{}.").contains(&Kind::PhantomToken));
+}
+
 fn fm_kinds(fm: &str) -> Vec<Kind> {
     kinds(&lint("", &format!("---\n{fm}\n---\n\nBoil @eggs{{2}}.\n")))
 }
