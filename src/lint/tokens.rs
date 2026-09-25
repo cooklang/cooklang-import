@@ -14,9 +14,11 @@ static COOKWARE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"#([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}").unwrap());
 static ANY_TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[@#~]\??[^@#~{}\n]*\{[^}\n]*\}(\([^)\n]*\))?").unwrap());
-/// A single number: digits (dot/comma decimal), a standalone unicode
-/// fraction (½¼¾⅓⅔⅛), or a whole number followed by one ("1 ½").
-const NUM: &str = r"(?:\d[\d.,]*(?:\s*[½¼¾⅓⅔⅛])?|[½¼¾⅓⅔⅛])";
+/// A single number: a whole number followed by a slash fraction ("1 1/2"), a
+/// bare slash fraction ("1/2"), digits (dot/comma decimal) optionally
+/// followed by a unicode fraction ("1 ½"), or a standalone unicode fraction
+/// (½¼¾⅓⅔⅛).
+const NUM: &str = r"(?:\d+\s+\d+/\d+|\d+/\d+|\d[\d.,]*(?:\s*[½¼¾⅓⅔⅛])?|[½¼¾⅓⅔⅛])";
 /// A unit/word phrase: never a digit or a fraction char (that would belong
 /// to the number, not the unit).
 const UNIT_WORDS: &str = r"[^\d%(),½¼¾⅓⅔⅛][^%(),½¼¾⅓⅔⅛]*?";

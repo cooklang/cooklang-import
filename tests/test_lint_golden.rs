@@ -39,9 +39,10 @@ fn french_recipe_is_clean() {
 #[test]
 fn english_recipe_with_sections_and_cookware_is_clean() {
     // A '== Section ==' header, cookware with no quantity ('#large
-    // skillet{}'), and a dash-range timer ('~{10-15%minutes}').
-    let original = "50 g butter\n\nHeat a large skillet and melt the butter. Simmer for 10-15 minutes.";
-    let cooklang = "---\ntitle: Simple Sauce\n---\n\n== Sauce ==\n\nHeat a #large skillet{} and melt @butter{50%g}.\n\nSimmer for ~{10-15%minutes}.\n";
+    // skillet{}'), a dash-range timer ('~{10-15%minutes}'), and a slash
+    // fraction quantity ('1 1/2%cups').
+    let original = "50 g butter\n1 1/2 cups sugar\n\nHeat a large skillet and melt the butter and sugar. Simmer for 10-15 minutes.";
+    let cooklang = "---\ntitle: Simple Sauce\n---\n\n== Sauce ==\n\nHeat a #large skillet{} and melt @butter{50%g} with @sugar{1 1/2%cups}.\n\nSimmer for ~{10-15%minutes}.\n";
     assert_clean(original, cooklang);
 }
 

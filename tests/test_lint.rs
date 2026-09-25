@@ -83,6 +83,13 @@ fn missing_percent_accepts_unicode_fractions_and_dash_ranges() {
 }
 
 #[test]
+fn missing_percent_still_flags_slash_fractions() {
+    assert!(body_kinds("Add @sugar{1/2 cup}.").contains(&Kind::MissingPercent));
+    assert!(body_kinds("Add @sugar{1 1/2 cups}.").contains(&Kind::MissingPercent));
+    assert!(!body_kinds("Add @sugar{1/2%cup}.").contains(&Kind::MissingPercent));
+}
+
+#[test]
 fn missing_percent_word_range_is_flagged_but_not_autofixable() {
     let doc = "---\ntitle: T\n---\n\nAdd @water{2 to 3 cups}.\n";
     let issues = lint("", doc);
