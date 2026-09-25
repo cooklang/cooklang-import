@@ -280,3 +280,40 @@ fn list_children_are_not_empty_metadata() {
     assert!(!fm_kinds("title: T\ntags:\n- a\n- b").contains(&Kind::EmptyMetadata));
     assert!(!fm_kinds("title: T\nnutrition:\n\tcalories: 480 kcal").contains(&Kind::EmptyMetadata));
 }
+
+#[test]
+fn flags_missing_source_ingredient() {
+    let orig = "2 eggs\n1 tsp salt\n\nBoil the eggs.";
+    let doc = "---\ntitle: T\n---\n\nBoil @eggs{2}.\n";
+    assert!(kinds(&lint(orig, doc)).contains(&Kind::MissingIngredient));
+}
+
+#[test]
+fn flags_double_count_against_single_listing() {
+    let orig = "500 g Kartoffeln\n2 Möhren\n\nKartoffeln schälen. Kartoffeln kochen.";
+    let doc = "---\ntitle: T\n---\n\n@Kartoffeln{500%g} schälen. @Kartoffeln{500%g} kochen. @Möhren{2} schneiden.\n";
+    assert!(kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+#[test]
+fn divided_amounts_are_not_double_counted() {
+    let orig = "2 tablespoons olive oil, divided\n1 onion\n\nHeat oil. Add onion. Add more oil.";
+    let doc = "---\ntitle: T\n---\n\nHeat @olive oil{1%tablespoon}. Add @onion{1}. Add @olive oil{1%tablespoon}.\n";
+    assert!(!kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
+}
+
+#[test]
+fn flags_spelling_variants() {
+    let orig = "3 oranges\n1 lemon\n\nZest.";
+    let doc = "---\ntitle: T\n---\n\nZest @orange{1} and @lemon{1}, juice @oranges{2}.\n";
+    assert!(kinds(&lint(orig, doc)).contains(&Kind::SpellingVariant));
+}
+
+#[test]
+fn flags_language_mismatch() {
+    let orig = "500 g Kartoffeln\n1 Zwiebel\n\nDie Kartoffeln waschen und in Würfel schneiden. \
+        Die Zwiebel schälen und fein hacken, dann alles in einer Pfanne braten.";
+    let doc = "---\ntitle: T\n---\n\nWash the @potatoes{500%g} and cut them into cubes. \
+        Peel the @onion{1} and chop finely, then fry everything in a pan.\n";
+    assert!(kinds(&lint(orig, doc)).contains(&Kind::LanguageMismatch));
+}
