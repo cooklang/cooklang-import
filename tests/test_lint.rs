@@ -462,3 +462,73 @@ fn missing_ingredient_is_capped_at_twenty_per_recipe() {
     let issues = lint(&original, doc);
     assert_eq!(issues.iter().filter(|i| i.kind == Kind::MissingIngredient).count(), 20);
 }
+
+fn fixed(doc: &str) -> String {
+    autofix(doc)
+}
+
+#[test]
+fn fixes_missing_percent() {
+    assert_eq!(fixed("Add @water{2 cups}."), "Add @water{2%cups}.");
+    assert_eq!(fixed("Add @flour{200g}."), "Add @flour{200%g}.");
+    assert_eq!(fixed("Add @sugar{1 1/2 cups}."), "Add @sugar{1 1/2%cups}.");
+}
+
+#[test]
+fn fixes_unit_as_note_stray_and_optional() {
+    assert_eq!(fixed("Mince @garlic{4}(cloves)."), "Mince @garlic{4%cloves}.");
+    assert_eq!(fixed("Add @ciboulette{20%brins}{}."), "Add @ciboulette{20%brins}.");
+    assert_eq!(fixed("Add @?:Schnittlauch{15%g}."), "Add @?Schnittlauch{15%g}.");
+}
+
+#[test]
+fn fixes_tokens_in_notes_and_tilde() {
+    assert_eq!(fixed("> Sprinkle @cheese{50%g}(grated) on top."), "> Sprinkle cheese on top.");
+    assert_eq!(fixed("Cut into ~2 cm pieces. Bake ~{20%minutes}."), "Cut into about 2 cm pieces. Bake ~{20%minutes}.");
+}
+
+#[test]
+fn fixes_metadata() {
+    let doc = "---\ntitle: Cr&egrave;me\nauthor: 'null'\nsource_url: https://x.y\n---\n\nStep.\n";
+    assert_eq!(fixed(doc), "---\ntitle: Crème\nsource: https://x.y\n---\n\nStep.\n");
+}
+
+fn digits(s: &str) -> Vec<char> {
+    s.chars().filter(|c| c.is_ascii_digit()).collect()
+}
+
+#[test]
+fn autofix_clears_fixable_issues() {
+    let doc = "---\ntitle: T\nprep_time: ''\nauthor: 'null'\nsource_url: https://x.y\ndescr: Cr&egrave;me\n---\n\n\
+        Add @water{2 cups} and @garlic{2}(cloves), @ciboulette{20%brins}{}, @?:Schnittlauch{15%g}.\n\
+        Cut into ~2 cm pieces. Bake ~{20%minutes}.\n\
+        > Sprinkle @cheese{50%g}(grated) on top.\n";
+    let after = autofix(doc);
+    let issues = lint("", &after);
+    assert!(issues.iter().all(|i| !i.autofixable), "{issues:#?}");
+
+    // Idempotent: a second pass changes nothing further.
+    assert_eq!(autofix(&after), after);
+
+    // Never touches a digit outside a stripped note-line token (the note
+    // line's "50" is expected to disappear along with its illegal syntax —
+    // see `fixes_tokens_in_notes_and_tilde`).
+    let non_note = |s: &str| -> Vec<char> {
+        s.lines().filter(|l| !l.trim_start().starts_with('>')).flat_map(digits).collect()
+    };
+    assert_eq!(non_note(doc), non_note(&after));
+}
+
+#[test]
+fn autofix_never_touches_something_not_flagged() {
+    // A space-preceded parenthetical that is NOT a bare unit word is ordinary
+    // prose, not a note — `check` never flags it, so `autofix` must leave it
+    // alone (including the space and the parens).
+    let doc = "Add @garlic{4} (cloves, minced).";
+    assert_eq!(fixed(doc), doc);
+
+    // A word-spelled range is flagged but never autofixable — the number
+    // stays exactly as written.
+    let doc = "Add @water{2 to 3 cups}.";
+    assert_eq!(fixed(doc), doc);
+}

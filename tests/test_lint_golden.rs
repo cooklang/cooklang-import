@@ -9,7 +9,7 @@
 //! represented by a token in the conversion, so these stay clean once batch
 //! 2 adds ingredient-coverage checks to `consistency::check`.
 #![cfg(feature = "lint")]
-use cooklang_import::lint::lint;
+use cooklang_import::lint::{autofix, lint};
 
 fn assert_clean(original: &str, cooklang: &str) {
     let issues = lint(original, cooklang);
@@ -71,4 +71,24 @@ fn german_soup_is_clean() {
     let original = "500 g Kartoffeln\n1 l Brühe\n\nSchäle die Kartoffeln und schneide sie klein. Koche sie in einem Topf mit Brühe für 20 minutes.";
     let cooklang = "---\ntitle: Kartoffelsuppe\n---\n\nSchäle @Kartoffeln{500%g} und schneide sie klein.\n\nKoche sie in einem #Topf{} mit @Brühe{1%l} für ~{20%minutes}.\n";
     assert_clean(original, cooklang);
+}
+
+/// Every fixture above is already valid Cooklang — `autofix` must be a
+/// complete no-op on each one. A regression in any fix regex would show up
+/// here as an unwanted rewrite of already-correct text.
+#[test]
+fn autofix_never_rewrites_a_clean_recipe() {
+    let fixtures: &[&str] = &[
+        "---\ntitle: Schokoladenkuchen\ntags:\n- Dessert\n- Schokolade\nnutrition:\n  calories: 480 kcal\n  fat: 22 g\n---\n\nMische @Mehl{2-3%EL} mit @Zucker{1 ½%Tassen}.\n\nSchmelze @Schokolade{70%g} und rühre sie unter. Die 70%ige Schokolade sollte glänzen.\n",
+        "---\ntitle: Vinaigrette\n---\n\nMélangez @huile{2%c. à s.} avec @vinaigre{1%c. à s.} et @crème fraîche{100%g}.\n\nAssaisonnez avec du sel et du poivre.\n",
+        "---\ntitle: Simple Sauce\n---\n\n== Sauce ==\n\nHeat a #large skillet{} and melt @butter{50%g} with @sugar{1 1/2%cups}.\n\nSimmer for ~{10-15%minutes}.\n",
+        "---\ntitle: Weeknight Pasta\n---\n\n-- draft: double-check timing before publishing\nBoil @pasta{200%g} in salted water.\n\n> Tip: reserve a splash of pasta water before draining.\n",
+        "---\ntitle: Seasoning\n---\n\nAdd @salt{} to taste and @pepper{} to taste.\n",
+        "---\ntitle: Kartoffelsuppe\n---\n\nSchäle @Kartoffeln{500%g} und schneide sie klein.\n\nKoche sie in einem #Topf{} mit @Brühe{1%l} für ~{20%minutes}.\n",
+    ];
+    for doc in fixtures {
+        assert_eq!(&autofix(doc), doc, "autofix rewrote a clean recipe:\n{doc}");
+        // Idempotent trivially follows, but assert it directly too.
+        assert_eq!(autofix(&autofix(doc)), autofix(doc));
+    }
 }

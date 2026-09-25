@@ -101,9 +101,7 @@ pub(super) fn strip_tokens(text: &str) -> String {
 /// ("2 to 3 cups") or anything neither SPACED_QTY nor GLUED_QTY (minus a bare
 /// "x") recognizes.
 ///
-/// Not yet called from non-test code: `fix::autofix` (a later task) will use
-/// this to rewrite MissingPercent issues.
-#[allow(dead_code)]
+/// Used by `fix::autofix` to rewrite MissingPercent issues.
 pub(super) fn fixed_quantity(raw: &str) -> Option<String> {
     let content = raw.trim();
     if SPACED_QTY_WORD_RANGE.is_match(content) {
@@ -128,9 +126,7 @@ pub(super) fn fixed_quantity(raw: &str) -> Option<String> {
 /// is left in the note (`None` if nothing remains), e.g.
 /// `("4", "cloves, minced")` -> `("4%cloves", Some("minced"))`.
 ///
-/// Not yet called from non-test code: `fix::autofix` (a later task) will use
-/// this to rewrite UnitAsNote issues.
-#[allow(dead_code)]
+/// Used by `fix::autofix` to rewrite UnitAsNote issues.
 pub(super) fn fixed_unit_as_note(qty: &str, note: &str) -> Option<(String, Option<String>)> {
     if !QTY_PLAIN.is_match(qty) {
         return None;
@@ -149,7 +145,12 @@ pub(super) fn fixed_unit_as_note(qty: &str, note: &str) -> Option<(String, Optio
 /// step, so a missing `%` or an unescaped `~digit` there isn't a converter
 /// defect worth flagging. Only recognizes a block comment that starts the
 /// line; one inline alongside real content is left to the other checks.
-fn is_comment_or_note_line(line: &str) -> bool {
+///
+/// `pub(super)` because `fix::autofix` reuses this to decide which lines are
+/// exempt from the MissingPercent/TildeApprox fixes (mirroring `check`,
+/// which exempts these lines from those two checks only — UnitAsNote is
+/// still checked, and fixed, on a comment/note line).
+pub(super) fn is_comment_or_note_line(line: &str) -> bool {
     let t = line.trim_start();
     t.starts_with("--") || t.starts_with('>') || t.starts_with("[-")
 }
