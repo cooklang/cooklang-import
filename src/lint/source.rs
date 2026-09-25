@@ -47,9 +47,13 @@ static METHOD_HEADER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\W*(instructions|method|directions|preparation|steps|zubereitung|anleitung|préparation|preparación|bereiding|спосіб|приготування|приготовление|przygotowanie)\b").unwrap()
 });
 /// Navigation, timing, yield, step markers and other non-ingredient noise
-/// that real exports leave inline with the ingredient list.
+/// that real exports leave inline with the ingredient list. Also an oven
+/// preheat instruction ("Préchauffer le four à 170 C") — the temperature
+/// gives it the same "qty unit" shape as an ingredient line ("C"/"F" reads
+/// as a unit) — and a bare, number-first yield line ("8 parts"): the
+/// existing yield keywords only catch the word-first phrasing ("Serves 8").
 static JUNK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^(?:(?:yield|serves|servings|makes|portions?|prep|cook|total|time|step\s*\d+|stap|notes?|nutrition|equipment|print|imprimer|video|vidéo|jump to|pin|rate|dauer|schwierigkeit|quantité)\b|title:|\d+\s*(?:h|hr|hrs|min|mins|minutes)\b|\d+h\d*)").unwrap()
+    Regex::new(r"(?i)^(?:(?:yield|serves|servings|makes|portions?|prep|cook|total|time|step\s*\d+|stap|notes?|nutrition|equipment|print|imprimer|video|vidéo|jump to|pin|rate|dauer|schwierigkeit|quantité|preheat|préchauffer|vorheizen|precalentar|voorverwarmen)\b|title:|\d+\s*(?:h|hr|hrs|min|mins|minutes)\b|\d+h\d*|\d+\s*(?:parts?|portions?|servings?|persons?|people|pers\.?)\.?$)").unwrap()
 });
 /// Regression (found against real data): a line that is *entirely* a
 /// time/duration phrase — "6-10 minutes.", "Durch: 15 Minuten" (a German
@@ -357,6 +361,24 @@ mod tests {
         assert!(!source_ingredients("Ingredients:\n2 eggs\n1 cup flour\nDurch: 15 Minuten\n\nMethod: bake.")
             .iter()
             .any(|s| s.name.contains("durch")));
+    }
+
+    /// Regression (found against real data): an oven-preheat instruction
+    /// ("Préchauffer le four à 170 C") has the same "qty unit" shape as an
+    /// ingredient line ("C" reads as a unit) and must not be extracted.
+    #[test]
+    fn preheat_instruction_is_never_an_ingredient() {
+        let got = source_ingredients("200 g farine\n1 œuf\n\nPréchauffer le four à 170 C. Mélanger les ingrédients.");
+        assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["farine", "œuf"]);
+    }
+
+    /// Regression (found against real data): a bare, number-first yield
+    /// line ("8 parts") is never an ingredient — the existing yield keywords
+    /// only caught the word-first phrasing ("Serves 8").
+    #[test]
+    fn number_first_yield_line_is_never_an_ingredient() {
+        let got = source_ingredients("200 g flour\n2 eggs\n\n8 parts\n\nMix and bake.");
+        assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["flour", "eggs"]);
     }
 
     /// Regression (found against real data): a short multi-period
