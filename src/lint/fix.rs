@@ -19,13 +19,15 @@ use super::tokens::{self, fixed_quantity, unit_as_note_fix, INGREDIENT};
 use regex::{Captures, Regex};
 use std::sync::LazyLock;
 
-/// A stray `{}` (one or more, back to back) left after a unit moved out of
-/// the brace content — the only StrayBraces shape `check` marks
-/// autofixable (a `{2}` might hold a real, if misplaced, value and is left
-/// alone). Matches the *whole* run in one shot (`(?:\{\})+`) so
-/// `@x{2%g}{}{}{}` collapses to `@x{2%g}` in a single pass instead of
-/// needing one pass per stray pair.
-static STRAY_EMPTY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}(?:\{\})+").unwrap());
+/// The same stray-pair shape `tokens::check` scans for (`\}\{(...)\}`) —
+/// reused here (rather than a wider `\}(?:\{\})+`) so a fix only ever
+/// removes a pair `check` itself would have flagged: `@x{1%g}{2}{}` must
+/// stay untouched, because `check`'s non-overlapping scan consumes `}{2}`
+/// as one (non-fixable) match, leaving the trailing `{}` with no `}` of its
+/// own to pair with — it was never independently flagged. `fix_stray_braces`
+/// applies this to a fixed point so a *run* of empty pairs (`{}{}{}`) still
+/// fully collapses, just one pair per pass instead of the whole run at once.
+static STRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}\{([^}\n]*)\}").unwrap());
 /// `@?:` with one or more colons — `@\?:+` rather than a literal `"@?:"`
 /// replace, so `@?::salt` (two colons) is fully cleared in one pass instead
 /// of leaving one behind.
@@ -45,68 +47,105 @@ static NOTE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"([@#~])\??([^@#~{}\n]*?)\{([^}\n]*)\}(\s*)(\([^)\n]*\))?").unwrap()
 });
 
-/// Rewrites one `NOTE_TOKEN` match to plain text that keeps its quantity —
-/// notes may not contain Cooklang syntax, but the words in the token still
-/// belong in the recipe. `@cheese{50%g}(grated)` -> `50 g cheese (grated)`;
-/// `@salt{}` -> `salt`; `~{10%minutes}` -> `10 minutes`; `~rest{5%min}` ->
-/// `rest 5 min` (a named timer reads name-then-duration, the reverse of an
-/// ingredient's quantity-then-name). A parenthetical counts as the token's
-/// note only when it's glued to `}` (no whitespace before it) — the same
-/// rule `INGREDIENT` uses; a space-preceded parenthetical is ordinary prose
-/// and is reproduced unchanged.
+/// Builds the plain-text replacement for one `NOTE_TOKEN` match — notes may
+/// not contain Cooklang syntax, but the words in the token still belong in
+/// the recipe. `@cheese{50%g}(grated)` -> `50 g cheese (grated)`; `@salt{}`
+/// -> `salt`; `~{10%minutes}` -> `10 minutes`; `~rest{5%min}` -> `rest 5 min`
+/// (a named timer reads name-then-duration, the reverse of an ingredient's
+/// quantity-then-name). A parenthetical counts as the token's note only when
+/// it's glued to `}` (no whitespace before it) — the same rule `INGREDIENT`
+/// uses; a space-preceded parenthetical is ordinary prose and is reproduced
+/// unchanged.
+fn note_token_replacement(c: &Captures) -> String {
+    let sigil = &c[1];
+    let name = c[2].trim();
+    let quantity_owned = c[3].replace('%', " ");
+    let quantity = quantity_owned.trim();
+    let ws = &c[4];
+    let note = c.get(5).map(|m| m.as_str());
+
+    let mut combined = String::new();
+    let push_part = |part: &str, combined: &mut String| {
+        if part.is_empty() {
+            return;
+        }
+        if !combined.is_empty() {
+            combined.push(' ');
+        }
+        combined.push_str(part);
+    };
+    if sigil == "~" {
+        push_part(name, &mut combined);
+        push_part(quantity, &mut combined);
+    } else {
+        push_part(quantity, &mut combined);
+        push_part(name, &mut combined);
+    }
+
+    // `ws` (the whitespace between `}` and an optional note) is part of the
+    // overall match even when there's no note at all — same
+    // greedy-`\s*`-with-nothing-to-its-right situation as `INGREDIENT`.
+    // Reproduce it unconditionally, or e.g. `#{2} here` loses its space and
+    // becomes `2here`.
+    let has_space = !ws.is_empty();
+    combined.push_str(ws);
+    if let Some(note_full) = note {
+        if has_space {
+            // Ordinary prose, not a note: reproduce it unchanged (the
+            // separating whitespace was already appended above).
+            combined.push_str(note_full);
+        } else {
+            let note_inner = note_full.trim_start_matches('(').trim_end_matches(')');
+            if !combined.is_empty() {
+                combined.push(' ');
+            }
+            combined.push('(');
+            combined.push_str(note_inner);
+            combined.push(')');
+        }
+    }
+    combined
+}
+
+/// Rewrites every `NOTE_TOKEN` match on a note line to plain text (see
+/// `note_token_replacement`). Unlike a plain `replace_all`, this also
+/// inserts a space between two replacements that were directly adjacent in
+/// the source (`@a{1}@b{2}` -> `1 a 2 b`, not `1 a2 b`) — with nothing
+/// between the two tokens for either replacement's own text to separate
+/// against, `replace_all` would otherwise glue them together.
 fn fix_note_line(line: &str) -> String {
-    NOTE_TOKEN
-        .replace_all(line, |c: &Captures| {
-            let sigil = &c[1];
-            let name = c[2].trim();
-            let quantity_owned = c[3].replace('%', " ");
-            let quantity = quantity_owned.trim();
-            let ws = &c[4];
-            let note = c.get(5).map(|m| m.as_str());
+    let mut out = String::with_capacity(line.len());
+    let mut last_end = 0;
+    let mut any_match = false;
+    for cap in NOTE_TOKEN.captures_iter(line) {
+        let m = cap.get(0).unwrap();
+        let gap = &line[last_end..m.start()];
+        out.push_str(gap);
+        if gap.is_empty() && any_match {
+            out.push(' ');
+        }
+        out.push_str(&note_token_replacement(&cap));
+        last_end = m.end();
+        any_match = true;
+    }
+    out.push_str(&line[last_end..]);
+    out
+}
 
-            let mut combined = String::new();
-            let push_part = |part: &str, combined: &mut String| {
-                if part.is_empty() {
-                    return;
-                }
-                if !combined.is_empty() {
-                    combined.push(' ');
-                }
-                combined.push_str(part);
-            };
-            if sigil == "~" {
-                push_part(name, &mut combined);
-                push_part(quantity, &mut combined);
-            } else {
-                push_part(quantity, &mut combined);
-                push_part(name, &mut combined);
-            }
-
-            // `ws` (the whitespace between `}` and an optional note) is part
-            // of the overall match even when there's no note at all — same
-            // greedy-`\s*`-with-nothing-to-its-right situation as
-            // `INGREDIENT`. Reproduce it unconditionally, or e.g. `#{2}
-            // here` loses its space and becomes `2here`.
-            let has_space = !ws.is_empty();
-            combined.push_str(ws);
-            if let Some(note_full) = note {
-                if has_space {
-                    // Ordinary prose, not a note: reproduce it unchanged
-                    // (the separating whitespace was already appended above).
-                    combined.push_str(note_full);
-                } else {
-                    let note_inner = note_full.trim_start_matches('(').trim_end_matches(')');
-                    if !combined.is_empty() {
-                        combined.push(' ');
-                    }
-                    combined.push('(');
-                    combined.push_str(note_inner);
-                    combined.push(')');
-                }
-            }
-            combined
-        })
-        .into_owned()
+/// Removes a bare `{}` stray pair, one pair per pass, to a fixed point — see
+/// `STRAY`'s docs for why this can't just be a single wider regex.
+fn fix_stray_braces(line: &str) -> String {
+    let mut cur = line.to_string();
+    for _ in 0..10 {
+        let next = STRAY.replace_all(&cur, |c: &Captures| {
+            if c[1].is_empty() { "}".to_string() } else { c[0].to_string() }
+        });
+        if next == cur {
+            break;
+        }
+        cur = next.into_owned();
+    }
+    cur
 }
 
 /// Applies the tilde-approximation fix, but only outside any `@`/`#`/`~`
@@ -183,7 +222,7 @@ fn fix_body(body: &str) -> String {
         // (which has no enclosing token for `fix_note_line` to rewrite)
         // would stay flagged forever.
         let line = OPTIONAL_COLON.replace_all(line, "@?");
-        let line = STRAY_EMPTY.replace_all(&line, "}");
+        let line = fix_stray_braces(&line);
 
         if line.trim_start().starts_with('>') {
             out.push_str(&fix_note_line(&line));
@@ -206,7 +245,17 @@ fn fix_frontmatter(fm: &str) -> String {
             working[i] = new_line;
         }
     }
-    working.join("\n")
+    // A decoded entity can produce a value that now *looks* like a
+    // placeholder (`&#126;` -> `~`, `nu&#108;l` -> `null`) even though it's
+    // safely quoted — `"~"`/`"null"` are themselves in `PLACEHOLDERS`.
+    // Re-running the structural pass catches that within this same autofix
+    // call instead of leaving a fresh, unresolved EmptyMetadata issue behind.
+    let working_refs: Vec<&str> = working.iter().map(String::as_str).collect();
+    metadata::apply_structural_fixes(&working_refs)
+        .into_iter()
+        .map(|(_, l)| l)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Whether `cooklang` has any issue `lint` would mark `autofixable: true`.
@@ -221,32 +270,14 @@ fn has_autofixable_issue(cooklang: &str) -> bool {
     tokens::check(body).iter().any(|i| i.autofixable)
 }
 
-/// Converts every bare `\n` to `\r\n`, without doubling a `\r` that's
-/// already there. `fix_body`'s own split-on-`\n`-then-rejoin-with-`\n`
-/// naturally preserves whatever line ending the body used (a `\r` left
-/// dangling at the end of a split piece just gets a fresh `\n` appended
-/// after it), but the frontmatter template and `fix_frontmatter`'s internal
-/// `join("\n")` always produce bare `\n` — this brings the whole document
-/// back in line with whatever ending the original used.
-fn to_crlf(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\n' => out.push_str("\r\n"),
-            '\r' => {
-                out.push('\r');
-                if chars.peek() == Some(&'\n') {
-                    out.push('\n');
-                    chars.next();
-                } else {
-                    out.push('\n');
-                }
-            }
-            _ => out.push(c),
-        }
-    }
-    out
+/// Converts every `\n` in `s` to `\r\n`. Only ever called on `fix_frontmatter`'s
+/// own output, which is always freshly built via `join("\n")`/format! with
+/// bare `\n` throughout and can't contain a pre-existing `\r` (any literal
+/// `\r` a decoded entity value might contain is already backslash-escaped by
+/// `yaml_double_quote`) — so there's no lone-`\r` or mixed-ending case to
+/// preserve here, unlike the body (see `autofix`'s doc comment).
+fn frontmatter_to_crlf(s: &str) -> String {
+    s.replace('\n', "\r\n")
 }
 
 /// Applies the safe mechanical fixes. Never changes a number, drops a step,
@@ -258,17 +289,36 @@ fn to_crlf(s: &str) -> String {
 /// wouldn't otherwise preserve. That's not just tidiness: it's the only way
 /// to guarantee `autofix(x) == x` for arbitrary already-clean input, which
 /// the property test in `tests/test_lint_property.rs` checks directly.
+///
+/// The body is never touched by any line-ending normalization: `fix_body`
+/// splits on `\n` and rejoins with `\n`, which by construction preserves
+/// whatever the original used on each line — a `\r` immediately before a
+/// split point stays attached to the line it ended (reconstructing `\r\n`),
+/// a lone `\r` in the middle of a "line" (no `\n` anywhere near it) is never
+/// touched at all, and a document with some CRLF lines and some LF lines
+/// keeps exactly that mix. Only the frontmatter — which really is freshly
+/// reconstructed, not preserved — gets an explicit line-ending pass, using
+/// whichever style the *original frontmatter* used.
 pub fn autofix(cooklang: &str) -> String {
     if !has_autofixable_issue(cooklang) {
         return cooklang.to_string();
     }
     let bom = cooklang.starts_with('\u{FEFF}');
-    let crlf = cooklang.contains("\r\n");
     let rebuilt = match split_frontmatter(cooklang) {
-        (Some(fm), body) => format!("---\n{}\n---\n\n{}", fix_frontmatter(fm), fix_body(body)),
+        (Some(fm), body) => {
+            let crlf = fm.contains("\r\n");
+            let mut fixed_fm = fix_frontmatter(fm);
+            let ending = if crlf {
+                fixed_fm = frontmatter_to_crlf(&fixed_fm);
+                "\r\n"
+            } else {
+                "\n"
+            };
+            let fixed_body = fix_body(body);
+            format!("---{ending}{fixed_fm}{ending}---{ending}{ending}{fixed_body}")
+        }
         (None, body) => fix_body(body),
     };
-    let rebuilt = if crlf { to_crlf(&rebuilt) } else { rebuilt };
     if bom && !rebuilt.starts_with('\u{FEFF}') {
         format!("\u{FEFF}{rebuilt}")
     } else {

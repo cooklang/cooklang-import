@@ -1,6 +1,6 @@
 use super::{Issue, Kind, Severity};
 use regex::{Captures, Regex};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 pub(super) static ENTITY: LazyLock<Regex> =
@@ -18,11 +18,10 @@ pub(super) const KEY_RENAMES: &[(&str, &str)] = &[
 ];
 /// Characters that make a decoded value unsafe as a bare (unquoted) YAML
 /// scalar: mapping/flow-collection/anchor/alias/tag/directive indicators,
-/// quote characters, and the comment marker. Whenever a decoded entity value
-/// contains one of these, it must be re-emitted as a double-quoted scalar or
-/// it can silently change what the frontmatter means (`Foo&#58; bar` -> a
-/// second mapping value; `Pie &#35;2` -> a truncated YAML comment; `A&#10;
-/// author: evil` -> an injected key).
+/// quote characters, and the comment marker. This is only a cheap first
+/// filter — `is_bare_safe` empirically verifies the actual choice by parsing
+/// the candidate, which is what catches a value that merely *looks* plain
+/// but would parse back as a bool/int/float/null ("true", "4", "~").
 const YAML_SPECIAL: &[char] =
     &[':', '#', '\'', '"', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '%', '@'];
 /// A cap on the entity-decoding fixed-point loop (see `decode_fixed_point`):
@@ -43,8 +42,11 @@ const MAX_ENTITY_PASSES: usize = 20;
 /// still recognizes `tags` as having children instead of reading the
 /// comment line as the answer and concluding there are none.
 ///
-/// Exposed as `pub(super)` because `apply_structural_fixes` reuses this to
-/// decide whether an empty-looking line is safe to delete.
+/// Exposed as `pub(super)` because `apply_structural_fixes` and
+/// `entity_fix_for_line` reuse this: a key with children is either a nested
+/// mapping/list (structural — the placeholder-deletion case) or a plain
+/// scalar folded onto the next line(s) (the entity-fix case, where a
+/// single-line value extraction would silently drop the continuation).
 pub(super) fn has_children(lines: &[&str], i: usize) -> bool {
     lines[i + 1..]
         .iter()
@@ -158,59 +160,115 @@ fn yaml_double_quote(s: &str) -> String {
     out
 }
 
-/// Best-effort unescape of a YAML double-quoted scalar's body (just the
-/// common escapes real recipe metadata could plausibly contain) — enough to
-/// recover the intended text before re-decoding entities inside it, not a
-/// full YAML-spec implementation.
-fn unescape_double(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('n') => out.push('\n'),
-            Some('t') => out.push('\t'),
-            Some('r') => out.push('\r'),
-            Some('"') => out.push('"'),
-            Some('\\') => out.push('\\'),
-            Some(other) => {
-                out.push('\\');
-                out.push(other);
-            }
-            None => out.push('\\'),
-        }
+/// Whether emitting `decoded` bare (unquoted) after `key: ` would parse back
+/// to exactly the string `decoded` — checked empirically (by actually
+/// parsing the candidate) rather than by trying to enumerate every YAML
+/// plain-scalar edge case ourselves. This is what catches a decoded value
+/// that merely *looks* safe by character content alone but would silently
+/// change type: "true"/"false" (bool), "4"/"3.5" (number), "null"/"~"
+/// (null) all parse back as something other than that same string.
+fn is_bare_safe(key: &str, decoded: &str) -> bool {
+    if needs_quoting(decoded) {
+        return false;
     }
-    out
+    let candidate = format!("{key}: {decoded}");
+    let key_v = serde_yaml::Value::String(key.to_string());
+    let expected = serde_yaml::Value::String(decoded.to_string());
+    matches!(
+        serde_yaml::from_str::<serde_yaml::Value>(&candidate),
+        Ok(v) if v.as_mapping().and_then(|m| m.get(&key_v)) == Some(&expected)
+    )
 }
 
-/// Whether replacing `original_lines[i]` with `candidate_lines[i]` (all
-/// other lines unchanged) is a safe rewrite: the candidate must parse as
-/// YAML, and — when the original also parsed — must keep exactly the same
-/// top-level key set. When the original didn't parse at all, any candidate
-/// that now parses is accepted (an improvement, never a regression).
-fn round_trip_safe(original_lines: &[String], candidate_lines: &[String]) -> bool {
-    let candidate_text = candidate_lines.join("\n");
-    let Ok(cand_val) = serde_yaml::from_str::<serde_yaml::Value>(&candidate_text) else {
+/// The YAML scalar to emit for `decoded`: bare when that's verified safe,
+/// double-quoted (with full escaping) otherwise. Double-quoting is always
+/// type-safe in YAML — a double-quoted scalar is never reinterpreted as
+/// null/bool/int/float — so this never needs a fallback beyond it.
+fn safe_scalar(key: &str, decoded: &str) -> String {
+    if is_bare_safe(key, decoded) {
+        decoded.to_string()
+    } else {
+        yaml_double_quote(decoded)
+    }
+}
+
+/// Best-effort: a YAML comment starts at a `#` preceded by whitespace (or at
+/// the very start of the scalar). Only used as a fallback for a bare value
+/// that doesn't parse in isolation (see `extract_string_value`) — where a
+/// real YAML parse can't strip the comment for us either, since the parse
+/// itself is what's failing.
+fn strip_trailing_comment(raw: &str) -> String {
+    static COMMENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)#.*$").unwrap());
+    match COMMENT.find(raw) {
+        Some(m) => raw[..m.start()].trim_end().to_string(),
+        None => raw.to_string(),
+    }
+}
+
+/// Recovers the *true* value of a top-level line's raw (regex-captured)
+/// value text — this is the fix for the root cause: a regex capturing
+/// "everything after the colon" can't tell a quote from a comment from an
+/// escape sequence, so it was corrupting `é`/`\x41` escapes, absorbing
+/// a trailing `# comment` into the value, and mishandling nested quotes.
+///
+/// Parses `raw_value` as its own standalone YAML document — this is what
+/// correctly resolves quoting, backslash/unicode/hex escapes, and comment
+/// stripping, all via the real YAML grammar instead of hand-rolled regexes.
+/// Returns `None` when that parses to anything other than a string (a flow
+/// collection, a bool/int/float/null with no entity-driven ambiguity, etc.)
+/// — out of scope for a value-level fix.
+///
+/// A *bare* scalar that starts with a YAML indicator character (`&`, `*`,
+/// `!`, `?`, ...) doesn't parse even in isolation — YAML reads the leading
+/// character as an anchor/alias/tag/etc. regardless of context. That's not
+/// something entity-decoding caused (the raw, undecoded text already has
+/// that shape), so falling back to the raw text (with a best-effort trailing
+/// comment strip) is safe: nothing about the *value itself* was ambiguous,
+/// only how to open it as a self-contained document.
+fn extract_string_value(raw_value: &str) -> Option<String> {
+    match serde_yaml::from_str::<serde_yaml::Value>(raw_value) {
+        Ok(v) => v.as_str().map(|s| s.to_string()),
+        Err(_) => Some(strip_trailing_comment(raw_value)),
+    }
+}
+
+/// Whether replacing `lines[i]` with `candidate_lines[i]` (every other line
+/// left byte-identical) is a safe rewrite:
+///
+/// 1. the candidate parses as YAML, and its mapping's `key` entry is
+///    *exactly* the decoded string `expected` — a YAML `String`, never
+///    null/bool/int/float via an accidental plain-scalar collision; and
+/// 2. every other top-level key keeps the same value it parses to standalone
+///    (guards against the changed line somehow altering how an unrelated,
+///    byte-identical line is interpreted — a multi-document construct, an
+///    anchor/alias, etc.).
+fn round_trip_safe(lines: &[String], candidate_lines: &[String], key: &str, expected: &str) -> bool {
+    let Ok(cand_val) = serde_yaml::from_str::<serde_yaml::Value>(&candidate_lines.join("\n")) else {
         return false;
     };
-    let original_text = original_lines.join("\n");
-    match serde_yaml::from_str::<serde_yaml::Value>(&original_text) {
-        Ok(orig_val) => match (orig_val.as_mapping(), cand_val.as_mapping()) {
-            (Some(om), Some(cm)) => {
-                let mut ok: Vec<String> = om.keys().map(|k| format!("{k:?}")).collect();
-                let mut ck: Vec<String> = cm.keys().map(|k| format!("{k:?}")).collect();
-                ok.sort();
-                ck.sort();
-                ok == ck
-            }
-            (None, None) => true,
-            _ => false,
-        },
-        Err(_) => true,
+    let Some(cand_map) = cand_val.as_mapping() else { return false };
+    let key_v = serde_yaml::Value::String(key.to_string());
+    if cand_map.get(&key_v) != Some(&serde_yaml::Value::String(expected.to_string())) {
+        return false;
     }
+    for (j, orig_line) in lines.iter().enumerate() {
+        if candidate_lines[j] != *orig_line {
+            continue; // this is the line we changed; verified above
+        }
+        let Some(cap) = TOP_LEVEL.captures(orig_line) else { continue };
+        let other_key = &cap[1];
+        if other_key == key {
+            continue;
+        }
+        let Ok(solo) = serde_yaml::from_str::<serde_yaml::Value>(orig_line) else { continue };
+        let Some(solo_map) = solo.as_mapping() else { continue };
+        let other_key_v = serde_yaml::Value::String(other_key.to_string());
+        let Some(solo_val) = solo_map.get(&other_key_v) else { continue };
+        if cand_map.get(&other_key_v) != Some(solo_val) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Attempts a safe HTML-entity fix for `lines[i]`, returning the replacement
@@ -218,49 +276,40 @@ fn round_trip_safe(original_lines: &[String], candidate_lines: &[String]) -> boo
 /// `key: value` line's value is touched, and only when doing so is
 /// YAML-safe:
 ///
-/// - A flow collection (`[...]`, `{...}`) is left alone entirely: decoding
-///   an entity inside one element without corrupting the collection's shape
-///   needs real YAML-aware editing, not a line-based text fix.
-/// - A single- or double-quoted value has its surface quoting stripped
-///   (unescaped) before decoding, and is always re-quoted as a double-quoted
-///   scalar afterwards — regardless of the original style — so the result
-///   only ever needs one, well-understood escaping scheme.
-/// - The final candidate line is required to round-trip (`round_trip_safe`):
-///   if decoding would break the YAML or add/remove a top-level key (e.g. an
-///   injected `&#10;newkey: evil`), the line is left completely untouched.
-///
-/// Entities outside a top-level value (inside a key, a nested/indented line,
-/// a list item, or a block-scalar continuation line) are out of scope and
-/// never touched — see `check`'s HtmlEntity loop, which marks those
-/// non-autofixable for the same reason.
+/// - A line with children (see `has_children`) is skipped entirely: either a
+///   nested mapping/list, or a plain scalar folded onto the next line(s) —
+///   extracting "the value" from this line alone wouldn't be the true value.
+/// - The true original value comes from `extract_string_value`, not a raw
+///   text slice — see its docs for why. A flow collection or a non-string
+///   scalar type falls out of scope there (not a `String`), no separate
+///   check needed.
+/// - The replacement is emitted via `safe_scalar`: bare only when
+///   empirically verified safe, double-quoted otherwise.
+/// - The final candidate is required to round-trip (`round_trip_safe`): if
+///   decoding would break the YAML, change the key's value to the wrong
+///   thing or the wrong type, or disturb another key, the line is left
+///   completely untouched.
 pub(super) fn entity_fix_for_line(lines: &[String], i: usize) -> Option<String> {
+    let str_lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+    if has_children(&str_lines, i) {
+        return None;
+    }
     let line = lines.get(i)?;
     let cap = TOP_LEVEL.captures(line)?;
     let key = &cap[1];
-    let value = &cap[2];
-    if !ENTITY.is_match(value) {
+    let original_value = extract_string_value(&cap[2])?;
+    if !ENTITY.is_match(&original_value) {
         return None;
     }
-    if value.starts_with('[') || value.starts_with('{') {
-        return None;
-    }
-    let inner = if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
-        value[1..value.len() - 1].replace("''", "'")
-    } else if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
-        unescape_double(&value[1..value.len() - 1])
-    } else {
-        value.to_string()
-    };
-    let (decoded, changed) = decode_fixed_point(&inner)?;
+    let (decoded, changed) = decode_fixed_point(&original_value)?;
     if !changed {
         return None;
     }
-    let quoted = if needs_quoting(&decoded) { yaml_double_quote(&decoded) } else { decoded };
-    let candidate_line = format!("{key}: {quoted}");
+    let candidate_line = format!("{key}: {}", safe_scalar(key, &decoded));
 
     let mut candidate_lines = lines.to_vec();
     candidate_lines[i] = candidate_line.clone();
-    round_trip_safe(lines, &candidate_lines).then_some(candidate_line)
+    round_trip_safe(lines, &candidate_lines, key, &decoded).then_some(candidate_line)
 }
 
 pub(super) fn check(frontmatter: &str) -> Vec<Issue> {
@@ -285,15 +334,30 @@ pub(super) fn check(frontmatter: &str) -> Vec<Issue> {
         }
     }
 
-    // HtmlEntity: see `entity_fix_for_line` for the exact scope. Every
-    // occurrence on a line shares that line's fixability, since a fix (when
-    // one applies) rewrites the whole value in one shot.
-    let owned_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+    // HtmlEntity: fixability is decided on the *structurally-fixed* lines —
+    // the same baseline `fix::fix_frontmatter` actually runs entity decoding
+    // against (structural fixes first, entity decoding as a separate final
+    // pass) — not the raw original. Otherwise e.g. a placeholder duplicate
+    // (`title: ''` / `title: A &amp; B`) would be judged against a
+    // still-duplicated document and wrongly called non-autofixable, when
+    // autofix's structural pass removes the duplicate first and the entity
+    // fix then succeeds cleanly.
+    let structural = apply_structural_fixes(&lines);
+    let orig_to_working: HashMap<usize, usize> =
+        structural.iter().enumerate().map(|(wi, (oi, _))| (*oi, wi)).collect();
+    let working: Vec<String> = structural.iter().map(|(_, l)| l.clone()).collect();
+
     for (i, line) in lines.iter().enumerate() {
         let value_start = TOP_LEVEL.captures(line).map(|cap| cap.get(2).unwrap().start());
         for m in ENTITY.find_iter(line) {
             let in_scope = value_start.is_some_and(|start| m.start() >= start);
-            let autofixable = in_scope && entity_fix_for_line(&owned_lines, i).is_some();
+            let autofixable = in_scope
+                && match orig_to_working.get(&i) {
+                    Some(&wi) => entity_fix_for_line(&working, wi).is_some(),
+                    // The line was deleted by the structural pass (an
+                    // empty/placeholder value) — its entity vanishes with it.
+                    None => true,
+                };
             issues.push(Issue::new(Kind::HtmlEntity, Severity::Warning, m.as_str(), autofixable));
         }
     }
