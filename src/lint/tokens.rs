@@ -2,9 +2,11 @@ use super::{Issue, Kind, Severity};
 use regex::Regex;
 use std::sync::LazyLock;
 
-/// `@name{content}(note)` — name may contain spaces, never another sigil.
+/// `@name{content}(note)` — name may contain spaces, never another sigil, and
+/// never starts with a space. Tolerates a space between `}` and the note's
+/// opening `(`, which converters sometimes emit ("{4} (cloves)").
 pub(super) static INGREDIENT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"@\??([^@#~{}\n]+?)\{([^}\n]*)\}(\([^)\n]*\))?").unwrap()
+    Regex::new(r"@\??([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}\s*(\([^)\n]*\))?").unwrap()
 });
 static COOKWARE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"#([^@#~{}\n]+?)\{([^}\n]*)\}").unwrap());
@@ -38,13 +40,22 @@ pub(super) static SPACED_QTY_WORD_RANGE: LazyLock<Regex> = LazyLock::new(|| {
 /// unit — filtered by the caller.
 pub(super) static GLUED_QTY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*(\d[\d.,]*)(\p{L}{1,6})\s*$").unwrap());
-pub(super) static UNIT_AS_NOTE: LazyLock<Regex> = LazyLock::new(|| {
+/// A plain quantity with no unit and no range — the shape that belongs in
+/// `UnitAsNote`'s `{qty}`, e.g. "4", "1,5", "½".
+static QTY_PLAIN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:\d[\d.,]*|[½¼¾⅓⅔⅛])$").unwrap());
+/// A unit word at the start of the `(...)` note that should have been the
+/// `%unit` inside the braces instead, e.g. `{4}(cloves)` or `{4}(cloves,
+/// minced)` — matched at the start only, so trailing prep text after a comma
+/// doesn't prevent the match.
+static UNIT_WORD: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"\{(\d[\d./\-]*)\}\((",
+        r"(?i)^(",
         r"cloves?|slices?|large|small|medium|sprigs?|heads?|bunch(?:es)?|sticks?|cans?|leaves|",
         r"gousses?|tranches?|bâtons?|brins?|têtes?|",
-        r"Zehen?|Scheiben?|Stängel|Bund|Dosen?",
-        r")\)"
+        r"Zehen?|Scheiben?|Stängel|Bund|Dosen?|Stangen|Zweige|Blätter|Stück|Prise|",
+        r"feuilles|pincées?|sachets?|boîtes?",
+        r")\b"
     ))
     .unwrap()
 });
@@ -97,9 +108,12 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
         if cap[1].contains('%') {
             push(Kind::PercentInText, Severity::Error, whole, false);
         }
-    }
-    for m in UNIT_AS_NOTE.find_iter(body) {
-        push(Kind::UnitAsNote, Severity::Error, m.as_str(), true);
+        if let Some(note) = cap.get(3) {
+            let note_inner = note.as_str().trim_start_matches('(').trim_end_matches(')');
+            if QTY_PLAIN.is_match(content) && UNIT_WORD.is_match(note_inner) {
+                push(Kind::UnitAsNote, Severity::Error, whole, true);
+            }
+        }
     }
     for m in STRAY.find_iter(body) {
         push(Kind::StrayBraces, Severity::Error, m.as_str(), true);

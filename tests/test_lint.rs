@@ -81,6 +81,28 @@ fn flags_unit_as_note() {
 }
 
 #[test]
+fn unit_as_note_is_case_insensitive_and_tolerates_a_space_before_the_paren() {
+    assert!(body_kinds("Mince @garlic{4}(Cloves).").contains(&Kind::UnitAsNote));
+    assert!(body_kinds("Mince @garlic{4} (cloves).").contains(&Kind::UnitAsNote));
+}
+
+#[test]
+fn unit_as_note_accepts_decimal_comma_and_unicode_fraction_quantities() {
+    assert!(body_kinds("Add @Knoblauch{1,5}(Zehen).").contains(&Kind::UnitAsNote));
+    assert!(body_kinds("Add @garlic{½}(head).").contains(&Kind::UnitAsNote));
+}
+
+#[test]
+fn unit_as_note_flags_even_with_trailing_prep_text() {
+    assert!(body_kinds("Mince @garlic{4}(cloves, minced).").contains(&Kind::UnitAsNote));
+}
+
+#[test]
+fn unit_as_note_never_fires_on_cookware() {
+    assert!(!body_kinds("Use a #pan{2}(large).").contains(&Kind::UnitAsNote));
+}
+
+#[test]
 fn flags_cookware_quantity_and_junk() {
     assert!(body_kinds("Use a #slow cooker{5-6 quart}.").contains(&Kind::CookwareQuantity));
     assert!(body_kinds("x #cncpt-mob_incontent > div{margin:40px}").contains(&Kind::CookwareJunk));
