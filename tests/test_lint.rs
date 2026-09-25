@@ -678,3 +678,110 @@ fn key_rename_skipped_when_two_spellings_of_the_same_key_collide() {
     let (fm, _) = split_frontmatter(&after);
     assert!(serde_yaml::from_str::<serde_yaml::Value>(fm.unwrap()).is_ok());
 }
+
+// --- Adversarial review round: IMPORTANT (I1 regex parity, I2 unflagged text
+// / byte preservation, I3 note quantity preservation) ---
+
+#[test]
+fn fixes_a_run_of_stray_empty_braces_in_one_pass() {
+    assert_eq!(fixed("Add @x{2%g}{}{}."), "Add @x{2%g}.");
+    assert_eq!(fixed("Add @x{2%g}{}{}{}."), "Add @x{2%g}.");
+    let after = autofix("Add @x{2%g}{}{}{}.");
+    assert_eq!(autofix(&after), after);
+    assert!(lint("", &after).iter().all(|i| !i.autofixable));
+}
+
+#[test]
+fn fixes_an_optional_marker_with_multiple_colons_in_one_pass() {
+    assert_eq!(fixed("Add @?::salt{1%g}."), "Add @?salt{1%g}.");
+    let after = autofix("Add @?::salt{1%g}.");
+    assert_eq!(autofix(&after), after);
+    assert!(lint("", &after).iter().all(|i| !i.autofixable));
+}
+
+#[test]
+fn note_line_stray_and_optional_colon_are_also_fixed() {
+    // StrayBraces/OptionalColon aren't exempted on note lines by `check`, so
+    // `autofix` must clear them there too, even with no enclosing token.
+    assert_eq!(fixed("> text @?: foo"), "> text @? foo");
+    assert_eq!(fixed("> text }{} end"), "> text } end");
+    for doc in ["> text @?: foo", "> text }{} end"] {
+        let after = autofix(doc);
+        assert!(lint("", &after).iter().all(|i| !i.autofixable), "{doc}: {after}");
+    }
+}
+
+#[test]
+fn note_tokens_with_an_empty_name_are_fixed_without_panicking() {
+    assert_eq!(fixed("> use @{} here"), "> use  here");
+    assert_eq!(fixed("> use #{2} here"), "> use 2 here");
+    for doc in ["> use @{} here", "> use #{2} here"] {
+        assert!(lint("", &autofix(doc)).iter().all(|i| !i.autofixable));
+    }
+}
+
+#[test]
+fn note_tokens_keep_their_quantity_instead_of_dropping_it() {
+    assert_eq!(
+        fixed("> Sprinkle @cheese{50%g}(grated) on top."),
+        "> Sprinkle 50 g cheese (grated) on top."
+    );
+    assert_eq!(
+        fixed("> Sprinkle @cheese{50%g}(grated, 2 tbsp) on top."),
+        "> Sprinkle 50 g cheese (grated, 2 tbsp) on top."
+    );
+    assert_eq!(fixed("> use #{2} here"), "> use 2 here");
+    assert_eq!(fixed("> Rest for ~{10%minutes}."), "> Rest for 10 minutes.");
+    assert_eq!(fixed("> Rest for ~rest{5%min}."), "> Rest for rest 5 min.");
+    // A space-preceded parenthetical next to a note token is prose, not part
+    // of the token's own note, and must survive along with its digit.
+    assert_eq!(
+        fixed("> Use a #big pan{} and @salt{} (about 2 tsp) now."),
+        "> Use a big pan and salt (about 2 tsp) now."
+    );
+}
+
+#[test]
+fn tilde_inside_a_token_is_never_rewritten() {
+    // The tilde here is part of the quantity, not a stray approximation
+    // marker — nothing ever flags it, so autofix must leave it alone.
+    for doc in ["Add @x{~2%g}.", "Use #pan{~2}.", "Bake ~20{minutes}."] {
+        assert_eq!(fixed(doc), doc, "{doc}");
+    }
+}
+
+#[test]
+fn unit_as_note_exact_match_required_when_space_preceded() {
+    // Trailing text after the unit word (even just a comma) makes this
+    // ordinary prose, not a note — neither `lint` nor `autofix` may touch it.
+    let doc = "Mince @garlic{4} (cloves,).";
+    assert!(!kinds(&lint("", doc)).contains(&Kind::UnitAsNote));
+    assert_eq!(fixed(doc), doc);
+}
+
+#[test]
+fn autofix_is_a_byte_exact_no_op_when_nothing_is_flagged() {
+    // No dedicated reconstruction-template code path should ever run when
+    // there's nothing to fix — these each round-trip through split/rejoin
+    // logic that doesn't preserve BOM/CRLF/blank-line layout on its own.
+    let docs = [
+        "\u{FEFF}Add @water{2%cups}.",
+        "\u{FEFF}---\ntitle: T\n---\n\nStep.",
+        "---\ntitle: T\n---\nStep.",
+        "---\n---\n\nStep.",
+        "---\ntitle: x\n---",
+    ];
+    for doc in docs {
+        assert_eq!(autofix(doc), doc, "{doc:?}");
+    }
+}
+
+#[test]
+fn autofix_preserves_crlf_line_endings_when_fixing_the_frontmatter() {
+    let doc = "---\r\ntitle: T\r\nsource_url: x\r\n---\r\n\r\nStep.\r\n";
+    let after = autofix(doc);
+    assert_eq!(after, "---\r\ntitle: T\r\nsource: x\r\n---\r\n\r\nStep.\r\n");
+    // No lone '\n' anywhere once every '\r\n' pair is removed — i.e. never a
+    // mix of bare LF and CRLF in the same document.
+    assert!(!after.replace("\r\n", "").contains('\n'), "mixed line endings: {after:?}");
+}
