@@ -785,3 +785,28 @@ fn autofix_preserves_crlf_line_endings_when_fixing_the_frontmatter() {
     // mix of bare LF and CRLF in the same document.
     assert!(!after.replace("\r\n", "").contains('\n'), "mixed line endings: {after:?}");
 }
+
+// --- Adversarial review round: MINOR ---
+
+#[test]
+fn unit_as_note_does_not_match_a_compound_hyphenated_word() {
+    let doc = "Add @x{1}(heads-up: hot).";
+    assert!(!kinds(&lint("", doc)).contains(&Kind::UnitAsNote));
+    assert_eq!(fixed(doc), doc);
+}
+
+#[test]
+fn missing_percent_non_fixable_when_the_unit_phrase_contains_a_digit() {
+    let doc = "Add @tomatoes{2 x 400g cans}.";
+    let issues = lint("", doc);
+    let issue = issues.iter().find(|i| i.kind == Kind::MissingPercent).expect("MissingPercent");
+    assert!(!issue.autofixable, "{issues:#?}");
+    assert_eq!(fixed(doc), doc);
+}
+
+#[test]
+fn has_children_skips_a_comment_line_before_the_real_children() {
+    let doc = "---\ntitle: T\ntags:\n# c\n  - a\n---\n\nStep.\n";
+    assert!(!kinds(&lint("", doc)).contains(&Kind::EmptyMetadata));
+    assert_eq!(fixed(doc), doc);
+}
