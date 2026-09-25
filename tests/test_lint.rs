@@ -135,6 +135,21 @@ fn flags_token_in_note() {
 }
 
 #[test]
+fn token_in_note_accepts_leading_whitespace_before_the_note() {
+    assert!(body_kinds("  > note with @cheese{}").contains(&Kind::TokenInNote));
+}
+
+#[test]
+fn missing_percent_and_tilde_skip_comment_and_note_lines() {
+    assert!(!body_kinds("-- draft: @x{2 cups}\nMix.").contains(&Kind::MissingPercent));
+    assert!(!body_kinds("> Use @flour{200g} more if needed.").contains(&Kind::MissingPercent));
+    assert!(!body_kinds("> about ~2 cm pieces").contains(&Kind::TildeApprox));
+    // Still flagged on a real step line.
+    assert!(body_kinds("Add @water{2 cups}.").contains(&Kind::MissingPercent));
+    assert!(body_kinds("Cut into ~2 cm pieces.").contains(&Kind::TildeApprox));
+}
+
+#[test]
 fn flags_percent_in_text_and_phantom_and_tilde() {
     assert!(body_kinds("Dilute in 200%ml water.").contains(&Kind::PercentInText));
     assert!(!body_kinds("Use 80% dark chocolate.").contains(&Kind::PercentInText));

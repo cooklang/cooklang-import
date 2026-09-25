@@ -85,35 +85,51 @@ pub(super) fn strip_tokens(text: &str) -> String {
     ANY_TOKEN.replace_all(text, "").into_owned()
 }
 
+/// A `-- comment` or `> note` line — never a real step, so a missing `%` or
+/// an unescaped `~digit` there isn't a converter defect worth flagging.
+fn is_comment_or_note_line(line: &str) -> bool {
+    let t = line.trim_start();
+    t.starts_with("--") || t.starts_with('>')
+}
+
 pub(super) fn check(body: &str) -> Vec<Issue> {
     let mut issues = Vec::new();
     let mut push = |kind, severity, evidence: &str, fix| {
         issues.push(Issue::new(kind, severity, evidence, fix))
     };
 
-    for cap in INGREDIENT.captures_iter(body) {
-        let whole = &cap[0];
-        let content = &cap[2];
-        if content.contains('(') {
-            push(Kind::NoteInBraces, Severity::Error, whole, false);
-        } else if !content.contains('%') {
-            if SPACED_QTY_WORD_RANGE.is_match(content) {
-                push(Kind::MissingPercent, Severity::Error, whole, false);
-            } else if SPACED_QTY.is_match(content) {
-                push(Kind::MissingPercent, Severity::Error, whole, true);
-            } else if let Some(g) = GLUED_QTY.captures(content) {
-                if !g[2].eq_ignore_ascii_case("x") {
+    for line in body.lines() {
+        let skip = is_comment_or_note_line(line);
+        for cap in INGREDIENT.captures_iter(line) {
+            let whole = &cap[0];
+            let content = &cap[2];
+            if content.contains('(') {
+                push(Kind::NoteInBraces, Severity::Error, whole, false);
+            } else if !skip && !content.contains('%') {
+                if SPACED_QTY_WORD_RANGE.is_match(content) {
+                    push(Kind::MissingPercent, Severity::Error, whole, false);
+                } else if SPACED_QTY.is_match(content) {
                     push(Kind::MissingPercent, Severity::Error, whole, true);
+                } else if let Some(g) = GLUED_QTY.captures(content) {
+                    if !g[2].eq_ignore_ascii_case("x") {
+                        push(Kind::MissingPercent, Severity::Error, whole, true);
+                    }
+                }
+            }
+            if cap[1].contains('%') {
+                push(Kind::PercentInText, Severity::Error, whole, false);
+            }
+            if let Some(note) = cap.get(3) {
+                let note_inner = note.as_str().trim_start_matches('(').trim_end_matches(')');
+                if QTY_PLAIN.is_match(content) && UNIT_WORD.is_match(note_inner) {
+                    push(Kind::UnitAsNote, Severity::Error, whole, true);
                 }
             }
         }
-        if cap[1].contains('%') {
-            push(Kind::PercentInText, Severity::Error, whole, false);
-        }
-        if let Some(note) = cap.get(3) {
-            let note_inner = note.as_str().trim_start_matches('(').trim_end_matches(')');
-            if QTY_PLAIN.is_match(content) && UNIT_WORD.is_match(note_inner) {
-                push(Kind::UnitAsNote, Severity::Error, whole, true);
+        if !skip {
+            let prose_line = strip_tokens(line);
+            for m in TILDE.find_iter(&prose_line) {
+                push(Kind::TildeApprox, Severity::Warning, m.as_str(), true);
             }
         }
     }
@@ -136,7 +152,7 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
             push(Kind::CookwareQuantity, Severity::Warning, &cap[0], false);
         }
     }
-    for line in body.lines().filter(|l| l.starts_with('>')) {
+    for line in body.lines().filter(|l| l.trim_start().starts_with('>')) {
         if ANY_TOKEN.is_match(line) {
             push(Kind::TokenInNote, Severity::Warning, line, true);
         }
@@ -147,9 +163,6 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
     }
     for m in PHANTOM.find_iter(body) {
         push(Kind::PhantomToken, Severity::Error, m.as_str(), false);
-    }
-    for m in TILDE.find_iter(&prose) {
-        push(Kind::TildeApprox, Severity::Warning, m.as_str(), true);
     }
     issues
 }
