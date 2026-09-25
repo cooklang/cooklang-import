@@ -28,7 +28,15 @@ pub(super) static UNIT_AS_NOTE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 static STRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}\{[^}\n]*\}").unwrap());
-static PCT_TEXT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d%[A-Za-zÀ-ÿ]").unwrap());
+/// `\d%<unit>` glued together in prose, e.g. "200%ml water" — a converter
+/// artifact where the `%` scaling sigil leaked into plain text. Restricted to
+/// a unit whitelist (rather than any letter) so it doesn't fire on languages
+/// where a percentage is followed directly by a suffix, e.g. German
+/// "70%ige Schokolade".
+static PCT_TEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\d%(?:g|kg|mg|ml|cl|dl|l|tsp|tbsp|cups?|oz|lb|el|tl|min|minutes?|hours?)\b")
+        .unwrap()
+});
 static PHANTOM: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"@\d|@[^@#~{}\n]*\d+\s*(?:°|g|ml|C|F)\{").unwrap());
 static TILDE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"~\s*\d").unwrap());

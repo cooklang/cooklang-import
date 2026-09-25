@@ -80,6 +80,13 @@ fn flags_percent_in_text_and_phantom_and_tilde() {
     assert!(!body_kinds("Bake ~{20%minutes}.").contains(&Kind::TildeApprox));
 }
 
+#[test]
+fn percent_in_text_ignores_german_adjective_suffix() {
+    assert!(!body_kinds("70%ige Schokolade.").contains(&Kind::PercentInText));
+    assert!(!body_kinds("70%-ige Schokolade.").contains(&Kind::PercentInText));
+    assert!(body_kinds("Dilute in 200%ml water.").contains(&Kind::PercentInText));
+}
+
 fn fm_kinds(fm: &str) -> Vec<Kind> {
     kinds(&lint("", &format!("---\n{fm}\n---\n\nBoil @eggs{{2}}.\n")))
 }
