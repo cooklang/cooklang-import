@@ -123,6 +123,13 @@ fn flags_cookware_quantity_and_junk() {
 }
 
 #[test]
+fn cookware_name_cannot_start_with_a_space() {
+    let ks = body_kinds("# Step 1 {x}");
+    assert!(!ks.contains(&Kind::CookwareJunk));
+    assert!(!ks.contains(&Kind::CookwareQuantity));
+}
+
+#[test]
 fn flags_token_in_note() {
     assert!(body_kinds("> Sprinkle with @cheese{} at the end.").contains(&Kind::TokenInNote));
 }

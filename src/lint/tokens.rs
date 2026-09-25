@@ -8,8 +8,10 @@ use std::sync::LazyLock;
 pub(super) static INGREDIENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"@\??([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}\s*(\([^)\n]*\))?").unwrap()
 });
+/// Name must not start with a space, so a stray '#' followed by prose
+/// ("# Step 1 {x}") doesn't read as cookware.
 static COOKWARE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"#([^@#~{}\n]+?)\{([^}\n]*)\}").unwrap());
+    LazyLock::new(|| Regex::new(r"#([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}").unwrap());
 static ANY_TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[@#~]\??[^@#~{}\n]*\{[^}\n]*\}(\([^)\n]*\))?").unwrap());
 /// A single number: digits (dot/comma decimal), a standalone unicode
