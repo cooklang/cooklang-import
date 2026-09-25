@@ -59,6 +59,9 @@ jobs:
       - name: Run cargo test (with uniffi)
         run: cargo test --features uniffi
 
+      - name: Run cargo test (with lint)
+        run: cargo test --features lint
+
   lints:
     name: Lints
     runs-on: ubuntu-latest
@@ -88,3 +91,9 @@ jobs:
 
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
+
+      # No `-D warnings` here: `--all-targets` also lints the pre-existing
+      # examples, which already have an unrelated warning outside the lint
+      # feature's scope.
+      - name: Run cargo clippy (with lint)
+        run: cargo clippy --features lint --all-targets
