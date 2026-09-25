@@ -141,3 +141,21 @@ fn exits_quietly_on_a_closed_output_pipe() {
     // unix or a non-zero/abort code).
     assert!(status.success() || status.code() == Some(0), "{status:?}");
 }
+
+#[test]
+fn strips_a_leading_utf8_bom_on_the_first_line() {
+    let mut input: Vec<u8> = vec![0xEF, 0xBB, 0xBF];
+    input.extend_from_slice(b"{\"udid\":\"a\",\"original_text\":\"\",\"cook\":\"Step.\"}\n");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cooklang-lint"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(&input).unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{:?}", String::from_utf8_lossy(&out.stderr));
+    let line: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(line["udid"], "a");
+    assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+}

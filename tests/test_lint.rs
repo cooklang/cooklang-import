@@ -581,12 +581,22 @@ fn entity_fix_never_breaks_yaml_on_apostrophe() {
 #[test]
 fn entity_fix_never_injects_a_key_via_newline() {
     // A naively-decoded "&#10;" (newline) followed by "key: value"-shaped
-    // text must never inject a real second key into the frontmatter.
+    // text must never inject a real second key into the frontmatter. The raw
+    // value "A&#10;author: evil" is inherently ambiguous — read on its own,
+    // per `extract_string_value`, it parses as a *mapping* (not a string) —
+    // so the safe outcome is declining the fix entirely (this is exactly the
+    // kind of case round_trip_safe's original key-set-only check used to
+    // wrongly wave through). Either the document is untouched, or — if a fix
+    // was somehow applied — it must still have exactly the one key.
     let doc = fm_doc("title: A&#10;author: evil");
     let after = autofix(&doc);
     let (fm, _) = split_frontmatter(&after);
-    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
-    assert_eq!(parsed.as_mapping().unwrap().len(), 1, "must not gain an `author` key: {parsed:?}");
+    match serde_yaml::from_str::<serde_yaml::Value>(fm.unwrap()) {
+        Ok(parsed) => {
+            assert_eq!(parsed.as_mapping().unwrap().len(), 1, "must not gain an `author` key: {parsed:?}");
+        }
+        Err(_) => assert_eq!(after, doc, "if it's still invalid, it must be untouched"),
+    }
 }
 
 #[test]
@@ -809,4 +819,152 @@ fn has_children_skips_a_comment_line_before_the_real_children() {
     let doc = "---\ntitle: T\ntags:\n# c\n  - a\n---\n\nStep.\n";
     assert!(!kinds(&lint("", doc)).contains(&Kind::EmptyMetadata));
     assert_eq!(fixed(doc), doc);
+}
+
+// --- Second adversarial review round (root cause: round_trip_safe only
+// checked the key set, never the values) ---
+
+fn fm_value(doc: &str, key: &str) -> Option<String> {
+    let (fm, _) = split_frontmatter(doc);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm?).ok()?;
+    parsed.get(key)?.as_str().map(str::to_string)
+}
+
+#[test]
+fn entity_fix_resolves_a_unicode_escape_without_corrupting_it() {
+    // The raw text has a literal "é" YAML escape (not a literal
+    // backslash) — round_trip_safe's old key-set-only check let this
+    // through even though our own re-quoting turned the real 'é' character
+    // into the literal 6 characters "é".
+    let doc = "---\ntitle: \"caf\\u00e9 &amp; bar\"\n---\n\nStep.";
+    let after = autofix(doc);
+    assert_eq!(fm_value(&after, "title").as_deref(), Some("café & bar"));
+    assert!(lint("", &after).iter().all(|i| !i.autofixable));
+}
+
+#[test]
+fn entity_fix_resolves_a_hex_escape_without_corrupting_it() {
+    let doc = "---\ntitle: \"a\\x41 &amp; b\"\n---\n\nStep.";
+    let after = autofix(doc);
+    assert_eq!(fm_value(&after, "title").as_deref(), Some("aA & b"));
+}
+
+#[test]
+fn entity_fix_never_produces_a_null_bool_int_or_tilde_type() {
+    // Each of these decodes to text that would misparse as a different YAML
+    // type if emitted bare — the fix must always keep it a String.
+    let cases = [
+        ("title: &#126;", "title", "~"),
+        ("author: nu&#108;l", "author", "null"),
+        ("vegan: &#116;rue", "vegan", "true"),
+        ("servings: &#52;", "servings", "4"),
+    ];
+    for (line, key, expected) in cases {
+        let doc = format!("---\n{line}\n---\n\nStep.");
+        let after = autofix(&doc);
+        // Either the value survived as exactly that string (quoted), or (for
+        // "null"/"~", which are themselves placeholder sentinels once
+        // quoted) the whole now-empty-looking line was structurally deleted
+        // — both are safe: never a real null/bool/int, and never left as a
+        // dangling autofixable issue.
+        if let Some(v) = fm_value(&after, key) {
+            assert_eq!(v, expected, "{line}: {after:?}");
+        }
+        assert!(lint("", &after).iter().all(|i| !i.autofixable), "{line}: {after:?}");
+        assert_eq!(autofix(&after), after, "not idempotent for {line}: {after:?}");
+    }
+}
+
+#[test]
+fn entity_fix_strips_a_trailing_comment_instead_of_absorbing_it() {
+    let doc = "---\ntitle: Foo &amp; bar # draft\n---\n\nStep.";
+    let after = autofix(doc);
+    assert_eq!(fm_value(&after, "title").as_deref(), Some("Foo & bar"));
+}
+
+#[test]
+fn entity_fix_strips_a_trailing_comment_after_a_single_quoted_value() {
+    let doc = "---\ntitle: 'Grandma&#39;s' # c\n---\n\nStep.";
+    let after = autofix(doc);
+    assert_eq!(fm_value(&after, "title").as_deref(), Some("Grandma's"));
+}
+
+#[test]
+fn entity_fix_handles_bare_values_starting_with_a_yaml_indicator_char() {
+    // "&#45; x" etc. don't parse even in isolation (a bare scalar can't
+    // start with these characters unquoted) — the fix must still safely
+    // quote and decode them rather than leaving them broken forever.
+    let cases = [("&#45; x", "- x"), ("&#63; x", "? x"), ("&#96;x", "`x")];
+    for (raw, expected) in cases {
+        let doc = format!("---\ntitle: {raw}\n---\n\nStep.");
+        let after = autofix(&doc);
+        assert_eq!(fm_value(&after, "title").as_deref(), Some(expected), "{raw}: {after:?}");
+        assert!(lint("", &after).iter().all(|i| !i.autofixable));
+    }
+}
+
+#[test]
+fn entity_fix_resolves_a_duplicate_key_once_the_placeholder_twin_is_deleted() {
+    // The structural (placeholder-deletion) pass runs before entity
+    // decoding, so by the time the entity fix sees this, the duplicate
+    // "title: ''" is already gone and only one "title" key remains.
+    let doc = "---\ntitle: ''\ntitle: A &amp; B\n---\n\nStep.";
+    let after = autofix(doc);
+    assert_eq!(fm_value(&after, "title").as_deref(), Some("A & B"));
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    assert_eq!(parsed.as_mapping().unwrap().len(), 1);
+}
+
+#[test]
+fn entity_fix_leaves_a_genuine_duplicate_key_untouched() {
+    // Unlike the placeholder case above, neither "title" line is a
+    // placeholder, so both survive — fixing either one's value would still
+    // leave two "title" keys, so the whole document must stay untouched.
+    let doc = "---\ntitle: a &amp; b\ntitle: c\n---\n\nStep.";
+    assert_eq!(autofix(doc), doc);
+}
+
+#[test]
+fn entity_fix_fixes_each_key_independently_even_when_a_rename_is_skipped() {
+    let doc = "---\ntitle: a &amp; b\nsource_url: x &amp; y\nsource: z\n---\n\nStep.";
+    let after = autofix(doc);
+    assert_eq!(fm_value(&after, "title").as_deref(), Some("a & b"));
+    assert_eq!(fm_value(&after, "source_url").as_deref(), Some("x & y"));
+    assert_eq!(fm_value(&after, "source").as_deref(), Some("z"));
+}
+
+#[test]
+fn entity_fix_skips_a_scalar_folded_onto_a_continuation_line() {
+    let doc = "---\ndescription: foo &amp; bar\n  continued here\n---\n\nStep.";
+    assert_eq!(autofix(doc), doc);
+}
+
+#[test]
+fn stray_braces_after_a_non_empty_pair_are_never_independently_removed() {
+    // `check` finds "}{2}" as ONE non-fixable match (its non-overlapping
+    // scan consumes the closing brace the trailing "{}" would need); the fix
+    // must not independently strip that trailing "{}" using a wider pattern
+    // that doesn't respect the same consumption.
+    let doc = "Add @x{1%g}{2}{}.";
+    let issues = lint("", doc);
+    assert!(issues.iter().find(|i| i.kind == Kind::StrayBraces).is_some_and(|i| !i.autofixable));
+    assert_eq!(fixed(doc), doc);
+}
+
+#[test]
+fn mixed_line_endings_are_preserved_per_line_not_normalized() {
+    let doc = "Add @water{2 cups}.\r\nMix.\nStir.\n";
+    assert_eq!(fixed(doc), "Add @water{2%cups}.\r\nMix.\nStir.\n");
+}
+
+#[test]
+fn a_lone_cr_is_never_converted_or_touched() {
+    let doc = "Add @water{2 cups}.\r\nMix.\r\rStir @salt{}.";
+    assert_eq!(fixed(doc), "Add @water{2%cups}.\r\nMix.\r\rStir @salt{}.");
+}
+
+#[test]
+fn note_line_inserts_a_space_between_adjacent_tokens() {
+    assert_eq!(fixed("> see @a{1}@b{2}"), "> see 1 a 2 b");
 }
