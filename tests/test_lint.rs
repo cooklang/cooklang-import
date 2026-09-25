@@ -29,3 +29,53 @@ fn score_weights_errors_three_warnings_one() {
     ];
     assert_eq!(score(&issues), 4);
 }
+
+fn body_kinds(body: &str) -> Vec<Kind> {
+    kinds(&lint("", &format!("---\ntitle: T\n---\n\n{body}\n")))
+}
+
+#[test]
+fn flags_missing_percent() {
+    assert!(body_kinds("Add @water{2 cups}.").contains(&Kind::MissingPercent));
+    assert!(body_kinds("Add @flour{200g}.").contains(&Kind::MissingPercent));
+    assert!(!body_kinds("Add @flour{200%g} and @salt{pinch}.").contains(&Kind::MissingPercent));
+}
+
+#[test]
+fn flags_note_inside_braces() {
+    assert!(body_kinds("Top with @parsley{(chopped)}.").contains(&Kind::NoteInBraces));
+}
+
+#[test]
+fn flags_stray_braces_and_optional_colon() {
+    assert!(body_kinds("Add @ciboulette{20%brins}{}.").contains(&Kind::StrayBraces));
+    assert!(body_kinds("Add @?:Schnittlauch{15%g}.").contains(&Kind::OptionalColon));
+}
+
+#[test]
+fn flags_unit_as_note() {
+    assert!(body_kinds("Mince @garlic{4}(cloves).").contains(&Kind::UnitAsNote));
+    assert!(body_kinds("Beat @eggs{2}(large).").contains(&Kind::UnitAsNote));
+    assert!(!body_kinds("Dice @onion{1}(finely).").contains(&Kind::UnitAsNote));
+}
+
+#[test]
+fn flags_cookware_quantity_and_junk() {
+    assert!(body_kinds("Use a #slow cooker{5-6 quart}.").contains(&Kind::CookwareQuantity));
+    assert!(body_kinds("x #cncpt-mob_incontent > div{margin:40px}").contains(&Kind::CookwareJunk));
+    assert!(!body_kinds("Heat a #skillet{}.").contains(&Kind::CookwareQuantity));
+}
+
+#[test]
+fn flags_token_in_note() {
+    assert!(body_kinds("> Sprinkle with @cheese{} at the end.").contains(&Kind::TokenInNote));
+}
+
+#[test]
+fn flags_percent_in_text_and_phantom_and_tilde() {
+    assert!(body_kinds("Dilute in 200%ml water.").contains(&Kind::PercentInText));
+    assert!(!body_kinds("Use 80% dark chocolate.").contains(&Kind::PercentInText));
+    assert!(body_kinds("Heat to @180C{}.").contains(&Kind::PhantomToken));
+    assert!(body_kinds("Cut into ~2 cm pieces.").contains(&Kind::TildeApprox));
+    assert!(!body_kinds("Bake ~{20%minutes}.").contains(&Kind::TildeApprox));
+}
