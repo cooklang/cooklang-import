@@ -41,6 +41,27 @@ fn flags_missing_percent() {
     assert!(!body_kinds("Add @flour{200%g} and @salt{pinch}.").contains(&Kind::MissingPercent));
 }
 
+fn issue_for(issues: &[Issue], kind: Kind) -> Option<&Issue> {
+    issues.iter().find(|i| i.kind == kind)
+}
+
+#[test]
+fn missing_percent_accepts_unicode_fractions_and_dash_ranges() {
+    assert!(body_kinds("Add @sugar{½ cup}.").contains(&Kind::MissingPercent));
+    assert!(body_kinds("Add @potatoes{2–3 large}.").contains(&Kind::MissingPercent));
+    assert!(body_kinds("Add @Butter{2Stück}.").contains(&Kind::MissingPercent));
+    assert!(body_kinds("Add @sugar{1 ½ cups}.").contains(&Kind::MissingPercent));
+    assert!(!body_kinds("Add @eggs{2x}.").contains(&Kind::MissingPercent));
+}
+
+#[test]
+fn missing_percent_word_range_is_flagged_but_not_autofixable() {
+    let doc = "---\ntitle: T\n---\n\nAdd @water{2 to 3 cups}.\n";
+    let issues = lint("", doc);
+    let issue = issue_for(&issues, Kind::MissingPercent).expect("MissingPercent issue");
+    assert!(!issue.autofixable);
+}
+
 #[test]
 fn flags_note_inside_braces() {
     assert!(body_kinds("Top with @parsley{(chopped)}.").contains(&Kind::NoteInBraces));

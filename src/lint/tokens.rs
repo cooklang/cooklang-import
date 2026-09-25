@@ -10,13 +10,34 @@ static COOKWARE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"#([^@#~{}\n]+?)\{([^}\n]*)\}").unwrap());
 static ANY_TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[@#~]\??[^@#~{}\n]*\{[^}\n]*\}(\([^)\n]*\))?").unwrap());
-/// Number, space, word(s), no `%`: "2 cups", "1 1/2 tbsp", "8 rashers".
+/// A single number: digits (dot/comma decimal), a standalone unicode
+/// fraction (½¼¾⅓⅔⅛), or a whole number followed by one ("1 ½").
+const NUM: &str = r"(?:\d[\d.,]*(?:\s*[½¼¾⅓⅔⅛])?|[½¼¾⅓⅔⅛])";
+/// A unit/word phrase: never a digit or a fraction char (that would belong
+/// to the number, not the unit).
+const UNIT_WORDS: &str = r"[^\d%(),½¼¾⅓⅔⅛][^%(),½¼¾⅓⅔⅛]*?";
+/// Range joiners spelled with words instead of a dash, across the languages
+/// seen in imports: English "to"/"or", French "à", German "bis"/"oder".
+const RANGE_WORD: &str = r"(?:to|à|bis|oder|or)";
+
+/// Number [range] space word(s), no `%`: "2 cups", "1 ½ cups", "2–3 large".
 pub(super) static SPACED_QTY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*(\d[\d./,]*(?:\s+\d+/\d+)?(?:\s*-\s*\d[\d./,]*)?)\s+([^\d%(),][^%(),]*?)\s*$").unwrap()
+    Regex::new(&format!(r"^\s*{NUM}(?:\s*[-–—]\s*{NUM})?\s+({UNIT_WORDS})\s*$")).unwrap()
 });
-/// Number glued to unit: "200g", "15ml".
+/// Same shape, but the range is spelled out ("2 to 3 cups") rather than a
+/// dash. Still a MissingPercent defect, but the autofixer must not touch it
+/// (rewriting "2 to 3" into a single cooklang quantity isn't mechanical).
+pub(super) static SPACED_QTY_WORD_RANGE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?i)^\s*{NUM}\s+{RANGE_WORD}\s+{NUM}\s+({UNIT_WORDS})\s*$"
+    ))
+    .unwrap()
+});
+/// Number glued to unit: "200g", "2Stück". Unicode letters so non-ASCII unit
+/// abbreviations count, but a bare "x" ("2x", a scaling shorthand) is not a
+/// unit — filtered by the caller.
 pub(super) static GLUED_QTY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s*(\d[\d.,]*)([a-zA-Zµ]{1,5})\s*$").unwrap());
+    LazyLock::new(|| Regex::new(r"^\s*(\d[\d.,]*)(\p{L}{1,6})\s*$").unwrap());
 pub(super) static UNIT_AS_NOTE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
         r"\{(\d[\d./\-]*)\}\((",
@@ -62,10 +83,16 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
         let content = &cap[2];
         if content.contains('(') {
             push(Kind::NoteInBraces, Severity::Error, whole, false);
-        } else if !content.contains('%')
-            && (SPACED_QTY.is_match(content) || GLUED_QTY.is_match(content))
-        {
-            push(Kind::MissingPercent, Severity::Error, whole, true);
+        } else if !content.contains('%') {
+            if SPACED_QTY_WORD_RANGE.is_match(content) {
+                push(Kind::MissingPercent, Severity::Error, whole, false);
+            } else if SPACED_QTY.is_match(content) {
+                push(Kind::MissingPercent, Severity::Error, whole, true);
+            } else if let Some(g) = GLUED_QTY.captures(content) {
+                if !g[2].eq_ignore_ascii_case("x") {
+                    push(Kind::MissingPercent, Severity::Error, whole, true);
+                }
+            }
         }
         if cap[1].contains('%') {
             push(Kind::PercentInText, Severity::Error, whole, false);
