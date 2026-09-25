@@ -968,3 +968,26 @@ fn a_lone_cr_is_never_converted_or_touched() {
 fn note_line_inserts_a_space_between_adjacent_tokens() {
     assert_eq!(fixed("> see @a{1}@b{2}"), "> see 1 a 2 b");
 }
+
+#[test]
+fn entity_fix_always_quotes_a_yaml_1_1_boolean_word() {
+    // cook.md's Rails app reads this frontmatter with Ruby Psych (YAML 1.1),
+    // where a bare yes/no/on/off/y/n (any case) is a boolean — even though
+    // serde_yaml (YAML 1.2-ish) would parse it back as our own String, we
+    // must still always quote it for the actual downstream consumer.
+    for (raw, expected) in [
+        ("y&#101;s", "yes"),
+        ("n&#111;", "no"),
+        ("&#111;n", "on"),
+        ("&#111;ff", "off"),
+        ("&#121;", "y"),
+        ("&#110;", "n"),
+    ] {
+        let doc = format!("---\nvegan: {raw}\n---\n\nStep.");
+        let after = autofix(&doc);
+        let (fm, _) = split_frontmatter(&after);
+        let value_line = fm.unwrap().lines().find(|l| l.starts_with("vegan:")).unwrap();
+        assert_eq!(value_line, &format!("vegan: \"{expected}\""), "{raw}: {after:?}");
+        assert_eq!(fm_value(&after, "vegan").as_deref(), Some(expected));
+    }
+}

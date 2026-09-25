@@ -24,6 +24,14 @@ pub(super) const KEY_RENAMES: &[(&str, &str)] = &[
 /// but would parse back as a bool/int/float/null ("true", "4", "~").
 const YAML_SPECIAL: &[char] =
     &[':', '#', '\'', '"', '[', ']', '{', '}', ',', '&', '*', '!', '|', '>', '%', '@'];
+/// YAML 1.1 core-schema boolean spellings. `serde_yaml` itself only treats
+/// `true`/`false` (YAML 1.2-ish) as booleans, so `is_bare_safe`'s own
+/// round-trip check wouldn't catch these — but cook.md's Rails app reads
+/// this frontmatter with Ruby's Psych, which *is* YAML 1.1 and turns a bare
+/// `yes`/`no`/`on`/`off`/`y`/`n` (any case) into a real boolean there. Always
+/// quote a decoded value that matches one of these, regardless of what our
+/// own parser would do with it.
+const YAML11_BOOL_WORDS: &[&str] = &["yes", "no", "on", "off", "y", "n"];
 /// A cap on the entity-decoding fixed-point loop (see `decode_fixed_point`):
 /// real values decode in 1-2 passes; this only matters for adversarial,
 /// deeply nested encodings ("&amp;amp;amp;...;") and exists purely so a
@@ -141,6 +149,7 @@ fn needs_quoting(s: &str) -> bool {
         || s.ends_with(' ')
         || s.contains('\n')
         || s.chars().any(|c| YAML_SPECIAL.contains(&c))
+        || YAML11_BOOL_WORDS.iter().any(|w| s.eq_ignore_ascii_case(w))
 }
 
 fn yaml_double_quote(s: &str) -> String {
