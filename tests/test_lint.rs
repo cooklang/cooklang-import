@@ -483,7 +483,14 @@ fn fixes_unit_as_note_stray_and_optional() {
 
 #[test]
 fn fixes_tokens_in_notes_and_tilde() {
-    assert_eq!(fixed("> Sprinkle @cheese{50%g}(grated) on top."), "> Sprinkle cheese on top.");
+    // Notes may not contain Cooklang syntax, but the quantity is kept as
+    // plain text rather than dropped.
+    assert_eq!(
+        fixed("> Sprinkle @cheese{50%g}(grated) on top."),
+        "> Sprinkle 50 g cheese (grated) on top."
+    );
+    assert_eq!(fixed("> Rest for ~{10%minutes}."), "> Rest for 10 minutes.");
+    assert_eq!(fixed("> Rest for ~rest{5%min}."), "> Rest for rest 5 min.");
     assert_eq!(fixed("Cut into ~2 cm pieces. Bake ~{20%minutes}."), "Cut into about 2 cm pieces. Bake ~{20%minutes}.");
 }
 
@@ -510,13 +517,14 @@ fn autofix_clears_fixable_issues() {
     // Idempotent: a second pass changes nothing further.
     assert_eq!(autofix(&after), after);
 
-    // Never touches a digit outside a stripped note-line token (the note
-    // line's "50" is expected to disappear along with its illegal syntax —
-    // see `fixes_tokens_in_notes_and_tilde`).
-    let non_note = |s: &str| -> Vec<char> {
-        s.lines().filter(|l| !l.trim_start().starts_with('>')).flat_map(digits).collect()
-    };
-    assert_eq!(non_note(doc), non_note(&after));
+    // Never changes a digit anywhere, including a note-line token's
+    // quantity (see `fixes_tokens_in_notes_and_tilde`: the syntax is
+    // stripped, but the "50" is kept as plain text).
+    let mut before = digits(doc);
+    let mut post = digits(&after);
+    before.sort();
+    post.sort();
+    assert_eq!(before, post);
 }
 
 #[test]
@@ -541,4 +549,132 @@ fn fixes_double_encoded_html_entities_to_a_fixed_point() {
     assert!(after.contains("Pâtes & nouilles"), "{after}");
     let issues = lint("", &after);
     assert!(issues.iter().all(|i| !i.autofixable), "{issues:#?}");
+}
+
+// --- Adversarial review round: CRITICAL (C1 YAML-safe entities, C2 duplicate-key guard) ---
+
+fn fm_doc(fm: &str) -> String {
+    format!("---\n{fm}\n---\n\nStep.\n")
+}
+
+#[test]
+fn entity_fix_never_breaks_yaml_colon_in_value() {
+    // "Foo&#58; bar" decoded naively ("Foo: bar") turns one mapping value
+    // into what looks like a second key: value pair.
+    let doc = fm_doc("title: Foo&#58; bar");
+    let after = autofix(&doc);
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    assert_eq!(parsed["title"].as_str(), Some("Foo: bar"));
+    assert!(lint("", &after).iter().all(|i| !i.autofixable));
+}
+
+#[test]
+fn entity_fix_never_breaks_yaml_on_apostrophe() {
+    let doc = fm_doc("title: 'Grandma&#39;s pie'");
+    let after = autofix(&doc);
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    assert_eq!(parsed["title"].as_str(), Some("Grandma's pie"));
+}
+
+#[test]
+fn entity_fix_never_injects_a_key_via_newline() {
+    // A naively-decoded "&#10;" (newline) followed by "key: value"-shaped
+    // text must never inject a real second key into the frontmatter.
+    let doc = fm_doc("title: A&#10;author: evil");
+    let after = autofix(&doc);
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    assert_eq!(parsed.as_mapping().unwrap().len(), 1, "must not gain an `author` key: {parsed:?}");
+}
+
+#[test]
+fn entity_fix_never_injects_a_fence_via_newline() {
+    let doc = fm_doc("title: A&#10;&#45;&#45;&#45;&#10;@evil{1%kg}");
+    let after = autofix(&doc);
+    // The closing fence must still be exactly where it should be: the body
+    // must not gain a bogus "@evil" ingredient via an injected extra fence.
+    let (_, body) = split_frontmatter(&after);
+    assert_eq!(body.trim(), "Step.");
+}
+
+#[test]
+fn entity_fix_never_truncates_via_hash_comment() {
+    // A naively-decoded "&#35;" (a literal '#') mid-value must not truncate
+    // the rest of the line as a YAML comment.
+    let doc = fm_doc("title: Pie &#35;2 of 3");
+    let after = autofix(&doc);
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    assert_eq!(parsed["title"].as_str(), Some("Pie #2 of 3"));
+}
+
+#[test]
+fn entity_fix_never_corrupts_a_flow_list() {
+    // A flow sequence must keep its element count and content — a
+    // line-based fixer that blindly re-quotes the whole value would turn
+    // the list into a single string.
+    let doc = fm_doc("tags: [a&#44; b, c]");
+    let after = autofix(&doc);
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    let before_parsed: serde_yaml::Value =
+        serde_yaml::from_str(split_frontmatter(&doc).0.unwrap()).unwrap();
+    assert_eq!(parsed["tags"], before_parsed["tags"], "the list must not change");
+}
+
+#[test]
+fn entity_fix_never_touches_a_block_scalar_continuation_line() {
+    let doc = fm_doc("description: |\n  line &#10;x");
+    let after = autofix(&doc);
+    // Must stay valid YAML with the description key intact — not broken by
+    // an injected literal newline inside the block scalar's own syntax.
+    let (fm, _) = split_frontmatter(&after);
+    assert!(serde_yaml::from_str::<serde_yaml::Value>(fm.unwrap()).is_ok(), "{fm:?}");
+}
+
+#[test]
+fn entity_fix_leaves_unknown_or_invalid_entities_alone_and_non_autofixable() {
+    for value in ["Salt&pepper;", "x&#55296;y", "x&#00;y"] {
+        let doc = fm_doc(&format!("title: {value}"));
+        let after = autofix(&doc);
+        assert_eq!(after, doc, "should be a no-op for {value:?}");
+        let issues = lint("", &doc);
+        let html_entity = issues.iter().find(|i| i.kind == Kind::HtmlEntity);
+        assert!(html_entity.is_some_and(|i| !i.autofixable), "{value:?}: {issues:#?}");
+    }
+}
+
+#[test]
+fn entity_fix_converges_on_deeply_nested_encoding() {
+    let doc = fm_doc("title: &amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;");
+    let after = autofix(&doc);
+    assert_eq!(autofix(&after), after, "must be idempotent");
+    let (fm, _) = split_frontmatter(&after);
+    let parsed: serde_yaml::Value = serde_yaml::from_str(fm.unwrap()).expect("valid YAML");
+    assert_eq!(parsed["title"].as_str(), Some("<"));
+}
+
+#[test]
+fn key_rename_skipped_when_target_key_already_exists() {
+    // C2: renaming `source_url` to `source` when `source` already exists
+    // would create a duplicate YAML key.
+    let doc = fm_doc("title: T\nsource: a\nsource_url: b");
+    let after = autofix(&doc);
+    assert_eq!(after, doc, "the rename must be skipped entirely");
+    let issues = lint("", &doc);
+    let drift = issues.iter().find(|i| i.kind == Kind::MetadataKeyDrift);
+    assert!(drift.is_some_and(|i| !i.autofixable), "{issues:#?}");
+    let (fm, _) = split_frontmatter(&after);
+    assert!(serde_yaml::from_str::<serde_yaml::Value>(fm.unwrap()).is_ok());
+}
+
+#[test]
+fn key_rename_skipped_when_two_spellings_of_the_same_key_collide() {
+    let doc = fm_doc("prep time: 5 min\nprep_time: 10 min");
+    let after = autofix(&doc);
+    assert_eq!(after, doc);
+    let (fm, _) = split_frontmatter(&after);
+    assert!(serde_yaml::from_str::<serde_yaml::Value>(fm.unwrap()).is_ok());
 }

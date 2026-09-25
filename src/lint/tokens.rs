@@ -15,6 +15,10 @@ pub(super) static INGREDIENT: LazyLock<Regex> = LazyLock::new(|| {
 /// ("# Step 1 {x}") doesn't read as cookware.
 static COOKWARE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"#([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}").unwrap());
+/// Any `@`/`#`/`~` token, name allowed to be empty (`@{}`, `#{2}`, `~{5%min}`
+/// are all valid Cooklang). Used both to strip tokens out of prose and to
+/// find token *spans* so other fixes (e.g. the tilde-approximation rewrite)
+/// can stay outside them.
 static ANY_TOKEN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[@#~]\??[^@#~{}\n]*\{[^}\n]*\}(\([^)\n]*\))?").unwrap());
 /// A single number: a whole number followed by a slash fraction ("1 1/2"), a
@@ -63,12 +67,20 @@ const UNIT_WORD_ALT: &str = concat!(
 /// minced)` — matched at the start only, so trailing prep text after a comma
 /// doesn't prevent the match. Only used for the glued `{n}(...)` form, where
 /// the whole parenthetical is a genuine cooklang note.
-static UNIT_WORD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r"(?i)^({UNIT_WORD_ALT})\b")).unwrap());
+///
+/// The word is captured in group 1; the alternation is followed by an
+/// explicit "not a letter/digit/hyphen" terminator (or end of string)
+/// instead of a bare `\b`, so a compound word like "heads-up" doesn't read
+/// as the unit "heads" followed by "-up" — `\b` alone considers the
+/// letter/hyphen transition a boundary, which a plain word list can't tell
+/// apart from a genuine separator.
+static UNIT_WORD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"(?i)^({UNIT_WORD_ALT})(?:$|[^\p{{L}}\p{{N}}\-])")).unwrap()
+});
 /// Same word list, but the whole (trimmed) text must be nothing but the unit
 /// word — used for `{n} (...)` (a space before the paren), where the
 /// parenthetical is ordinary prose unless it's exactly one unit word, e.g.
-/// `{4} (cloves)` but not `{1} (medium heat)`.
+/// `{4} (cloves)` but not `{1} (medium heat)` and not `{4} (cloves,)`.
 static UNIT_WORD_EXACT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&format!(r"(?i)^(?:{UNIT_WORD_ALT})$")).unwrap());
 static STRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}\{([^}\n]*)\}").unwrap());
@@ -95,13 +107,27 @@ pub(super) fn strip_tokens(text: &str) -> String {
     ANY_TOKEN.replace_all(text, "").into_owned()
 }
 
+/// Byte ranges of every `@`/`#`/`~` token on `line`. Used to keep the
+/// tilde-approximation check/fix scoped to text *outside* any token — a
+/// tilde and a digit that only become adjacent after a token in between is
+/// stripped away (e.g. `~@x{1%g}2`) never actually sit next to each other in
+/// the real text, so neither `check` nor `autofix` should treat them as an
+/// approximation marker.
+pub(super) fn token_spans(line: &str) -> Vec<(usize, usize)> {
+    ANY_TOKEN.find_iter(line).map(|m| (m.start(), m.end())).collect()
+}
+
 /// For an autofixable MissingPercent ingredient quantity, returns the fixed
 /// `{qty%unit}` content — inserting the `%` between the number and the unit
 /// without ever touching a digit. Returns `None` for a word-spelled range
-/// ("2 to 3 cups") or anything neither SPACED_QTY nor GLUED_QTY (minus a bare
-/// "x") recognizes.
+/// ("2 to 3 cups"), a unit phrase that itself contains a digit ("2 x 400g
+/// cans" — not a simple qty+unit shape), or anything neither SPACED_QTY nor
+/// GLUED_QTY (minus a bare "x") recognizes.
 ///
-/// Used by `fix::autofix` to rewrite MissingPercent issues.
+/// Used by `fix::autofix` to rewrite MissingPercent issues, and by `check`
+/// (via `check`'s own call to this function) to decide whether the issue it
+/// reports is autofixable — the two can never disagree, because `check`
+/// doesn't reimplement this decision.
 pub(super) fn fixed_quantity(raw: &str) -> Option<String> {
     let content = raw.trim();
     if SPACED_QTY_WORD_RANGE.is_match(content) {
@@ -109,6 +135,9 @@ pub(super) fn fixed_quantity(raw: &str) -> Option<String> {
     }
     if let Some(cap) = SPACED_QTY.captures(content) {
         let unit = cap.get(1).unwrap();
+        if unit.as_str().chars().any(|c| c.is_ascii_digit()) {
+            return None;
+        }
         let number = content[..unit.start()].trim_end();
         return Some(format!("{number}%{}", unit.as_str().trim()));
     }
@@ -120,25 +149,41 @@ pub(super) fn fixed_quantity(raw: &str) -> Option<String> {
     None
 }
 
-/// For an autofixable UnitAsNote ingredient — a plain quantity (`qty`, e.g.
-/// "4") followed by a note (`note`, e.g. "cloves, minced") that starts with a
-/// unit word — returns the fixed `{qty%unit}` content plus whatever prep text
-/// is left in the note (`None` if nothing remains), e.g.
+/// Whether a plain quantity (`qty`, e.g. "4") plus a `(...)` note (`note`,
+/// its contents without the parens) is the UnitAsNote defect — and if so,
+/// the note text split into the unit word that belongs in the braces plus
+/// whatever prep text is left over (`None` if nothing remains), e.g.
 /// `("4", "cloves, minced")` -> `("4%cloves", Some("minced"))`.
 ///
-/// Used by `fix::autofix` to rewrite UnitAsNote issues.
-pub(super) fn fixed_unit_as_note(qty: &str, note: &str) -> Option<(String, Option<String>)> {
+/// Shared by `check` (to decide `autofixable`) and `fix::autofix` (to apply
+/// the same rewrite), so the two can never disagree about which tokens
+/// qualify.
+///
+/// `has_space` mirrors the note-glue rule used throughout this module: a
+/// note glued directly to `}` is unambiguous, so a leading unit word
+/// qualifies even with trailing prep text after it; a note preceded by a
+/// space is ordinary prose unless the *entire* trimmed parenthetical is
+/// nothing but the bare unit word (no trailing comma, no trailing anything).
+pub(super) fn unit_as_note_fix(
+    qty: &str,
+    note: &str,
+    has_space: bool,
+) -> Option<(String, Option<String>)> {
     if !QTY_PLAIN.is_match(qty) {
         return None;
     }
     let note = note.trim();
-    let m = UNIT_WORD.find(note)?;
-    if m.start() != 0 {
+    if has_space {
+        return UNIT_WORD_EXACT.is_match(note).then(|| (format!("{qty}%{note}"), None));
+    }
+    let cap = UNIT_WORD.captures(note)?;
+    let word = cap.get(1).unwrap();
+    if word.start() != 0 {
         return None;
     }
-    let rest = note[m.end()..].trim_start_matches(',').trim();
+    let rest = note[word.end()..].trim_start_matches(',').trim();
     let remaining = if rest.is_empty() { None } else { Some(rest.to_string()) };
-    Some((format!("{qty}%{}", m.as_str()), remaining))
+    Some((format!("{qty}%{}", word.as_str()), remaining))
 }
 
 /// A `-- comment`, `> note`, or `[- block comment -]` line — never a real
@@ -147,8 +192,8 @@ pub(super) fn fixed_unit_as_note(qty: &str, note: &str) -> Option<(String, Optio
 /// line; one inline alongside real content is left to the other checks.
 ///
 /// `pub(super)` because `fix::autofix` reuses this to decide which lines are
-/// exempt from the MissingPercent/TildeApprox fixes (mirroring `check`,
-/// which exempts these lines from those two checks only — UnitAsNote is
+/// exempt from the MissingPercent fix (mirroring `check`, which exempts
+/// these lines from MissingPercent and TildeApprox only — UnitAsNote is
 /// still checked, and fixed, on a comment/note line).
 pub(super) fn is_comment_or_note_line(line: &str) -> bool {
     let t = line.trim_start();
@@ -169,14 +214,12 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
             if content.contains('(') {
                 push(Kind::NoteInBraces, Severity::Error, whole, false);
             } else if !skip && !content.contains('%') {
-                if SPACED_QTY_WORD_RANGE.is_match(content) {
-                    push(Kind::MissingPercent, Severity::Error, whole, false);
-                } else if SPACED_QTY.is_match(content) {
-                    push(Kind::MissingPercent, Severity::Error, whole, true);
-                } else if let Some(g) = GLUED_QTY.captures(content) {
-                    if !g[2].eq_ignore_ascii_case("x") {
-                        push(Kind::MissingPercent, Severity::Error, whole, true);
-                    }
+                let is_defect = SPACED_QTY_WORD_RANGE.is_match(content)
+                    || SPACED_QTY.is_match(content)
+                    || GLUED_QTY.captures(content).is_some_and(|g| !g[2].eq_ignore_ascii_case("x"));
+                if is_defect {
+                    let fixable = fixed_quantity(content).is_some();
+                    push(Kind::MissingPercent, Severity::Error, whole, fixable);
                 }
             }
             if cap[1].contains('%') {
@@ -185,19 +228,17 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
             if let Some(note) = cap.get(4) {
                 let note_inner = note.as_str().trim_start_matches('(').trim_end_matches(')');
                 let has_space = !cap[3].is_empty();
-                let is_unit = if has_space {
-                    UNIT_WORD_EXACT.is_match(note_inner.trim())
-                } else {
-                    UNIT_WORD.is_match(note_inner)
-                };
-                if QTY_PLAIN.is_match(content) && is_unit {
+                if unit_as_note_fix(content, note_inner, has_space).is_some() {
                     push(Kind::UnitAsNote, Severity::Error, whole, true);
                 }
             }
         }
         if !skip {
-            let prose_line = strip_tokens(line);
-            for m in TILDE.find_iter(&prose_line) {
+            let spans = token_spans(line);
+            for m in TILDE.find_iter(line) {
+                if spans.iter().any(|&(s, e)| m.start() >= s && m.end() <= e) {
+                    continue;
+                }
                 push(Kind::TildeApprox, Severity::Warning, m.as_str(), true);
             }
         }
@@ -257,22 +298,41 @@ mod tests {
     }
 
     #[test]
-    fn fixed_unit_as_note_splits_unit_from_remaining_prep_text() {
-        assert_eq!(
-            fixed_unit_as_note("4", "cloves, minced"),
-            Some(("4%cloves".to_string(), Some("minced".to_string())))
-        );
-        assert_eq!(fixed_unit_as_note("4", "cloves"), Some(("4%cloves".to_string(), None)));
-        assert_eq!(
-            fixed_unit_as_note("1,5", "Zehen"),
-            Some(("1,5%Zehen".to_string(), None))
-        );
-        assert_eq!(fixed_unit_as_note("½", "head"), Some(("½%head".to_string(), None)));
+    fn fixed_quantity_rejects_a_unit_phrase_containing_a_digit() {
+        assert_eq!(fixed_quantity("2 x 400g cans"), None);
     }
 
     #[test]
-    fn fixed_unit_as_note_rejects_non_plain_quantities_and_non_unit_notes() {
-        assert_eq!(fixed_unit_as_note("2 cups", "cloves"), None);
-        assert_eq!(fixed_unit_as_note("4", "diced"), None);
+    fn unit_as_note_fix_splits_unit_from_remaining_prep_text_when_glued() {
+        assert_eq!(
+            unit_as_note_fix("4", "cloves, minced", false),
+            Some(("4%cloves".to_string(), Some("minced".to_string())))
+        );
+        assert_eq!(unit_as_note_fix("4", "cloves", false), Some(("4%cloves".to_string(), None)));
+        assert_eq!(
+            unit_as_note_fix("1,5", "Zehen", false),
+            Some(("1,5%Zehen".to_string(), None))
+        );
+        assert_eq!(unit_as_note_fix("½", "head", false), Some(("½%head".to_string(), None)));
+    }
+
+    #[test]
+    fn unit_as_note_fix_rejects_non_plain_quantities_and_non_unit_notes() {
+        assert_eq!(unit_as_note_fix("2 cups", "cloves", false), None);
+        assert_eq!(unit_as_note_fix("4", "diced", false), None);
+    }
+
+    #[test]
+    fn unit_as_note_fix_requires_an_exact_match_when_space_preceded() {
+        assert_eq!(unit_as_note_fix("4", "cloves", true), Some(("4%cloves".to_string(), None)));
+        // Trailing text (even just a comma) disqualifies a space-preceded
+        // parenthetical: it reads as ordinary prose, not a note.
+        assert_eq!(unit_as_note_fix("4", "cloves,", true), None);
+        assert_eq!(unit_as_note_fix("4", "cloves, minced", true), None);
+    }
+
+    #[test]
+    fn unit_as_note_fix_does_not_match_a_compound_word_across_a_hyphen() {
+        assert_eq!(unit_as_note_fix("1", "heads-up: hot", false), None);
     }
 }
