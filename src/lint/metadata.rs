@@ -29,8 +29,8 @@ pub(super) fn has_children(lines: &[&str], i: usize) -> bool {
 
 pub(super) fn check(frontmatter: &str) -> Vec<Issue> {
     let mut issues = Vec::new();
-    if serde_yaml::from_str::<serde_yaml::Value>(frontmatter).is_err() {
-        issues.push(Issue::new(Kind::InvalidFrontmatter, Severity::Error, frontmatter, false));
+    if let Err(e) = serde_yaml::from_str::<serde_yaml::Value>(frontmatter) {
+        issues.push(Issue::new(Kind::InvalidFrontmatter, Severity::Error, e.to_string(), false));
     }
     let lines: Vec<&str> = frontmatter.lines().collect();
     for (i, line) in lines.iter().enumerate() {

@@ -226,6 +226,15 @@ fn flags_invalid_yaml() {
 }
 
 #[test]
+fn invalid_frontmatter_evidence_is_the_yaml_error_not_the_raw_text() {
+    let fm = "title: a: b: c";
+    let doc = format!("---\n{fm}\n---\n\nBoil @eggs{{2}}.\n");
+    let issues = lint("", &doc);
+    let issue = issue_for(&issues, Kind::InvalidFrontmatter).expect("InvalidFrontmatter issue");
+    assert_ne!(issue.evidence, fm);
+}
+
+#[test]
 fn parse_errors_do_not_suppress_warnings_or_recipe() {
     // "Timer value is text: abc" is a ParseError; "{~}" (an empty, invalid
     // component) triggers "Invalid single word name..." as a ParseWarning.
