@@ -116,12 +116,15 @@ fn is_header(line: &str) -> bool {
 /// instructions) is still treated as prose once it's implausibly long for an
 /// ingredient line, scaled up when it does look like a quantity line (so a
 /// long ingredient name with a note doesn't get misread as instructions).
-/// A period followed by whitespace and a capital letter — a new sentence
-/// starting mid-line ("Kartoffeln schälen. Kartoffeln kochen.") — is prose
-/// regardless of the line's total word count. An abbreviation's period
-/// ("c. à s.", "2 c. à c. huile") is always followed by a *lowercase*
-/// continuation, so it doesn't trip this.
-static MID_SENTENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.\s+\p{Lu}").unwrap());
+/// A word of 3+ letters, followed by a period, whitespace and a capital
+/// letter — a new sentence starting mid-line ("Kartoffeln schälen.
+/// Kartoffeln kochen.") — is prose regardless of the line's total word
+/// count. An abbreviation's period ("c. à s.", "2 c. à c. huile") is always
+/// followed by a *lowercase* continuation, so it doesn't trip this. The
+/// 3-letter minimum on the preceding word additionally excludes short
+/// multi-period abbreviations like German "z.B." ("e.g.") — "B." is a
+/// single letter, so "z.B. Mondamin" doesn't read as two sentences.
+static MID_SENTENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{L}{3,}\.\s+\p{Lu}").unwrap());
 
 fn is_prose(line: &str) -> bool {
     let words = line.split_whitespace().count();
@@ -321,6 +324,23 @@ mod tests {
     fn short_multi_sentence_instruction_line_is_not_an_ingredient() {
         let got = source_ingredients("500 g Kartoffeln\n2 Möhren\n\nKartoffeln schälen. Kartoffeln kochen.");
         assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["kartoffeln", "möhren"]);
+    }
+
+    /// Regression (found against real data): a short multi-period
+    /// abbreviation ("z.B." — German "e.g.") inside a parenthetical note
+    /// must not read as a mid-line sentence break and truncate the anchored
+    /// "Ingredients" read early, hiding every line after it (here, a second
+    /// occurrence of an ingredient that legitimately appears twice, once per
+    /// sub-recipe).
+    #[test]
+    fn abbreviation_with_two_periods_does_not_truncate_anchor_extraction() {
+        let got = source_ingredients(
+            "Ingredients:\n70 g Speisestärke (z.B. Mondamin)\n2 TL Backpulver\n125 g Zucker\n\nMethod: mix well.",
+        );
+        assert_eq!(
+            got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+            vec!["speisestärke", "backpulver", "zucker"]
+        );
     }
 
     /// Item 1: navigation/step/yield junk lines mixed into an anchored
