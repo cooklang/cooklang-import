@@ -69,7 +69,7 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
     for cap in COOKWARE.captures_iter(body) {
         let name = &cap[1];
         let junk = name.chars().count() > 40
-            || name.contains(|c| matches!(c, ')' | '>' | ';' | ':' | '!' | '('));
+            || name.contains([')', '>', ';', ':', '!', '(']);
         if junk {
             push(Kind::CookwareJunk, Severity::Error, &cap[0], false);
         } else if !cap[2].trim().is_empty() {
