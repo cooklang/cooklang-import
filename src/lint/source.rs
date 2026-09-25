@@ -52,8 +52,11 @@ static METHOD_HEADER: LazyLock<Regex> = LazyLock::new(|| {
 /// gives it the same "qty unit" shape as an ingredient line ("C"/"F" reads
 /// as a unit) — and a bare, number-first yield line ("8 parts"): the
 /// existing yield keywords only catch the word-first phrasing ("Serves 8").
+/// A leading ">>" is the deprecated Cooklang metadata syntax (never itself
+/// an ingredient, whatever follows it — a stray timer or note line left
+/// over from an earlier conversion attempt).
 static JUNK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^(?:(?:yield|serves|servings|makes|portions?|prep|cook|total|time|step\s*\d+|stap|notes?|nutrition|equipment|print|imprimer|video|vidéo|jump to|pin|rate|dauer|schwierigkeit|quantité|preheat|préchauffer|vorheizen|precalentar|voorverwarmen)\b|title:|\d+\s*(?:h|hr|hrs|min|mins|minutes)\b|\d+h\d*|\d+\s*(?:parts?|portions?|servings?|persons?|people|pers\.?)\.?$)").unwrap()
+    Regex::new(r"(?i)^(?:>>|(?:yield|serves|servings|makes|portions?|prep|cook|total|time|step\s*\d+|stap|notes?|nutrition|equipment|print|imprimer|video|vidéo|jump to|pin|rate|dauer|schwierigkeit|quantité|preheat|préchauffer|vorheizen|precalentar|voorverwarmen)\b|title:|\d+\s*(?:h|hr|hrs|min|mins|minutes)\b|\d+h\d*|\d+\s*(?:parts?|portions?|servings?|persons?|people|pers\.?)\.?$)").unwrap()
 });
 /// Regression (found against real data): a line that is *entirely* a
 /// time/duration phrase — "6-10 minutes.", "Durch: 15 Minuten" (a German
@@ -228,9 +231,30 @@ fn has_a_quantity(line: &str) -> bool {
     LEADING_QTY.is_match(t) || TRAILING_QTY.is_match(t)
 }
 
+/// A Cooklang ingredient token (`@name{`) — used only to detect that
+/// "original" is already Cooklang (a re-lint, or a source that was pasted
+/// in already converted), not to parse it.
+static COOKLANG_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@[^\s@#~{}][^@#~{}\n]*\{").unwrap());
+/// 3+ occurrences is well past what a coincidental "@" in prose would
+/// produce (an email or a social handle), so this is a safe signal that
+/// `original` is itself Cooklang, not prose to extract an ingredient list
+/// from.
+const ALREADY_COOKLANG_THRESHOLD: usize = 3;
+
+/// No real recipe's text is anywhere near this many lines; a page-sized
+/// dump (a scraped page, a pasted PDF) can be, and every line here runs
+/// through several regexes (`is_header`, `is_prose`, `JUNK`,
+/// `TIME_DURATION_LINE`...), so scanning all of them is the difference
+/// between milliseconds and seconds. A real ingredient list — anchored or
+/// not — always starts well within this many lines anyway.
+const MAX_LINES_TO_SCAN: usize = 1000;
+
 pub(super) fn source_ingredients(original: &str) -> Vec<SourceIngredient> {
+    if COOKLANG_TOKEN.find_iter(original).nth(ALREADY_COOKLANG_THRESHOLD - 1).is_some() {
+        return Vec::new();
+    }
     let text = original.replace(['\r', '\u{200b}'], "");
-    let lines: Vec<&str> = text.lines().map(str::trim).collect();
+    let lines: Vec<&str> = text.lines().map(str::trim).take(MAX_LINES_TO_SCAN).collect();
 
     // 1. Anchored: everything after a recognized "Ingredients" header, until
     // a "Method" header or a prose line — the common, well-formed case.
@@ -404,6 +428,36 @@ mod tests {
     fn junk_lines_are_filtered_out() {
         let got = source_ingredients("Ingredients:\nPrint\nStep 1\nServes 4\n2 eggs\n1 cup milk\n\nMethod: mix well and bake for a while.");
         assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["eggs", "milk"]);
+    }
+
+    /// Coordinator fix 4: a leading ">>" (deprecated Cooklang metadata
+    /// syntax) is junk, never an ingredient line.
+    #[test]
+    fn deprecated_cooklang_metadata_line_is_junk() {
+        let got = source_ingredients("Ingredients:\n2 eggs\n>> time: 30 minutes\n1 cup milk\n\nMethod: mix well and bake.");
+        assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["eggs", "milk"]);
+    }
+
+    /// Coordinator fix 4: when "original" is already Cooklang (3+ `@name{`
+    /// tokens), extraction is skipped entirely rather than misreading tagged
+    /// lines as a plain-text ingredient list.
+    #[test]
+    fn skips_extraction_when_original_is_already_cooklang() {
+        let already_cooklang = "@eggs{2}\n@flour{200%g}\n@milk{1%cup}\n\nMix everything together and bake.";
+        assert_eq!(source_ingredients(already_cooklang), Vec::new());
+    }
+
+    /// Coordinator fix 2 (performance): a page-sized dump with tens of
+    /// thousands of list-shaped lines must not make extraction itself slow —
+    /// every line runs through several regexes, so scanning all of them is
+    /// the difference between milliseconds and seconds. A real ingredient
+    /// list always starts well within `MAX_LINES_TO_SCAN` lines.
+    #[test]
+    fn extraction_is_fast_on_a_huge_number_of_lines() {
+        let huge: String = (0..100_000).map(|i| format!("1 item{i}\n")).collect();
+        let start = std::time::Instant::now();
+        source_ingredients(&huge);
+        assert!(start.elapsed().as_secs_f64() < 0.5, "took {:?}, expected well under 0.5s", start.elapsed());
     }
 
     /// Item 1: an ALL-CAPS sub-header doesn't break the run that follows it.
