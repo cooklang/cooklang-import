@@ -3,8 +3,16 @@ use super::{Issue, Kind, Severity};
 use cooklang::{Recipe, Value};
 use std::collections::BTreeMap;
 
+/// Folds the French ligatures "œ"/"Œ" and "æ"/"Æ" to their two-letter
+/// spelling ("oe"/"ae") — real exports mix both spellings of the same word
+/// ("œufs" vs "oeufs"), and without this a bare word-prefix comparison sees
+/// them as unrelated (the very first character already differs).
+fn fold_ligatures(s: &str) -> String {
+    s.replace(['œ', 'Œ'], "oe").replace(['æ', 'Æ'], "ae")
+}
+
 fn normalize(name: &str) -> String {
-    name.trim().to_lowercase()
+    fold_ligatures(name.trim()).to_lowercase()
 }
 
 /// Singular-ish key: strips a trailing "s" from every word, so
@@ -36,7 +44,8 @@ const STOP: &[&str] = &[
 ];
 
 fn words_raw(s: &str) -> Vec<String> {
-    s.to_lowercase()
+    fold_ligatures(s)
+        .to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| w.chars().count() >= 2)
         .map(str::to_string)
@@ -107,7 +116,7 @@ fn covers(token: &str, src: &SourceIngredient) -> bool {
     if whole.is_empty() {
         return false;
     }
-    src.line.to_lowercase().contains(&whole) || words_raw(&src.line).iter().any(|w| similar(w, &whole))
+    fold_ligatures(&src.line).to_lowercase().contains(&whole) || words_raw(&src.line).iter().any(|w| similar(w, &whole))
 }
 
 fn numeric(value: &Value) -> Option<f64> {
@@ -246,7 +255,7 @@ pub(super) fn check(original: &str, _body: &str, recipe: &Recipe) -> Vec<Issue> 
     distinct_names.sort();
     distinct_names.dedup();
     if distinct_names.len() >= 3 && !is_mostly_cjk(original) {
-        let orig_lower = original.to_lowercase();
+        let orig_lower = fold_ligatures(original).to_lowercase();
         let orig_words = words_raw(original);
         let hits = distinct_names
             .iter()
@@ -293,6 +302,16 @@ mod tests {
         assert!(covers("ei", &src));
         let src = SourceIngredient { line: "1 EL Öl".into(), name: "öl".into(), qty: Some(1.0), unit: Some("EL".into()) };
         assert!(covers("öl", &src));
+    }
+
+    /// Regression (found against real data, row 470): "œufs" (with the
+    /// ligature) and "oeufs" (spelled out) must be recognized as the same
+    /// word — a plain prefix comparison sees 'œ' and 'o' as different
+    /// characters and fails from the very first letter.
+    #[test]
+    fn covers_folds_french_ligatures() {
+        let src = SourceIngredient { line: "2 œufs".into(), name: "œufs".into(), qty: Some(2.0), unit: None };
+        assert!(covers("oeufs", &src));
     }
 
     #[test]

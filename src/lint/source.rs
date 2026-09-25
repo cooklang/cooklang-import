@@ -51,6 +51,22 @@ static METHOD_HEADER: LazyLock<Regex> = LazyLock::new(|| {
 static JUNK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^(?:(?:yield|serves|servings|makes|portions?|prep|cook|total|time|step\s*\d+|stap|notes?|nutrition|equipment|print|imprimer|video|vidéo|jump to|pin|rate|dauer|schwierigkeit|quantité)\b|title:|\d+\s*(?:h|hr|hrs|min|mins|minutes)\b|\d+h\d*)").unwrap()
 });
+/// Regression (found against real data): a line that is *entirely* a
+/// time/duration phrase — "6-10 minutes.", "Durch: 15 Minuten" (a German
+/// duration label), "отдохнуть тесту 10-20 минут" is left unhandled here,
+/// see below — looks exactly like a "qty unit" ingredient line to
+/// `LEADING_QTY`/`TRAILING_QTY` (a dash range plus a unit-shaped word), so
+/// it slips past `JUNK` (anchored, English-only, and doesn't allow a dash
+/// range) and gets extracted as a bogus ingredient with a real quantity.
+/// Matches an optional "Label: " prefix (a colon-terminated word run) or
+/// nothing, then a number/range, then a time word in English, German,
+/// French or Russian, with nothing else on the line.
+static TIME_DURATION_LINE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:[\p{L} ]{1,20}:\s*)?\d+(?:[-–]\d+)?\s*(?:h|hr|hrs|min|mins|minutes?|minuten?|stunden?|heures?|минут[ыа]?|час(?:ов|а)?)\.?$",
+    )
+    .unwrap()
+});
 const UNITS: &[&str] = &[
     "g", "gr", "kg", "mg", "ml", "cl", "dl", "l", "tsp", "tbsp", "tbs", "tbls", "teaspoon", "teaspoons",
     "tablespoon", "tablespoons", "cup", "cups", "oz", "ounce", "ounces", "lb", "lbs", "lbs.", "pound",
@@ -140,6 +156,7 @@ fn looks_like_ingredient_line(line: &str) -> bool {
         && !is_prose(line)
         && !is_header(line)
         && !JUNK.is_match(line)
+        && !TIME_DURATION_LINE.is_match(line.trim())
         && line.chars().any(|c| c.is_alphabetic())
 }
 
@@ -324,6 +341,22 @@ mod tests {
     fn short_multi_sentence_instruction_line_is_not_an_ingredient() {
         let got = source_ingredients("500 g Kartoffeln\n2 Möhren\n\nKartoffeln schälen. Kartoffeln kochen.");
         assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["kartoffeln", "möhren"]);
+    }
+
+    /// Regression (found against real data): a bare time-duration line, or
+    /// a "Label: N unit" duration line, is never an ingredient even though
+    /// it has the same "qty unit" shape LEADING_QTY/TRAILING_QTY look for.
+    #[test]
+    fn time_duration_lines_are_never_ingredients() {
+        // A standalone duration line, its own paragraph after a blank line
+        // (which doesn't break a fallback run) — "6-10 minutes." has the
+        // same "qty unit" shape as a real ingredient line.
+        let got = source_ingredients("2 eggs\n1 cup flour\n\n6-10 minutes.");
+        assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["eggs", "flour"]);
+        // A "Label: N unit" duration line (German "Durch: 15 Minuten").
+        assert!(!source_ingredients("Ingredients:\n2 eggs\n1 cup flour\nDurch: 15 Minuten\n\nMethod: bake.")
+            .iter()
+            .any(|s| s.name.contains("durch")));
     }
 
     /// Regression (found against real data): a short multi-period
