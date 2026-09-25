@@ -8,9 +8,11 @@
 //! stderr).
 //!
 //! Robustness: a line that isn't valid UTF-8 or isn't valid JSON is reported
-//! to stderr and skipped (counted in the summary), never a panic. An unknown
-//! flag is a usage error (exit 2). Writing to a closed stdout (`| head`,
-//! a pipeline reader that exits early) exits quietly rather than erroring.
+//! to stderr and skipped (counted in the summary), never a panic. A leading
+//! UTF-8 BOM on the very first line is stripped rather than tripping JSON
+//! parsing. An unknown flag is a usage error (exit 2); a stdin read error
+//! is a hard error (exit 1). Writing to a closed stdout (`| head`, a
+//! pipeline reader that exits early) exits quietly rather than erroring.
 
 use cooklang_import::lint::{autofix, lint, score, source_language, Kind};
 use serde::Deserialize;
@@ -51,6 +53,7 @@ fn main() -> ExitCode {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let mut buf: Vec<u8> = Vec::new();
+    let mut first_line = true;
 
     loop {
         buf.clear();
@@ -59,7 +62,13 @@ fn main() -> ExitCode {
             Ok(_) => {}
             Err(e) => {
                 eprintln!("cooklang-lint: stdin read error: {e}");
-                break;
+                return ExitCode::from(1);
+            }
+        }
+        if first_line {
+            first_line = false;
+            if let Some(rest) = buf.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+                buf = rest.to_vec();
             }
         }
         while matches!(buf.last(), Some(b'\n' | b'\r')) {
