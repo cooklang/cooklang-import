@@ -74,6 +74,19 @@ fn flags_stray_braces_and_optional_colon() {
 }
 
 #[test]
+fn stray_braces_autofixable_only_when_the_pair_is_empty() {
+    let doc = "---\ntitle: T\n---\n\nAdd @ciboulette{20%brins}{}.\n";
+    let issues = lint("", doc);
+    let issue = issue_for(&issues, Kind::StrayBraces).expect("StrayBraces issue");
+    assert!(issue.autofixable);
+
+    let doc = "---\ntitle: T\n---\n\nAdd @a{1%unit}{2}.\n";
+    let issues = lint("", doc);
+    let issue = issue_for(&issues, Kind::StrayBraces).expect("StrayBraces issue");
+    assert!(!issue.autofixable);
+}
+
+#[test]
 fn flags_unit_as_note() {
     assert!(body_kinds("Mince @garlic{4}(cloves).").contains(&Kind::UnitAsNote));
     assert!(body_kinds("Beat @eggs{2}(large).").contains(&Kind::UnitAsNote));

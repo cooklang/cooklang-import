@@ -59,7 +59,7 @@ static UNIT_WORD: LazyLock<Regex> = LazyLock::new(|| {
     ))
     .unwrap()
 });
-static STRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}\{[^}\n]*\}").unwrap());
+static STRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}\{([^}\n]*)\}").unwrap());
 /// `\d%<unit>` glued together in prose, e.g. "200%ml water" — a converter
 /// artifact where the `%` scaling sigil leaked into plain text. Restricted to
 /// a unit whitelist (rather than any letter) so it doesn't fire on languages
@@ -115,8 +115,11 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
             }
         }
     }
-    for m in STRAY.find_iter(body) {
-        push(Kind::StrayBraces, Severity::Error, m.as_str(), true);
+    for cap in STRAY.captures_iter(body) {
+        // Only a bare `{}` stray pair is a safe delete; `{2}` might hold a
+        // real (if misplaced) value the autofixer shouldn't discard.
+        let fixable = cap[1].is_empty();
+        push(Kind::StrayBraces, Severity::Error, &cap[0], fixable);
     }
     if body.contains("@?:") {
         push(Kind::OptionalColon, Severity::Error, "@?:", true);
