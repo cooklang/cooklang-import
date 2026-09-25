@@ -106,3 +106,10 @@ fn flags_invalid_yaml() {
 fn nested_metadata_is_not_empty() {
     assert!(!fm_kinds("title: T\nnutrition:\n  calories: 480 kcal").contains(&Kind::EmptyMetadata));
 }
+
+#[test]
+fn list_children_are_not_empty_metadata() {
+    assert!(!fm_kinds("title: T\ntags:\n- a").contains(&Kind::EmptyMetadata));
+    assert!(!fm_kinds("title: T\ntags:\n- a\n- b").contains(&Kind::EmptyMetadata));
+    assert!(!fm_kinds("title: T\nnutrition:\n\tcalories: 480 kcal").contains(&Kind::EmptyMetadata));
+}

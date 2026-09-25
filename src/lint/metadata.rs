@@ -16,6 +16,17 @@ pub(super) const KEY_RENAMES: &[(&str, &str)] = &[
     ("image_url", "image"),
 ];
 
+/// A key has "children" when the next non-blank line is indented (space or
+/// tab) or is a YAML sequence item (`- `). Exposed as `pub(super)` because
+/// `fix::fix_frontmatter` reuses this to decide whether an empty-looking
+/// line is safe to delete.
+pub(super) fn has_children(lines: &[&str], i: usize) -> bool {
+    lines[i + 1..]
+        .iter()
+        .find(|l| !l.trim().is_empty())
+        .is_some_and(|next| next.starts_with(' ') || next.starts_with('\t') || next.starts_with('-'))
+}
+
 pub(super) fn check(frontmatter: &str) -> Vec<Issue> {
     let mut issues = Vec::new();
     if serde_yaml::from_str::<serde_yaml::Value>(frontmatter).is_err() {
@@ -25,8 +36,7 @@ pub(super) fn check(frontmatter: &str) -> Vec<Issue> {
     for (i, line) in lines.iter().enumerate() {
         let Some(cap) = TOP_LEVEL.captures(line) else { continue };
         let (key, value) = (&cap[1], &cap[2]);
-        let has_children = lines.get(i + 1).is_some_and(|next| next.starts_with(' '));
-        if PLACEHOLDERS.contains(&value) && !has_children {
+        if PLACEHOLDERS.contains(&value) && !has_children(&lines, i) {
             issues.push(Issue::new(Kind::EmptyMetadata, Severity::Warning, *line, true));
         }
         if KEY_RENAMES.iter().any(|(from, _)| *from == key) {
