@@ -7,6 +7,9 @@ pub(crate) mod model;
 pub mod pipelines;
 pub mod url_to_text;
 
+#[cfg(feature = "lint")]
+pub mod lint;
+
 #[cfg(feature = "uniffi")]
 pub mod uniffi_bindings;
 

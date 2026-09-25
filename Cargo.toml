@@ -23,10 +23,16 @@ name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"
 required-features = ["uniffi-cli"]
 
+[[bin]]
+name = "cooklang-lint"
+path = "src/bin/cooklang-lint.rs"
+required-features = ["lint"]
+
 [features]
 uniffi-cli = ["uniffi", "uniffi/cli"]
 default = []
 uniffi = ["dep:uniffi"]
+lint = ["dep:cooklang", "dep:regex"]
 
 [dependencies]
 async-trait = "0.1.83"
@@ -53,6 +59,9 @@ whatlang = "0.16"
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs"] }
 uniffi = { version = "0.28", optional = true }
 serde_yaml = "0.9"
+# Only for the `lint` feature (server-side checker); keeps mobile builds small
+cooklang = { version = "0.18.7", optional = true }
+regex = { version = "1", optional = true }
 
 [dev-dependencies]
 flate2 = "1.1"
