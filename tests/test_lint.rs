@@ -151,6 +151,16 @@ fn unit_as_note_never_fires_on_cookware() {
 }
 
 #[test]
+fn unit_as_note_ignores_prose_in_parens_after_a_space() {
+    // A note glued to '}' is a real cooklang note; a '(' preceded by a space
+    // is ordinary prose in parentheses, not a note — only flag it when the
+    // *entire* parenthetical is a single unit word.
+    assert!(!body_kinds("Cook @onion{1} (medium heat) until soft.").contains(&Kind::UnitAsNote));
+    assert!(!body_kinds("Add @bread{4} (slices are fine) now.").contains(&Kind::UnitAsNote));
+    assert!(body_kinds("Mince @garlic{4} (cloves).").contains(&Kind::UnitAsNote));
+}
+
+#[test]
 fn flags_cookware_quantity_and_junk() {
     assert!(body_kinds("Use a #slow cooker{5-6 quart}.").contains(&Kind::CookwareQuantity));
     assert!(body_kinds("x #cncpt-mob_incontent > div{margin:40px}").contains(&Kind::CookwareJunk));

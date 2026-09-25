@@ -3,10 +3,13 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 /// `@name{content}(note)` — name may contain spaces, never another sigil, and
-/// never starts with a space. Tolerates a space between `}` and the note's
-/// opening `(`, which converters sometimes emit ("{4} (cloves)").
+/// never starts with a space. Captures the whitespace between `}` and `(`
+/// separately (group 3) from the note itself (group 4): in real Cooklang a
+/// note is glued to `}`, so `(` preceded by a space is ordinary prose in
+/// parentheses, not a note — `check()` only treats it as a note when that
+/// whole parenthetical is a single unit word.
 pub(super) static INGREDIENT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"@\??([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}\s*(\([^)\n]*\))?").unwrap()
+    Regex::new(r"@\??([^\s@#~{}][^@#~{}\n]*?)\{([^}\n]*)\}(\s*)(\([^)\n]*\))?").unwrap()
 });
 /// Name must not start with a space, so a stray '#' followed by prose
 /// ("# Step 1 {x}") doesn't read as cookware.
@@ -48,21 +51,26 @@ pub(super) static GLUED_QTY: LazyLock<Regex> =
 /// `UnitAsNote`'s `{qty}`, e.g. "4", "1,5", "½".
 static QTY_PLAIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?:\d[\d.,]*|[½¼¾⅓⅔⅛])$").unwrap());
+/// The unit-word alternation shared by UNIT_WORD and UNIT_WORD_EXACT.
+const UNIT_WORD_ALT: &str = concat!(
+    r"cloves?|slices?|large|small|medium|sprigs?|heads?|bunch(?:es)?|sticks?|cans?|leaves|",
+    r"gousses?|tranches?|bâtons?|brins?|têtes?|",
+    r"Zehen?|Scheiben?|Stängel|Bund|Dosen?|Stangen|Zweige|Blätter|Stück|Prise|",
+    r"feuilles|pincées?|sachets?|boîtes?",
+);
 /// A unit word at the start of the `(...)` note that should have been the
 /// `%unit` inside the braces instead, e.g. `{4}(cloves)` or `{4}(cloves,
 /// minced)` — matched at the start only, so trailing prep text after a comma
-/// doesn't prevent the match.
-static UNIT_WORD: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(concat!(
-        r"(?i)^(",
-        r"cloves?|slices?|large|small|medium|sprigs?|heads?|bunch(?:es)?|sticks?|cans?|leaves|",
-        r"gousses?|tranches?|bâtons?|brins?|têtes?|",
-        r"Zehen?|Scheiben?|Stängel|Bund|Dosen?|Stangen|Zweige|Blätter|Stück|Prise|",
-        r"feuilles|pincées?|sachets?|boîtes?",
-        r")\b"
-    ))
-    .unwrap()
-});
+/// doesn't prevent the match. Only used for the glued `{n}(...)` form, where
+/// the whole parenthetical is a genuine cooklang note.
+static UNIT_WORD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"(?i)^({UNIT_WORD_ALT})\b")).unwrap());
+/// Same word list, but the whole (trimmed) text must be nothing but the unit
+/// word — used for `{n} (...)` (a space before the paren), where the
+/// parenthetical is ordinary prose unless it's exactly one unit word, e.g.
+/// `{4} (cloves)` but not `{1} (medium heat)`.
+static UNIT_WORD_EXACT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"(?i)^(?:{UNIT_WORD_ALT})$")).unwrap());
 static STRAY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\}\{([^}\n]*)\}").unwrap());
 /// `\d%<unit>` glued together in prose, e.g. "200%ml water" — a converter
 /// artifact where the `%` scaling sigil leaked into plain text. Restricted to
@@ -121,9 +129,15 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
             if cap[1].contains('%') {
                 push(Kind::PercentInText, Severity::Error, whole, false);
             }
-            if let Some(note) = cap.get(3) {
+            if let Some(note) = cap.get(4) {
                 let note_inner = note.as_str().trim_start_matches('(').trim_end_matches(')');
-                if QTY_PLAIN.is_match(content) && UNIT_WORD.is_match(note_inner) {
+                let has_space = !cap[3].is_empty();
+                let is_unit = if has_space {
+                    UNIT_WORD_EXACT.is_match(note_inner.trim())
+                } else {
+                    UNIT_WORD.is_match(note_inner)
+                };
+                if QTY_PLAIN.is_match(content) && is_unit {
                     push(Kind::UnitAsNote, Severity::Error, whole, true);
                 }
             }
