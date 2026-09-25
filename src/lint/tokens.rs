@@ -95,6 +95,56 @@ pub(super) fn strip_tokens(text: &str) -> String {
     ANY_TOKEN.replace_all(text, "").into_owned()
 }
 
+/// For an autofixable MissingPercent ingredient quantity, returns the fixed
+/// `{qty%unit}` content — inserting the `%` between the number and the unit
+/// without ever touching a digit. Returns `None` for a word-spelled range
+/// ("2 to 3 cups") or anything neither SPACED_QTY nor GLUED_QTY (minus a bare
+/// "x") recognizes.
+///
+/// Not yet called from non-test code: `fix::autofix` (a later task) will use
+/// this to rewrite MissingPercent issues.
+#[allow(dead_code)]
+pub(super) fn fixed_quantity(raw: &str) -> Option<String> {
+    let content = raw.trim();
+    if SPACED_QTY_WORD_RANGE.is_match(content) {
+        return None;
+    }
+    if let Some(cap) = SPACED_QTY.captures(content) {
+        let unit = cap.get(1).unwrap();
+        let number = content[..unit.start()].trim_end();
+        return Some(format!("{number}%{}", unit.as_str().trim()));
+    }
+    if let Some(cap) = GLUED_QTY.captures(content) {
+        if !cap[2].eq_ignore_ascii_case("x") {
+            return Some(format!("{}%{}", &cap[1], &cap[2]));
+        }
+    }
+    None
+}
+
+/// For an autofixable UnitAsNote ingredient — a plain quantity (`qty`, e.g.
+/// "4") followed by a note (`note`, e.g. "cloves, minced") that starts with a
+/// unit word — returns the fixed `{qty%unit}` content plus whatever prep text
+/// is left in the note (`None` if nothing remains), e.g.
+/// `("4", "cloves, minced")` -> `("4%cloves", Some("minced"))`.
+///
+/// Not yet called from non-test code: `fix::autofix` (a later task) will use
+/// this to rewrite UnitAsNote issues.
+#[allow(dead_code)]
+pub(super) fn fixed_unit_as_note(qty: &str, note: &str) -> Option<(String, Option<String>)> {
+    if !QTY_PLAIN.is_match(qty) {
+        return None;
+    }
+    let note = note.trim();
+    let m = UNIT_WORD.find(note)?;
+    if m.start() != 0 {
+        return None;
+    }
+    let rest = note[m.end()..].trim_start_matches(',').trim();
+    let remaining = if rest.is_empty() { None } else { Some(rest.to_string()) };
+    Some((format!("{qty}%{}", m.as_str()), remaining))
+}
+
 /// A `-- comment`, `> note`, or `[- block comment -]` line — never a real
 /// step, so a missing `%` or an unescaped `~digit` there isn't a converter
 /// defect worth flagging. Only recognizes a block comment that starts the
@@ -183,4 +233,45 @@ pub(super) fn check(body: &str) -> Vec<Issue> {
         push(Kind::PhantomToken, Severity::Error, m.as_str(), false);
     }
     issues
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_quantity_inserts_percent_between_number_and_unit() {
+        assert_eq!(fixed_quantity("2 cups"), Some("2%cups".to_string()));
+        assert_eq!(fixed_quantity("1 1/2 cups"), Some("1 1/2%cups".to_string()));
+        assert_eq!(fixed_quantity("½ cup"), Some("½%cup".to_string()));
+        assert_eq!(fixed_quantity("200g"), Some("200%g".to_string()));
+        assert_eq!(fixed_quantity("2–3 large"), Some("2–3%large".to_string()));
+    }
+
+    #[test]
+    fn fixed_quantity_never_touches_word_ranges_or_bare_x() {
+        assert_eq!(fixed_quantity("2 to 3 cups"), None);
+        assert_eq!(fixed_quantity("2 bis 3 EL"), None);
+        assert_eq!(fixed_quantity("2x"), None);
+    }
+
+    #[test]
+    fn fixed_unit_as_note_splits_unit_from_remaining_prep_text() {
+        assert_eq!(
+            fixed_unit_as_note("4", "cloves, minced"),
+            Some(("4%cloves".to_string(), Some("minced".to_string())))
+        );
+        assert_eq!(fixed_unit_as_note("4", "cloves"), Some(("4%cloves".to_string(), None)));
+        assert_eq!(
+            fixed_unit_as_note("1,5", "Zehen"),
+            Some(("1,5%Zehen".to_string(), None))
+        );
+        assert_eq!(fixed_unit_as_note("½", "head"), Some(("½%head".to_string(), None)));
+    }
+
+    #[test]
+    fn fixed_unit_as_note_rejects_non_plain_quantities_and_non_unit_notes() {
+        assert_eq!(fixed_unit_as_note("2 cups", "cloves"), None);
+        assert_eq!(fixed_unit_as_note("4", "diced"), None);
+    }
 }
