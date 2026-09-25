@@ -22,6 +22,34 @@ fn split_frontmatter_separates_yaml_and_body() {
 }
 
 #[test]
+fn split_frontmatter_tolerates_bom_and_crlf() {
+    let (fm, body) = split_frontmatter("\u{FEFF}---\ntitle: X\n---\n\nStep.\n");
+    assert_eq!(fm, Some("title: X"));
+    assert_eq!(body.trim(), "Step.");
+
+    let (fm, body) = split_frontmatter("---\r\ntitle: X\r\n---\r\nStep");
+    assert_eq!(fm, Some("title: X"));
+    assert_eq!(body, "Step");
+}
+
+#[test]
+fn split_frontmatter_closing_fence_must_be_exact() {
+    // "---more" and "----" are not a bare "---" line, so no frontmatter is
+    // recognized at all rather than mis-splitting on a substring match.
+    let doc = "---\ntitle: X\n---more\nStep";
+    assert_eq!(split_frontmatter(doc), (None, doc));
+    let doc = "---\ntitle: X\n----\nStep";
+    assert_eq!(split_frontmatter(doc), (None, doc));
+}
+
+#[test]
+fn split_frontmatter_closing_fence_at_eof() {
+    let (fm, body) = split_frontmatter("---\ntitle: X\n---");
+    assert_eq!(fm, Some("title: X"));
+    assert_eq!(body, "");
+}
+
+#[test]
 fn score_weights_errors_three_warnings_one() {
     let issues = vec![
         Issue::new(Kind::MissingPercent, Severity::Error, "x", true),

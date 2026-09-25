@@ -66,12 +66,39 @@ impl Issue {
 }
 
 /// Splits `---\n<yaml>\n---` frontmatter from the body.
+///
+/// Tolerates a leading BOM and `\r\n` line endings, and requires the closing
+/// fence to be exactly `---` on its own line (`\n---\n`, or `\n---` at EOF) —
+/// a substring match would wrongly treat "---more" or "----" as a close.
 pub fn split_frontmatter(doc: &str) -> (Option<&str>, &str) {
-    if let Some(rest) = doc.strip_prefix("---\n") {
-        if let Some(end) = rest.find("\n---") {
-            let after = &rest[end + 4..];
-            return (Some(&rest[..end]), after.trim_start_matches('\n'));
+    let doc = doc.strip_prefix('\u{FEFF}').unwrap_or(doc);
+    let Some(after_open) = doc.strip_prefix("---\r\n").or_else(|| doc.strip_prefix("---\n"))
+    else {
+        return (None, doc);
+    };
+
+    let mut pos = 0usize;
+    loop {
+        let rest = &after_open[pos..];
+        let (line, next_pos, is_last) = match rest.find('\n') {
+            Some(rel) => (&rest[..rel], pos + rel + 1, false),
+            None => (rest, after_open.len(), true),
+        };
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if line == "---" {
+            let fm = if pos == 0 {
+                ""
+            } else {
+                let raw = &after_open[..pos - 1];
+                raw.strip_suffix('\r').unwrap_or(raw)
+            };
+            let body = &after_open[next_pos.min(after_open.len())..];
+            return (Some(fm), body.trim_start_matches(['\n', '\r']));
         }
+        if is_last {
+            break;
+        }
+        pos = next_pos;
     }
     (None, doc)
 }
