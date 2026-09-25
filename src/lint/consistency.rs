@@ -166,7 +166,10 @@ fn word_boundary_match(haystack: &str, needle: &str) -> bool {
         if before_ok && after_ok {
             return true;
         }
-        start = idx + 1;
+        // Advance past exactly one *character* (not byte) so the next slice
+        // stays on a UTF-8 boundary — a raw `idx + 1` panics mid-character
+        // on any multi-byte script (Cyrillic, accented Latin, CJK).
+        start = idx + haystack[idx..].chars().next().map_or(1, char::len_utf8);
         if start > haystack.len() {
             break;
         }
@@ -305,6 +308,21 @@ mod tests {
         assert!(!word_boundary_match("1 eggplant", "egg"));
         assert!(!word_boundary_match("unsalted butter", "salt"));
         assert!(word_boundary_match("salt, black pepper", "salt"));
+    }
+
+    /// Regression (found against real data): a rejected match must advance
+    /// the scan by one *character*, not one byte — a raw `idx + 1` panics
+    /// mid-character on any multi-byte script when the first candidate
+    /// match is rejected and the search has to continue past it.
+    #[test]
+    fn word_boundary_match_does_not_panic_on_multi_byte_text() {
+        // "смл" contains "мл" as a raw substring, rejected by the boundary
+        // check ('с' is alphanumeric); advancing past the rejection must not
+        // split the 2-byte Cyrillic 'м' — the real match is later in the string.
+        assert!(word_boundary_match("смл 100 мл", "мл"));
+        // "café" contains 'é' preceded by 'f' (rejected); advancing past it
+        // must not split the 2-byte 'é' either.
+        assert!(!word_boundary_match("café au lait", "é"));
     }
 
     #[test]
