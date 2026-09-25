@@ -195,6 +195,12 @@ fn missing_percent_and_tilde_skip_comment_and_note_lines() {
 }
 
 #[test]
+fn missing_percent_and_tilde_skip_block_comment_lines() {
+    assert!(!body_kinds("[- @x{2 cups} -]\nMix.").contains(&Kind::MissingPercent));
+    assert!(!body_kinds("[- rest for ~2 minutes -]\nMix.").contains(&Kind::TildeApprox));
+}
+
+#[test]
 fn flags_percent_in_text_and_phantom_and_tilde() {
     assert!(body_kinds("Dilute in 200%ml water.").contains(&Kind::PercentInText));
     assert!(!body_kinds("Use 80% dark chocolate.").contains(&Kind::PercentInText));

@@ -95,11 +95,13 @@ pub(super) fn strip_tokens(text: &str) -> String {
     ANY_TOKEN.replace_all(text, "").into_owned()
 }
 
-/// A `-- comment` or `> note` line — never a real step, so a missing `%` or
-/// an unescaped `~digit` there isn't a converter defect worth flagging.
+/// A `-- comment`, `> note`, or `[- block comment -]` line — never a real
+/// step, so a missing `%` or an unescaped `~digit` there isn't a converter
+/// defect worth flagging. Only recognizes a block comment that starts the
+/// line; one inline alongside real content is left to the other checks.
 fn is_comment_or_note_line(line: &str) -> bool {
     let t = line.trim_start();
-    t.starts_with("--") || t.starts_with('>')
+    t.starts_with("--") || t.starts_with('>') || t.starts_with("[-")
 }
 
 pub(super) fn check(body: &str) -> Vec<Issue> {
