@@ -103,6 +103,18 @@ fn flags_invalid_yaml() {
 }
 
 #[test]
+fn parse_errors_do_not_suppress_warnings_or_recipe() {
+    // "Timer value is text: abc" is a ParseError; "{~}" (an empty, invalid
+    // component) triggers "Invalid single word name..." as a ParseWarning.
+    // Both must surface, and the recipe (present despite the error) must
+    // still be handed to `consistency::check`.
+    let doc = "---\ntitle: T\n---\n\nCook for ~{abc%minutes}. {~}\n";
+    let ks = kinds(&lint("", doc));
+    assert!(ks.contains(&Kind::ParseError));
+    assert!(ks.contains(&Kind::ParseWarning));
+}
+
+#[test]
 fn nested_metadata_is_not_empty() {
     assert!(!fm_kinds("title: T\nnutrition:\n  calories: 480 kcal").contains(&Kind::EmptyMetadata));
 }

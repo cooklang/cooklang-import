@@ -84,12 +84,10 @@ pub fn lint(original: &str, cooklang: &str) -> Vec<Issue> {
         issues.extend(metadata::check(fm));
     }
     issues.extend(tokens::check(body));
-    match parse::parse(cooklang) {
-        Ok((recipe, diags)) => {
-            issues.extend(diags);
-            issues.extend(consistency::check(original, body, &recipe));
-        }
-        Err(diags) => issues.extend(diags),
+    let (recipe, diags) = parse::parse(cooklang);
+    issues.extend(diags);
+    if let Some(recipe) = &recipe {
+        issues.extend(consistency::check(original, body, recipe));
     }
     issues
 }
