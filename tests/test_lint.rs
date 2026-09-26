@@ -1,5 +1,5 @@
 #![cfg(feature = "lint")]
-use cooklang_import::lint::{autofix, lint, score, split_frontmatter, Issue, Kind, Severity};
+use cooklang_import::lint::{autofix, lint, method_words, score, split_frontmatter, Issue, Kind, Severity};
 
 fn kinds(issues: &[Issue]) -> Vec<Kind> {
     issues.iter().map(|i| i.kind).collect()
@@ -1264,4 +1264,21 @@ fn under_count_accepts_a_listing_covered_by_its_alternative_amount() {
 fn under_count_ignores_a_counted_compound_listing() {
     let orig = "1 salt & pepper\n2 eggs\n100 g flour\n\nSeason and mix.";
     assert!(under(orig, "Season with @salt{} and @pepper{}. Mix @eggs{2} and @flour{100%g}.").is_empty());
+}
+
+/// Words of the original outside the extracted ingredient lines, and the
+/// longest such line: an ingredient-list-only original has (almost) none, a
+/// one-sentence method has one long line, and unspaced CJK counts by characters.
+#[test]
+fn method_words_counts_text_outside_the_ingredient_list() {
+    let list_only = "Gyros\nZutaten:\n500 g Kartoffeln\n2 Möhren\n1 EL Öl\nSalz\n";
+    let (total, longest) = method_words(list_only);
+    assert!(total <= 3 && longest <= 1, "{total} {longest}");
+    let with_method = "500 g Kartoffeln\n2 Möhren\n1 EL Öl\n\nDie Kartoffeln schälen und in Würfel schneiden. \
+        Die Möhren raspeln und alles in einer Pfanne mit dem Öl goldbraun braten.";
+    assert!(method_words(with_method).0 >= 15);
+    let short_method = "1 cup flour\n1 cup sugar\n1 egg\n\nMix together and bake in moderate oven 180 degrees.";
+    assert!(method_words(short_method).1 >= 6);
+    let chinese = "3个鸡蛋\n2个西红柿\n1根葱\n\n鸡蛋磕入碗中，加少许盐，打散；锅烧热，倒油，倒入蛋液，用筷子把鸡蛋划散。";
+    assert!(method_words(chinese).1 >= 6, "{:?}", method_words(chinese));
 }

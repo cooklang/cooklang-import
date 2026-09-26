@@ -14,7 +14,7 @@
 //! is a hard error (exit 1). Writing to a closed stdout (`| head`, a
 //! pipeline reader that exits early) exits quietly rather than erroring.
 
-use cooklang_import::lint::{autofix, lint, score, source_language, Kind};
+use cooklang_import::lint::{autofix, lint, method_words, score, source_language, Kind};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -103,6 +103,8 @@ fn main() -> ExitCode {
         let mut record = json!({
             "udid": row.udid,
             "language": source_language(original_text),
+            "method_words": method_words(original_text).0,
+            "method_longest_line": method_words(original_text).1,
             "score": score(&issues),
             "issues": issues,
         });

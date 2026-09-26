@@ -61,7 +61,7 @@ fn words(s: &str) -> Vec<String> {
 /// A CJK ideograph, kana or hangul syllable — scripts with no whitespace
 /// between words, where `words`'s alnum-splitting doesn't segment anything
 /// meaningful.
-fn is_cjk(c: char) -> bool {
+pub(super) fn is_cjk(c: char) -> bool {
     matches!(c as u32,
         0x2E80..=0x2EFF | 0x3040..=0x30FF | 0x3400..=0x4DBF |
         0x4E00..=0x9FFF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF)

@@ -131,6 +131,29 @@ pub fn score(issues: &[Issue]) -> u32 {
         .sum()
 }
 
+/// Words in the original outside its extracted ingredient lines (bullets
+/// stripped): `(total, longest line)`. Unspaced CJK text counts one word per
+/// two CJK characters. An original that is only an ingredient list has
+/// (almost) none — no method to convert, so a draft with steps invented them.
+/// Not a lint issue; callers pick the thresholds.
+pub fn method_words(original: &str) -> (usize, usize) {
+    let listed: std::collections::HashSet<String> =
+        source::source_ingredients(original).into_iter().map(|s| s.line).collect();
+    let per_line: Vec<usize> = original
+        .lines()
+        .map(|l| l.trim().trim_start_matches(['▢', '•', '-', '*', '·', '–', '\u{200b}']).trim())
+        // A line of 20+ CJK characters is a sentence even if the extractor listed it
+        // (unspaced text has no word count or "." for its prose check to see).
+        .filter(|l| !listed.contains(*l) || l.chars().filter(|c| consistency::is_cjk(*c)).count() >= 20)
+        .map(|l| {
+            let cjk = l.chars().filter(|c| consistency::is_cjk(*c)).count();
+            let spaced = l.split_whitespace().filter(|w| w.chars().any(|c| c.is_alphabetic() && !consistency::is_cjk(c))).count();
+            spaced + cjk / 2
+        })
+        .collect();
+    (per_line.iter().sum(), per_line.iter().copied().max().unwrap_or(0))
+}
+
 /// Human-readable language of the original text (same detector as the prompt).
 pub fn source_language(original: &str) -> Option<String> {
     whatlang::detect(original).map(|info| info.lang().eng_name().to_string())
