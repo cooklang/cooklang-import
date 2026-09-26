@@ -8,6 +8,9 @@ A6: A4 with edit-level rejection: each edit is checked on its own against the te
     (no "no recipe", paragraph count unchanged, no ingredient name lost except accepted renames);
     the surviving edits are kept, then autofix and the checker-score guard. Draft shown unnumbered
     (prompts/repair_edits_prompt_v2.txt).
+A7: A6, then one more edit round (same prompt v2, same per-edit checks, then autofix and the
+    score guard) only when body checker issues remain after A6's final autofix. The problem
+    list is the remaining checker issues only — no second judge call.
 """
 import argparse, asyncio, collections, json, re
 
@@ -291,12 +294,48 @@ async def run_a6(row):
     }
 
 
+async def run_a7(row):
+    rec = await run_a6(row)
+    cur = lint_many([{**row, "cook": rec["cook"]}], fix=True)[row["udid"]]
+    fm, body = split_frontmatter(cur["fixed"])
+    issues = [i for i in cur["fixed_issues"] if i["kind"] not in FRONTMATTER_KINDS]
+    r2 = {"round2": bool(issues), "round2_edits": [], "round2_applied": 0, "round2_rejected": [],
+          "round2_kept": False, "round2_latency_ms": 0, "round2_score_before": cur["fixed_score"]}
+    final, calls = cur["fixed"], list(rec["calls"])
+    if issues:
+        edits, rr, fallback = await repair_edits(row["original_text"], body, issue_lines(issues, None),
+                                                 template=REPAIR_EDITS_PROMPT_V2, number=False)
+        for step, r in ((("repair2_strict_failed", fallback),) if fallback else ()) + (("repair2", rr),):
+            calls.append({"step": step, "latency_ms": r["latency_ms"], "cost": r["cost"],
+                          "usage": r["usage"], "cached": r.get("cached", False)})
+            r2["round2_latency_ms"] += r["latency_ms"]
+        new_body, applied, rejected = body, [], []
+        for e in edits:
+            new_body, reason = check_edit(new_body, e, cur["fixed_issues"])
+            if reason:
+                rejected.append({"reason": reason, "find": e.get("find", "")[:80]})
+            else:
+                applied.append(e)
+        r2.update(round2_edits=edits, round2_applied=len(applied), round2_rejected=rejected)
+        if applied:
+            cand = lint_many([{**row, "cook": join_frontmatter(fm, new_body)}], fix=True)[row["udid"]]
+            r2["round2_candidate_score"] = cand["fixed_score"]
+            if cand["fixed_score"] <= cur["fixed_score"]:
+                final = cand["fixed"]
+                r2["round2_kept"] = True
+    return {**rec, **r2, "pipeline": "A7", "cook": final, "calls": calls,
+            "latency_ms": rec["latency_ms"] + r2["round2_latency_ms"],
+            "cost": sum(c["cost"] for c in calls)}
+
+
 async def run_one(row, pipeline, baseline_lint):
     """Returns the per-recipe record for one pipeline."""
     if pipeline == "A4":
         return await run_a4(row)
     if pipeline == "A6":
         return await run_a6(row)
+    if pipeline == "A7":
+        return await run_a7(row)
     fm, a0_body = split_frontmatter(row["cook"])
     calls, added_ms = [], 0
     if pipeline in ("B0", "B1"):

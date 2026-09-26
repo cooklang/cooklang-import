@@ -49,7 +49,7 @@ def main():
     finals = {"A0": {u: r["cook"] for u, r in rows.items()},
               "A1": {u: r["fixed"] for u, r in a1.items()}}
     recs = {}
-    for p in ("A2", "A4", "A5", "A6"):
+    for p in ("A2", "A4", "A5", "A6", "A7"):
         d = load(p)
         if d and len(d) == len(rows):
             finals[p], recs[p] = {u: r["cook"] for u, r in d.items()}, d
@@ -66,7 +66,7 @@ def main():
         row["cnd"] = pct(sum(1 for u in rows if not lint[u]["issues"] and not d[u][0] and not d[u][3]), n)
         if p in recs:
             R = recs[p]
-            if p in ("A4", "A6"):
+            if p in ("A4", "A6", "A7"):
                 trig = [u for u, r in R.items() if r["repaired"]]
                 kept = [u for u, r in R.items() if r["repair_kept"]]
             else:
@@ -82,6 +82,15 @@ def main():
                        lat=f"{q(lat, .5):.1f} / {q(lat, .9):.1f} s",
                        cost=f"${sum(r['cost'] for r in R.values()) / n:.4f}",
                        new=f"${sum(new_spend(p, r) for r in R.values()):.2f}")
+            if p == "A7":
+                r2 = [r for r in R.values() if r["round2"]]
+                lat2 = [r["round2_latency_ms"] / 1000 for r in r2]
+                spend2 = sum(c["cost"] for r in r2 for c in r["calls"]
+                             if c["step"].startswith("repair2") and not c["cached"])
+                extra += [f"A7 round 2: {len(r2)} recipes ({pct(len(r2), n)}), kept {sum(r['round2_kept'] for r in r2)}, "
+                          f"edits applied {sum(r['round2_applied'] for r in r2)}, rejected "
+                          f"{dict(collections.Counter(x['reason'] for r in r2 for x in r['round2_rejected']))}, "
+                          f"added latency p50/p90 {q(lat2, .5):.1f} / {q(lat2, .9):.1f} s, round-2 new $ {spend2:.2f}"]
             if p in ("A4", "A6"):
                 app = sum(r["edits_applied"] for r in R.values())
                 rej = sum(r["edits_rejected"] for r in R.values())
