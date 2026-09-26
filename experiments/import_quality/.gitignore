@@ -2,3 +2,6 @@ data/
 cache/
 results/*.jsonl
 __pycache__/
+results/*.log
+results/grade_batches*.json
+results/grade_sample.json

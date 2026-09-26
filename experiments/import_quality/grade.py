@@ -1,9 +1,17 @@
-"""Grade pipelines' final outputs with Sonnet 5 (eval_prompt.txt) -> results/grades.jsonl.
+"""Grade pipelines' final outputs with Sonnet 5 (eval_prompt.txt) -> results/grades_v2.jsonl.
 
-    python3 grade.py --pipelines A1,A6,A7 --estimate 10   # 10 direct (non-batch) calls, project cost
-    python3 grade.py --pipelines A1,A6,A7 --submit        # create batch(es), ids -> results/grade_batches.json
-    python3 grade.py --pipelines A1 --sample 300 --submit # a fixed random subset of recipes
-    python3 grade.py --collect                            # poll once; append finished results
+v2 (2026-09-26): the grader sees the FULL document (frontmatter + body). v1 passed the body only,
+so eval_prompt.txt's "missing frontmatter/title" rule made ~every grade a 2; those v1 grades in
+results/grades.jsonl are INVALID and are no longer read or written. v2 records carry
+"grader_input": "full_doc".
+
+    python3 grade.py --pipelines A1,A8 --estimate 5            # 5 direct (non-batch) calls, project cost
+    python3 grade.py --pipelines A1,A8 --submit                # batch(es), ids -> results/grade_batches_v2.json
+    python3 grade.py --collect                                 # poll once; append finished results
+    python3 poll_batches.py                                    # poll up to ~8 min, then collect
+
+The recipe sample (default 200) is fixed in results/grade_sample.json: random.seed(2026), then
+random.sample over the udids of data/inputs.jsonl in file order. --sample 0 grades everything.
 
 Each graded item is keyed "<pipeline>:<udid>" (custom_id "<pipeline>__<udid>", which matches
 ^[a-zA-Z0-9_-]{1,64}$). No temperature is passed (Sonnet 5 rejects it); only text blocks are read.
@@ -13,11 +21,13 @@ import argparse, json, random, re
 
 import anthropic
 
-from common import EVAL_PROMPT, RESULTS, SONNET, cost, load_inputs, parse_json, split_frontmatter
+from common import EVAL_PROMPT, RESULTS, SONNET, cost, load_inputs, parse_json
 
 client = anthropic.Anthropic()
-GRADES = RESULTS / "grades.jsonl"
-BATCHES = RESULTS / "grade_batches.json"
+GRADES = RESULTS / "grades_v2.jsonl"
+BATCHES = RESULTS / "grade_batches_v2.json"
+SAMPLE = RESULTS / "grade_sample.json"
+GRADER_INPUT = "full_doc"
 CUSTOM_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
@@ -35,22 +45,30 @@ def outputs(pipelines):
 
 
 def params(original, cook):
-    _, body = split_frontmatter(cook)
-    prompt = EVAL_PROMPT.replace("{{ORIGINAL}}", original).replace("{{COOKLANG}}", body)
+    prompt = EVAL_PROMPT.replace("{{ORIGINAL}}", original).replace("{{COOKLANG}}", cook)
     return {"model": SONNET, "max_tokens": 16000, "messages": [{"role": "user", "content": prompt}]}
 
 
 def record(cid, msg, batch):
     text = "".join(b.text for b in msg.content if b.type == "text")
+    if msg.stop_reason != "end_turn":
+        print(f"  {cid}: stop_reason {msg.stop_reason}")
     usage = {"input_tokens": msg.usage.input_tokens, "output_tokens": msg.usage.output_tokens}
     return {"id": cid, "grade": parse_json(text), "usage": usage, "stop_reason": msg.stop_reason,
-            "cost": cost(SONNET, usage, batch=batch), "batch": batch}
+            "cost": cost(SONNET, usage, batch=batch), "batch": batch, "grader_input": GRADER_INPUT}
 
 
 def sample_udids(n):
-    """A fixed random subset of n recipes (seeded), for grading a pipeline on a sample."""
-    udids = sorted(r["udid"] for r in load_inputs())
-    return set(random.Random(20260926).sample(udids, n)) if n else set(udids)
+    """The fixed recipe sample (results/grade_sample.json, created on first use); n=0 -> all."""
+    udids = [r["udid"] for r in load_inputs()]
+    if not n:
+        return set(udids)
+    if not SAMPLE.exists():
+        random.seed(2026)
+        SAMPLE.write_text(json.dumps(random.sample(udids, n)))
+    sample = json.loads(SAMPLE.read_text())
+    assert len(sample) == n, f"{SAMPLE} holds {len(sample)} udids, not {n}"
+    return set(sample)
 
 
 def pending(pipelines, sample=0):
@@ -65,8 +83,8 @@ def pending(pipelines, sample=0):
             yield cid, params(originals[udid], cook)
 
 
-def estimate(pipelines, n):
-    todo = list(pending(pipelines))
+def estimate(pipelines, n, sample=0):
+    todo = list(pending(pipelines, sample))
     random.seed(11)
     sample = random.sample(todo, min(n, len(todo)))
     recs = []
@@ -124,15 +142,15 @@ def collect():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pipelines", default="A1,A6,A7")
+    ap.add_argument("--pipelines", default="A1,A8")
     ap.add_argument("--estimate", type=int, default=0)
     ap.add_argument("--submit", action="store_true")
     ap.add_argument("--collect", action="store_true")
-    ap.add_argument("--sample", type=int, default=0, help="grade only a fixed random subset of N recipes")
+    ap.add_argument("--sample", type=int, default=200, help="grade only the fixed sample of N recipes (0 = all)")
     a = ap.parse_args()
     pipes = a.pipelines.split(",")
     if a.estimate:
-        estimate(pipes, a.estimate)
+        estimate(pipes, a.estimate, a.sample)
     elif a.submit:
         submit(pipes, a.sample)
     elif a.collect:
