@@ -50,7 +50,7 @@ static METHOD_HEADER: LazyLock<Regex> = LazyLock::new(|| {
 });
 /// Navigation, timing, yield, step markers and other non-ingredient noise
 /// that real exports leave inline with the ingredient list. Also an oven
-/// preheat instruction ("Préchauffer le four à 170 C") — the temperature
+/// preheat instruction ("Préchauffer le four à 195 C") — the temperature
 /// gives it the same "qty unit" shape as an ingredient line ("C"/"F" reads
 /// as a unit) — and a bare, number-first yield line ("8 parts"): the
 /// existing yield keywords only catch the word-first phrasing ("Serves 8").
@@ -155,7 +155,7 @@ fn is_header(line: &str) -> bool {
 /// followed by a *lowercase* continuation, so it doesn't trip this. The
 /// 3-letter minimum on the preceding word additionally excludes short
 /// multi-period abbreviations like German "z.B." ("e.g.") — "B." is a
-/// single letter, so "z.B. Mondamin" doesn't read as two sentences.
+/// single letter, so "z.B. Reisstärke" doesn't read as two sentences.
 static MID_SENTENCE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{L}{3,}\.\s+\p{Lu}").unwrap());
 
 fn is_prose(line: &str) -> bool {
@@ -321,17 +321,17 @@ pub(super) fn source_ingredients(original: &str) -> Vec<SourceIngredient> {
 mod tests {
     use super::*;
 
-    const GERMAN: &str = "500 g kleine Kartoffeln (Drillinge)\n1 Zehe Knoblauch\n\
-        1 EL Olivenöl\ngrobes Meersalz\n\nDen Backofen vorheizen. Die Kartoffeln waschen.";
+    const GERMAN: &str = "400 g junge Möhren (Bund)\n2 Zehen Knoblauch\n\
+        2 EL Rapsöl\nfeines Steinsalz\n\nDen Ofen anheizen. Die Möhren gründlich schrubben.";
 
     #[test]
     fn reads_the_ingredient_block_only() {
         let got = source_ingredients(GERMAN);
         assert_eq!(got.len(), 4);
-        assert_eq!(got[0].name, "kleine kartoffeln");
-        assert_eq!(got[0].qty, Some(500.0));
+        assert_eq!(got[0].name, "junge möhren");
+        assert_eq!(got[0].qty, Some(400.0));
         assert_eq!(got[0].unit.as_deref(), Some("g"));
-        assert_eq!(got[3].name, "grobes meersalz");
+        assert_eq!(got[3].name, "feines steinsalz");
         assert_eq!(got[3].qty, None);
     }
 
@@ -399,12 +399,12 @@ mod tests {
     }
 
     /// Regression (found against real data): an oven-preheat instruction
-    /// ("Préchauffer le four à 170 C") has the same "qty unit" shape as an
+    /// ("Préchauffer le four à 195 C") has the same "qty unit" shape as an
     /// ingredient line ("C" reads as a unit) and must not be extracted.
     #[test]
     fn preheat_instruction_is_never_an_ingredient() {
-        let got = source_ingredients("200 g farine\n1 œuf\n\nPréchauffer le four à 170 C. Mélanger les ingrédients.");
-        assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["farine", "œuf"]);
+        let got = source_ingredients("150 g farine\n2 œufs\n\nPréchauffer le four à 195 C. Battre les œufs avec la farine.");
+        assert_eq!(got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["farine", "œufs"]);
     }
 
     /// Regression (found against real data): a bare, number-first yield
@@ -425,11 +425,11 @@ mod tests {
     #[test]
     fn abbreviation_with_two_periods_does_not_truncate_anchor_extraction() {
         let got = source_ingredients(
-            "Ingredients:\n70 g Speisestärke (z.B. Mondamin)\n2 TL Backpulver\n125 g Zucker\n\nMethod: mix well.",
+            "Ingredients:\n40 g Maisstärke (z.B. Reisstärke)\n3 TL Natron\n90 g Rohrzucker\n\nMethod: mix well.",
         );
         assert_eq!(
             got.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
-            vec!["speisestärke", "backpulver", "zucker"]
+            vec!["maisstärke", "natron", "rohrzucker"]
         );
     }
 
@@ -492,7 +492,7 @@ mod tests {
     /// as prose, so it stays a valid ingredient line.
     #[test]
     fn abbreviation_period_does_not_read_as_prose() {
-        let got = source_ingredients("Pitas 4 Stk.\nFeta 0.5 Packungen\nPaprika 2 Stk.\n\nAlles klein schneiden und servieren.");
+        let got = source_ingredients("Brötchen 6 Stk.\nMozzarella 1 Packungen\nGurken 3 Stk.\n\nAlles in Scheiben legen und anrichten.");
         assert_eq!(got.len(), 3);
     }
 

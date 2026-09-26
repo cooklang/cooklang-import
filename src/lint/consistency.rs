@@ -352,8 +352,8 @@ static PAREN_AMOUNT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::ne
 static AMOUNT_UNIT: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"\d(?:[\d.,/ ]*\d)?\s*([\p{L}.]+)").unwrap());
 
-/// Normalized units of every amount a source line gives ("1/2 cup (8 Tbsp;
-/// 113g) butter" -> ["cup", "tbsp", "g"], "1/2 cup flour 128 g" -> ["cup",
+/// Normalized units of every amount a source line gives ("1/3 cup (5 Tbsp;
+/// 75g) margarine" -> ["cup", "tbsp", "g"], "3/4 cup rye flour 90 g" -> ["cup",
 /// "g"]): tagging an alternative amount instead of the leading one is a
 /// faithful choice.
 fn alt_units(line: &str) -> Vec<String> {
@@ -369,8 +369,8 @@ fn all_words_in(name: &str, listing: &str) -> bool {
 }
 
 /// An instruction sentence the extractor took for a listing: a long "name"
-/// ("the egg white you set aside earlier"), or a line that ends in a period
-/// once parentheticals are removed ("1 Spitzkohl in Streifen schneiden.").
+/// ("the whisked yolk kept back from the first bowl"), or a line that ends in a period
+/// once parentheticals are removed ("1 Rotkohl in dünne Ringe hobeln.").
 fn instruction_shaped(src: &SourceIngredient) -> bool {
     let words = src.name.split_whitespace().count();
     let bare = PAREN_AMOUNT.replace_all(&src.line, "");
@@ -469,7 +469,7 @@ fn under_count(sources: &[SourceIngredient], recipe: &Recipe) -> Vec<Issue> {
         let alternatives: Vec<String> = src_idx.iter().flat_map(|&i| alt_units(&srcs[i].0.line)).collect();
         let partly_in_source_unit = source_total.keys().any(|u| tagged.get(u).is_some_and(|v| *v > 0.0));
         for unit in tagged.keys().filter(|u| !source_total.contains_key(*u)) {
-            // Another amount the source line itself gives ("(113g)", "... flour 128 g"),
+            // Another amount the source line itself gives ("(75g)", "... rye flour 90 g"),
             // or part tagged in the source unit and part in a spoon measure: a split.
             // The same amount under another unit (250 ml -> 250 g) is a unit change.
             let same_amount = source_total.values().any(|t| (tagged[unit] - t).abs() <= 0.01 * t);

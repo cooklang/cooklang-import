@@ -163,7 +163,7 @@ fn unit_as_note_ignores_prose_in_parens_after_a_space() {
 #[test]
 fn flags_cookware_quantity_and_junk() {
     assert!(body_kinds("Use a #slow cooker{5-6 quart}.").contains(&Kind::CookwareQuantity));
-    assert!(body_kinds("x #cncpt-mob_incontent > div{margin:40px}").contains(&Kind::CookwareJunk));
+    assert!(body_kinds("x #promo-box_wide > span{padding:12px}").contains(&Kind::CookwareJunk));
     assert!(!body_kinds("Heat a #skillet{}.").contains(&Kind::CookwareQuantity));
 }
 
@@ -322,8 +322,8 @@ fn double_count_skipped_when_normalized_units_differ() {
 /// skipped rather than guessed at.
 #[test]
 fn double_count_skipped_when_source_uses_a_different_unit_for_an_equivalent_amount() {
-    let orig = "1/4 cup olive oil\n1 onion\n\nHeat the oil in a pan and add the onion.";
-    let doc = "---\ntitle: T\n---\n\nHeat @olive oil{2%tbsp}, add @onion{1} and more @olive oil{2%tbsp}.\n";
+    let orig = "1/4 cup sunflower oil\n1 leek\n\nWarm the oil in a wide pot, then add the leek.";
+    let doc = "---\ntitle: T\n---\n\nWarm @sunflower oil{2%tbsp}, add @leek{1} and more @sunflower oil{2%tbsp}.\n";
     assert!(!kinds(&lint(orig, doc)).contains(&Kind::DoubleCount));
 }
 
@@ -545,10 +545,10 @@ fn autofix_never_touches_something_not_flagged() {
 
 #[test]
 fn fixes_double_encoded_html_entities_to_a_fixed_point() {
-    let doc = "---\ntitle: T\ncourse: Pâtes &amp;amp; nouilles\n---\n\nStep.\n";
+    let doc = "---\ntitle: T\ncourse: Soupes &amp;amp; bouillons\n---\n\nStep.\n";
     let after = autofix(doc);
     assert!(!after.contains("&amp;"), "{after}");
-    assert!(after.contains("Pâtes & nouilles"), "{after}");
+    assert!(after.contains("Soupes & bouillons"), "{after}");
     let issues = lint("", &after);
     assert!(issues.iter().all(|i| !i.autofixable), "{issues:#?}");
 }
@@ -1100,10 +1100,10 @@ fn top_level_entity_is_fixed_next_to_a_nested_mapping() {
     // `round_trip_safe` compared every other top-level key with its
     // standalone parse, and `nutrition:` alone parses as null — so any
     // frontmatter with a nested mapping blocked every top-level entity fix.
-    let doc = fm_doc("course: Pies &amp;amp; Tarts\nnutrition:\n  calories: 420 kcal\ntags:\n- a");
+    let doc = fm_doc("course: Stews &amp;amp; Braises\nnutrition:\n  calories: 420 kcal\ntags:\n- a");
     assert_eq!(entity_fixable(&doc), vec![true]);
     let v = fixed_fm(&doc);
-    assert_eq!(v["course"].as_str(), Some("Pies & Tarts"));
+    assert_eq!(v["course"].as_str(), Some("Stews & Braises"));
     assert_eq!(v["nutrition"]["calories"].as_str(), Some("420 kcal"));
     assert_eq!(v["tags"][0].as_str(), Some("a"));
     // Same with a leading entity (invalid YAML until fixed) next to a nested map.
@@ -1186,28 +1186,28 @@ fn under_count_groups_overlapping_names() {
 }
 
 /// The source gives an alternative amount in parentheses and the draft tags
-/// that one: "1/2 cup (8 Tbsp; 113g) butter" -> @butter{113%g}. Not an under count.
+/// that one: "1/3 cup (5 Tbsp; 75g) margarine" -> @margarine{75%g}. Not an under count.
 #[test]
 fn under_count_accepts_a_parenthetical_alternative_unit() {
-    let orig = "1/2 cup (8 Tbsp; 113g) unsalted butter, softened\n1 1/4 teaspoons (8g) table salt\n2 eggs\n\nBeat the butter with the salt and eggs.";
-    assert!(under(orig, "Beat @unsalted butter{113%g}(softened) with @salt{8%g} and @eggs{2}.").is_empty());
+    let orig = "1/3 cup (5 Tbsp; 75g) cold margarine, cubed\n2 teaspoons (12g) fine sea salt\n3 eggs\n\nCream the margarine together with the sea salt and eggs.";
+    assert!(under(orig, "Cream @cold margarine{75%g}(cubed) with @sea salt{12%g} and @eggs{3}.").is_empty());
 }
 
-/// An instruction sentence the extractor read as a listing ("1 Spitzkohl in
-/// Streifen schneiden.", "1 tsp of the egg white you set aside earlier") is
+/// An instruction sentence the extractor read as a listing ("1 Rotkohl in
+/// dünne Ringe hobeln.", "1 tbsp of the whisked yolk kept back from the first bowl") is
 /// not a second listing.
 #[test]
 fn under_count_ignores_instruction_shaped_listings() {
-    let orig = "1 Spitzkohl\n2 Zwiebeln\n1 Spitzkohl in Streifen schneiden.\n\nDie Zwiebeln hacken.";
-    assert!(under(orig, "@Spitzkohl{1}(in Streifen) und @Zwiebeln{2} hacken.").is_empty());
-    let orig = "1 egg\n100 g sugar\n1 tsp of the egg white you set aside earlier\n\nBeat the egg with sugar.";
-    assert!(under(orig, "Beat @egg{1} with @sugar{100%g}.").is_empty());
+    let orig = "1 Rotkohl\n3 Schalotten\n1 Rotkohl in dünne Ringe hobeln.\n\nDie Schalotten fein würfeln.";
+    assert!(under(orig, "@Rotkohl{1}(in Ringen) und @Schalotten{3} würfeln.").is_empty());
+    let orig = "1 egg\n80 g sugar\n1 tbsp of the whisked yolk kept back from the first bowl\n\nWhisk the egg into the sugar until pale.";
+    assert!(under(orig, "Whisk @egg{1} into @sugar{80%g} until pale.").is_empty());
 }
 
 #[test]
 fn under_count_accepts_an_alternative_amount_anywhere_in_the_line() {
-    let orig = "1/2 cup all-purpose flour 128 g\n2 eggs\n\nMix the flour and eggs.";
-    assert!(under(orig, "Mix @flour{128%g} and @eggs{2}.").is_empty());
+    let orig = "3/4 cup rye flour 90 g\n3 eggs\n\nWhisk the flour and eggs together.";
+    assert!(under(orig, "Whisk @flour{90%g} and @eggs{3} together.").is_empty());
 }
 
 /// A large unitless number is a product type, not a count ("Weizenmehl Type 405").
@@ -1222,9 +1222,9 @@ fn under_count_ignores_large_unitless_numbers() {
 /// nothing in the source unit at all it is still flagged.
 #[test]
 fn under_count_skips_a_split_across_dimensions_but_not_a_lost_amount() {
-    let orig = "200 g Sahne\n250 g Ricotta\n\nRicotta mit 3 EL Sahne verrühren. Die restliche Sahne schlagen.";
-    assert!(under(orig, "@Ricotta{250%g} mit @Sahne{3%EL} verrühren. @Sahne{150%g} schlagen.").is_empty());
-    assert_eq!(under(orig, "@Ricotta{250%g} mit @Sahne{3%EL} verrühren. @Sahne{} schlagen.").len(), 1);
+    let orig = "200 g Sahne\n250 g Quark\n\nQuark mit 3 EL Sahne glatt rühren. Den Rest der Sahne steif schlagen.";
+    assert!(under(orig, "@Quark{250%g} mit @Sahne{3%EL} glatt rühren. @Sahne{150%g} steif schlagen.").is_empty());
+    assert_eq!(under(orig, "@Quark{250%g} mit @Sahne{3%EL} glatt rühren. @Sahne{} steif schlagen.").len(), 1);
 }
 
 /// "powdered/icing sugar" is tagged @powdered sugar: every word of the name is
@@ -1277,7 +1277,7 @@ fn method_words_counts_text_outside_the_ingredient_list() {
     let with_method = "500 g Kartoffeln\n2 Möhren\n1 EL Öl\n\nDie Kartoffeln schälen und in Würfel schneiden. \
         Die Möhren raspeln und alles in einer Pfanne mit dem Öl goldbraun braten.";
     assert!(method_words(with_method).0 >= 15);
-    let short_method = "1 cup flour\n1 cup sugar\n1 egg\n\nMix together and bake in moderate oven 180 degrees.";
+    let short_method = "2 cups oats\n1 cup honey\n1 banana\n\nStir it all up then bake at 175 degrees for twenty minutes.";
     assert!(method_words(short_method).1 >= 6);
     let chinese = "3个鸡蛋\n2个西红柿\n1根葱\n\n鸡蛋磕入碗中，加少许盐，打散；锅烧热，倒油，倒入蛋液，用筷子把鸡蛋划散。";
     assert!(method_words(chinese).1 >= 6, "{:?}", method_words(chinese));

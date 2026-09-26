@@ -32,10 +32,10 @@ impl Rng {
 /// than shared code, since integration test binaries don't share items.
 const GOLDEN: &[&str] = &[
     "---\ntitle: Schokoladenkuchen\ntags:\n- Dessert\n- Schokolade\nnutrition:\n  calories: 480 kcal\n  fat: 22 g\n---\n\nMische @Mehl{2-3%EL} mit @Zucker{1 ½%Tassen}.\n\nSchmelze @Schokolade{70%g} und rühre sie unter. Die 70%ige Schokolade sollte glänzen.\n",
-    "---\ntitle: Vinaigrette\n---\n\nMélangez @huile{2%c. à s.} avec @vinaigre{1%c. à s.} et @crème fraîche{100%g}.\n\nAssaisonnez avec du sel et du poivre.\n",
+    "---\ntitle: Vinaigrette\n---\n\nFouettez @huile{3%c. à s.} avec @vinaigre{2%c. à s.} et @crème fraîche{80%g}.\n\nSalez et poivrez au goût.\n",
     "---\ntitle: Simple Sauce\n---\n\n== Sauce ==\n\nHeat a #large skillet{} and melt @butter{50%g} with @sugar{1 1/2%cups}.\n\nSimmer for ~{10-15%minutes}.\n",
-    "---\ntitle: Weeknight Pasta\n---\n\n-- draft: double-check timing before publishing\nBoil @pasta{200%g} in salted water.\n\n> Tip: reserve a splash of pasta water before draining.\n",
-    "---\ntitle: Seasoning\n---\n\nAdd @salt{} to taste and @pepper{} to taste.\n",
+    "---\ntitle: Weeknight Pasta\n---\n\n-- draft: double-check timing before publishing\nCook @pasta{200%g} in plenty of boiling water.\n\n> Tip: keep back one ladle of the cooking liquid.\n",
+    "---\ntitle: Seasoning\n---\n\nFinish the soup with @flaky salt{} to taste, then @cracked pepper{} to taste.\n",
     "---\ntitle: Kartoffelsuppe\n---\n\nSchäle @Kartoffeln{500%g} und schneide sie klein.\n\nKoche sie in einem #Topf{} mit @Brühe{1%l} für ~{20%minutes}.\n",
 ];
 
@@ -119,7 +119,7 @@ const DEFECTS: &[&str] = &[
     "---\nsteps:\n- name: a &amp; b\n---\n\nStep.\n",
     "---\nn:\n  k: &#52;2\n---\n\nStep.\n",
     "---\nn:\n  x: [a &amp; b]\n  d: foo &amp; bar\n    continued\n---\n\nStep.\n",
-    "---\ncourse: Pies &amp;amp; Tarts\nnutrition:\n  calories: 420&nbsp;kcal\ntags:\n- a &amp; b\n---\n\nStep.\n",
+    "---\ncourse: Stews &amp;amp; Braises\nnutrition:\n  calories: 420&nbsp;kcal\ntags:\n- a &amp; b\n---\n\nStep.\n",
     "---\ntitle: &#39;Tis\nnutrition:\n  fat: 2 g\n---\n\nStep.\n",
 ];
 
