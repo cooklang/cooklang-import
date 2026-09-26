@@ -4,10 +4,15 @@ A2: A0 draft -> autofix -> Haiku judge -> Haiku whole-body repair (prompt v1, th
 A5: A2 with the improved whole-body repair prompt (prompts/repair_prompt.txt).
 A4: A0 draft -> autofix -> Haiku judge -> Haiku *edit-based* repair (find/replace tool call)
     -> apply edits -> autofix -> guards (score, paragraph count, ingredient names).
+A6: A4 with edit-level rejection: each edit is checked on its own against the text before it
+    (no "no recipe", paragraph count unchanged, no ingredient name lost except accepted renames);
+    the surviving edits are kept, then autofix and the checker-score guard. Draft shown unnumbered
+    (prompts/repair_edits_prompt_v2.txt).
 """
-import argparse, asyncio, json, re
+import argparse, asyncio, collections, json, re
 
-from common import (CONVERT_PROMPT, EVAL_PROMPT, HAIKU, REPAIR_EDITS_PROMPT, REPAIR_PROMPT,
+from common import (CONVERT_PROMPT, EVAL_PROMPT, HAIKU, REPAIR_EDITS_PROMPT, REPAIR_EDITS_PROMPT_V2,
+                    REPAIR_PROMPT,
                     REPAIR_PROMPT_V1, RESULTS, SONNET, call, clean_output, join_frontmatter,
                     lint_many, load_inputs, parse_json, split_frontmatter)
 
@@ -118,8 +123,8 @@ def renamed(edits, issues):
     return out
 
 
-async def repair_edits(original, body, problems):
-    prompt = (REPAIR_EDITS_PROMPT.replace("{{ORIGINAL}}", original).replace("{{DRAFT}}", numbered(body))
+async def repair_edits(original, body, problems, template=REPAIR_EDITS_PROMPT, number=True):
+    prompt = (template.replace("{{ORIGINAL}}", original).replace("{{DRAFT}}", numbered(body) if number else body)
               .replace("{{PROBLEMS}}", problems).replace("{{RULES}}", RULES))
     choice = {"type": "tool", "name": "apply_edits"}
     r = await call(HAIKU, prompt, max_tokens=4000, temperature=0, tools=[EDITS_TOOL], tool_choice=choice)
@@ -182,7 +187,106 @@ async def run_a4(row):
                 rec.update(repair_kept=True, final_score=cand["fixed_score"])
     return {
         "udid": row["udid"], "pipeline": "A4", "cook": final, **rec,
-        "calls": [{"step": s, "latency_ms": r["latency_ms"], "cost": r["cost"], "usage": r["usage"]} for s, r in calls],
+        "calls": [{"step": s, "latency_ms": r["latency_ms"], "cost": r["cost"], "usage": r["usage"],
+                   "cached": r.get("cached", False)} for s, r in calls],
+        "latency_ms": added_ms, "cost": sum(r["cost"] for _, r in calls),
+    }
+
+
+# ---------------------------------------------------------------- A6: edit-level rejection
+
+# A braced ingredient plus its optional (note).
+ING_TOKEN = re.compile(r"@[?&+\-]*([^\s@#~{}][^@#~{}\n]*?)\{[^}\n]*\}(?:\s*\(([^)\n]*)\))?")
+
+
+def subset_rename(old, text):
+    """`old` was renamed to a proper word-subset of itself and the removed words sit in that
+    token's note in `text`: @shredded mozzarella{} -> @mozzarella{}(shredded)."""
+    ow = collections.Counter(old.lower().split())
+    for m in ING_TOKEN.finditer(text):
+        nw = collections.Counter(m.group(1).strip().lower().split())
+        if not nw or nw - ow or sum(nw.values()) >= sum(ow.values()):
+            continue
+        note = (m.group(2) or "").lower()
+        if all(w in note for w in (ow - nw).elements()):
+            return True
+    return False
+
+
+def check_edit(text, edit, issues):
+    """Returns (new_text, None) if the edit is acceptable on its own, else (text, reason)."""
+    find, repl = edit.get("find", ""), edit.get("replace", "")
+    if not find:
+        return text, "empty_find"
+    if find == repl:
+        return text, "no_op"
+    if find.split() == repl.split():
+        return text, "whitespace_only"
+    n = text.count(find)
+    if n != 1:
+        return text, "not_found" if n == 0 else "not_unique"
+    if "no recipe" in repl.lower():
+        return text, "no_recipe"
+    if not repl.strip() and BLANK_LINE.search(find):
+        return text, "removes_paragraph"
+    new = text.replace(find, repl, 1)
+    if len(paragraphs(new)) != len(paragraphs(text)):
+        return text, "paragraphs"
+    ok_renames = renamed([edit], issues)
+    lost = {x for x in ingredient_names(text) - ingredient_names(new)
+            if x not in ok_renames and not subset_rename(x, repl)}
+    if lost:
+        return text, "ingredients"
+    return new, None
+
+
+async def run_a6(row):
+    calls, added_ms = [], 0
+    fixed = lint_many([row], fix=True)[row["udid"]]
+    draft, draft_issues, draft_score = fixed["fixed"], fixed["fixed_issues"], fixed["fixed_score"]
+    fm, draft_body = split_frontmatter(draft)
+    verdict, jr = await judge(row["original_text"], draft_body)
+    calls.append(("judge", jr))
+    added_ms += jr["latency_ms"]
+    needs_repair = bool(draft_issues) or not verdict or verdict.get("verdict") != "good" \
+        or verdict.get("score", 0) < 5
+    rec = {"repaired": needs_repair, "edits": [], "edits_applied": 0, "edits_rejected": 0,
+           "reject_reasons": [], "guard_failed": [], "repair_kept": False,
+           "draft_score": draft_score, "final_score": draft_score}
+    final = draft
+    if needs_repair:
+        body_issues = [i for i in draft_issues if i["kind"] not in FRONTMATTER_KINDS]
+        edits, rr, fallback = await repair_edits(row["original_text"], draft_body,
+                                                 issue_lines(body_issues, verdict),
+                                                 template=REPAIR_EDITS_PROMPT_V2, number=False)
+        if fallback:
+            calls.append(("repair_strict_failed", fallback))
+            added_ms += fallback["latency_ms"]
+        calls.append(("repair", rr))
+        added_ms += rr["latency_ms"]
+        body, applied, rejected = draft_body, [], []
+        for e in edits:
+            body, reason = check_edit(body, e, draft_issues)
+            if reason:
+                rejected.append({"reason": reason, "find": e.get("find", "")[:80]})
+            else:
+                applied.append(e)
+        rec.update(edits=edits, applied=applied, edits_applied=len(applied), edits_rejected=len(rejected),
+                   reject_reasons=rejected, strict_fallback=bool(fallback))
+        if not applied:
+            rec["guard_failed"] = ["no_edits_applied"]
+        else:
+            cand = lint_many([{**row, "cook": join_frontmatter(fm, body)}], fix=True)[row["udid"]]
+            rec["candidate_score"] = cand["fixed_score"]
+            if cand["fixed_score"] > draft_score:
+                rec["guard_failed"] = ["score"]
+            else:
+                final = cand["fixed"]
+                rec.update(repair_kept=True, final_score=cand["fixed_score"])
+    return {
+        "udid": row["udid"], "pipeline": "A6", "cook": final, **rec,
+        "calls": [{"step": s, "latency_ms": r["latency_ms"], "cost": r["cost"], "usage": r["usage"],
+                   "cached": r.get("cached", False)} for s, r in calls],
         "latency_ms": added_ms, "cost": sum(r["cost"] for _, r in calls),
     }
 
@@ -191,6 +295,8 @@ async def run_one(row, pipeline, baseline_lint):
     """Returns the per-recipe record for one pipeline."""
     if pipeline == "A4":
         return await run_a4(row)
+    if pipeline == "A6":
+        return await run_a6(row)
     fm, a0_body = split_frontmatter(row["cook"])
     calls, added_ms = [], 0
     if pipeline in ("B0", "B1"):
@@ -227,7 +333,8 @@ async def run_one(row, pipeline, baseline_lint):
         added_ms += calls[0][1]["latency_ms"]  # converter latency; compared to ft latency in report
     return {
         "udid": row["udid"], "pipeline": pipeline, "cook": final,
-        "calls": [{"step": s, "latency_ms": r["latency_ms"], "cost": r["cost"], "usage": r["usage"]} for s, r in calls],
+        "calls": [{"step": s, "latency_ms": r["latency_ms"], "cost": r["cost"], "usage": r["usage"],
+                   "cached": r.get("cached", False)} for s, r in calls],
         "latency_ms": added_ms, "cost": sum(r["cost"] for _, r in calls),
     }
 

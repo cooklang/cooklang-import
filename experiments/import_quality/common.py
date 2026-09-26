@@ -13,6 +13,7 @@ EVAL_PROMPT = (REPO / "src/converters/eval_prompt.txt").read_text()
 REPAIR_PROMPT = (ROOT / "prompts/repair_prompt.txt").read_text()
 REPAIR_PROMPT_V1 = (ROOT / "prompts/repair_prompt_v1.txt").read_text()
 REPAIR_EDITS_PROMPT = (ROOT / "prompts/repair_edits_prompt.txt").read_text()
+REPAIR_EDITS_PROMPT_V2 = (ROOT / "prompts/repair_edits_prompt_v2.txt").read_text()
 
 CACHE.mkdir(exist_ok=True)
 RESULTS.mkdir(exist_ok=True)
@@ -56,7 +57,7 @@ async def call(model, prompt, max_tokens=8000, **extra):
     key = hashlib.sha256(json.dumps([model, prompt, max_tokens, extra], sort_keys=True).encode()).hexdigest()
     path = CACHE / f"{key}.json"
     if path.exists():
-        return json.loads(path.read_text())
+        return {**json.loads(path.read_text()), "cached": True}
     async with sem:
         for attempt in range(5):
             try:
