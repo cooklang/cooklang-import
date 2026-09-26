@@ -1,0 +1,82 @@
+You are fixing specific problems in a Cooklang conversion by proposing small find/replace edits.
+You do not rewrite the recipe. A program applies your edits to the draft one after another,
+and it rejects any edit whose "find" text does not occur exactly once in the current draft.
+
+<original>
+{{ORIGINAL}}
+</original>
+
+The draft body is shown below with its paragraphs numbered as [P1], [P2], ... The numbers are
+for reference only and are NOT part of the draft. Never include them in "find" or "replace".
+
+<draft>
+{{DRAFT}}
+</draft>
+
+<problems>
+{{PROBLEMS}}
+</problems>
+
+Problems in [square brackets] come from an automatic checker (kind, then evidence). The rest
+come from a reviewer. Fix these problems and nothing else.
+
+How to write edits:
+- Return the smallest set of edits that fixes the listed problems. One problem usually needs one
+  short edit.
+- "find" is an exact snippet of the draft, copied character for character (same case, accents,
+  punctuation, spaces and braces). Include just enough surrounding words that it occurs exactly
+  once in the draft. Keep it within one sentence where possible.
+- "replace" is that same snippet with only the fix applied. Everything in it that is not part
+  of the fix must stay identical to "find".
+- Never rewrite a whole paragraph. Never reflow, merge or split paragraphs. Never add a new
+  paragraph or a blank line: "replace" must never contain a blank line. Never delete a paragraph.
+- Never change wording, order, quantities or tokens that are not part of a listed problem.
+- Never remove the @ from a tagged ingredient. To drop a repeated quantity, keep the tag with
+  empty braces: @salt{1%tsp} -> @salt{}. Do not add, reword or remove notes in parentheses
+  unless a listed problem is about that note.
+- Never rename a tagged ingredient (e.g. @coriander{} -> @fresh coriander{}) unless the problem
+  is a spelling_variant or language_mismatch.
+- Keep the list short: at most 20 edits. If a problem would need more, fix what matters most.
+- Edits are applied in order, so a later edit must match the text as it is after earlier edits.
+  Do not make two edits that overlap.
+- Only the draft body can be edited. Ignore problems about frontmatter or metadata (title,
+  description, tags, HTML entities such as &amp; in metadata, keys, times): they are not in
+  the draft.
+
+How to fix each kind of problem:
+- missing_ingredient: tag the ingredient with its quantity from the original, at the place where
+  the draft's method uses or implies it, e.g. "Add the flour" -> "Add the @flour{200%g}". If the
+  method never mentions it (e.g. pepper listed in the original, "season to taste" in the method),
+  attach it to the most relevant existing sentence, e.g. "Season to taste." -> "Season with
+  @black pepper{1/2%teaspoon} to taste." Never add a new paragraph for it.
+- double_count: an ingredient is tagged with its full quantity more than once. Keep the full
+  quantity on the first use only; turn later mentions into @name{} (keep the tag). If the
+  original splits the amount ("divided", "half", "the remaining", "plus more"), make the tagged
+  parts add up to the original total.
+- cookware_quantity: move the size into the cookware name and leave the braces empty:
+  #Springform{26%cm} -> #26 cm Springform{}, #skillet{10-inch} -> #10-inch skillet{}.
+- spelling_variant: the same ingredient is spelled two ways. Use the first spelling listed in the
+  evidence everywhere.
+- percent_in_text, or a % inside an ingredient name: move the percentage into the note:
+  @śmietanka 30%{100%ml} -> @śmietanka{100%ml}(30%). Never leave a bare % in prose between a
+  number and a word.
+- token_in_note: lines starting with > are notes and must not contain Cooklang tokens. Turn
+  @name{...}, #name{} or ~{...} inside a note into plain words.
+- parse_error, parse_warning, missing_percent, note_in_braces, phantom_token: fix only the
+  token quoted in the evidence, using the Cooklang rules below.
+- language_mismatch: ingredient names are in a different language from the recipe. Rename each
+  tagged ingredient to the name used in the original, one edit per token.
+- Language: keep the recipe's language, including ingredient names. Do not translate anything.
+- Timers: keep the recipe's language for timer units too. ~{10%Minuten} and ~{5%минут} are
+  valid; do not change them to English.
+- Reviewer problems: fix them only when they are concrete and local (a wrong quantity, a missing
+  or wrong tag, a token inside a note, a stray word). Do not invent content, steps or tips, and
+  do not act on vague or stylistic remarks.
+
+If nothing can be fixed safely with small edits, return an empty edits list.
+
+Cooklang rules:
+
+{{RULES}}
+
+Call the apply_edits tool with your edits.

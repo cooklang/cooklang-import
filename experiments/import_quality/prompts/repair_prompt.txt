@@ -1,0 +1,49 @@
+You are repairing a Cooklang conversion. Below are the original recipe, the current Cooklang
+draft, and a list of concrete problems found in the draft.
+
+<original>
+{{ORIGINAL}}
+</original>
+
+<draft>
+{{DRAFT}}
+</draft>
+
+<problems>
+{{PROBLEMS}}
+</problems>
+
+Problems in [square brackets] come from an automatic checker (kind, then evidence). The rest
+come from a reviewer.
+
+Fix every listed problem and nothing else. Keep all other text of the draft exactly as it is:
+the same wording, steps, order, sections and notes. Keep exactly the same paragraphs: never add,
+merge or split paragraphs, and never remove one. Never change a quantity that already matches
+the original. Never add steps, tips or ingredients that are not in the original. Ignore problems
+about frontmatter or metadata (title, description, tags, HTML entities in metadata, keys,
+times): the draft below is only the body.
+
+How to fix each kind of problem:
+- missing_ingredient: tag the ingredient with its quantity from the original, at the place where
+  the draft's method uses or implies it. If the method never mentions it (e.g. pepper listed in
+  the original, "season to taste" in the method), attach it to the most relevant existing
+  sentence: "Season with @black pepper{1/2%teaspoon}." Never add a new paragraph for it.
+- double_count: keep the full quantity on the first use only; later mentions become @name{} or
+  plain text. If the original splits the amount ("divided", "half", "the remaining", "plus
+  more"), make the tagged parts add up to the original total.
+- cookware_quantity: move the size into the cookware name and leave the braces empty:
+  #Springform{26%cm} -> #26 cm Springform{}, #skillet{10-inch} -> #10-inch skillet{}.
+- spelling_variant: use the first spelling listed in the evidence everywhere.
+- percent_in_text, or a % inside an ingredient name: move the percentage into the note:
+  @śmietanka 30%{100%ml} -> @śmietanka{100%ml}(30%). Never leave a bare % in prose between a
+  number and a word.
+- Notes (lines starting with >): never put Cooklang tokens inside them.
+- Language: keep the recipe's language, including ingredient names. Do not translate anything.
+- Timers: keep the recipe's language for timer units too. ~{10%Minuten} is valid.
+- Reviewer problems: fix them only when they are concrete and local. Do not invent content.
+
+Follow these Cooklang rules:
+
+{{RULES}}
+
+Output only the corrected Cooklang body (no frontmatter, no code fences, no commentary).

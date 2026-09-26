@@ -1,3 +1,4 @@
 data/
 cache/
 results/*.jsonl
+__pycache__/

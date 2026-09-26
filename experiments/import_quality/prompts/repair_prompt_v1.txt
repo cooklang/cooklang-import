@@ -1,0 +1,27 @@
+You are repairing a Cooklang conversion. Below are the original recipe, the current Cooklang
+draft, and a list of concrete problems found in the draft.
+
+<original>
+{{ORIGINAL}}
+</original>
+
+<draft>
+{{DRAFT}}
+</draft>
+
+<problems>
+{{PROBLEMS}}
+</problems>
+
+Fix every listed problem and nothing else. Keep all other text of the draft exactly as it is:
+the same wording, steps, order, sections and notes. Never change a quantity that already matches
+the original. Never add steps, tips or ingredients that are not in the original. If a problem
+says an ingredient from the original is missing, tag it with @ where the original uses it. If a
+problem says an ingredient is double-counted, keep the quantity on its first use only, or split
+it so the parts sum to the original amount when the original says "divided" or uses it in parts.
+
+Follow these Cooklang rules:
+
+{{RULES}}
+
+Output only the corrected Cooklang body (no frontmatter, no code fences, no commentary).
