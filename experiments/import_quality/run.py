@@ -19,6 +19,7 @@ A8: A7, but the Haiku judge sees the FULL document (frontmatter + body) — A2..
 import argparse, asyncio, collections, json, re
 
 from common import (CONVERT_PROMPT, EVAL_PROMPT, HAIKU, REPAIR_EDITS_PROMPT, REPAIR_EDITS_PROMPT_V2,
+                    REPAIR_EDITS_PROMPT_V3, eval_prompt,
                     REPAIR_PROMPT,
                     REPAIR_PROMPT_V1, RESULTS, SONNET, call, clean_output, join_frontmatter,
                     lint_many, load_inputs, parse_json, split_frontmatter)
@@ -50,9 +51,9 @@ def body_judge_issues(verdict):
     return [s for s in issues if not METADATA_ISSUE.search(s)], [s for s in issues if METADATA_ISSUE.search(s)]
 
 
-async def judge(original, body):
-    r = await call(HAIKU, EVAL_PROMPT.replace("{{ORIGINAL}}", original).replace("{{COOKLANG}}", body),
-                   max_tokens=2000, temperature=0)
+async def judge(original, body, metadata=None):
+    """metadata=None: the prompt exactly as in A2..A8 (cache keys unchanged)."""
+    r = await call(HAIKU, eval_prompt(original, body, metadata), max_tokens=2000, temperature=0)
     return parse_json(r["text"]), r
 
 
@@ -263,7 +264,7 @@ def check_edit(text, edit, issues):
     return new, None
 
 
-async def run_a6(row, full_doc=False):
+async def run_a6(row, full_doc=False, metadata=False, template=REPAIR_EDITS_PROMPT_V2):
     """full_doc=False is A6/A7 as run (judge sees the body only). full_doc=True is A8: the judge
     sees the whole document, metadata judge issues are filtered out of the problem list, and the
     repair is skipped when no body problem remains."""
@@ -271,7 +272,8 @@ async def run_a6(row, full_doc=False):
     fixed = lint_many([row], fix=True)[row["udid"]]
     draft, draft_issues, draft_score = fixed["fixed"], fixed["fixed_issues"], fixed["fixed_score"]
     fm, draft_body = split_frontmatter(draft)
-    verdict, jr = await judge(row["original_text"], draft if full_doc else draft_body)
+    verdict, jr = await judge(row["original_text"], draft if full_doc else draft_body,
+                              row.get("metadata", {}) if metadata else None)
     calls.append(("judge", jr))
     added_ms += jr["latency_ms"]
     needs_repair = bool(draft_issues) or not verdict or verdict.get("verdict") != "good" \
@@ -292,7 +294,7 @@ async def run_a6(row, full_doc=False):
     if needs_repair:
         edits, rr, fallback = await repair_edits(row["original_text"], draft_body,
                                                  issue_lines(body_issues, verdict, judge_kept),
-                                                 template=REPAIR_EDITS_PROMPT_V2, number=False)
+                                                 template=template, number=False)
         if fallback:
             calls.append(("repair_strict_failed", fallback))
             added_ms += fallback["latency_ms"]
@@ -325,8 +327,8 @@ async def run_a6(row, full_doc=False):
     }
 
 
-async def run_a7(row, full_doc=False):
-    rec = await run_a6(row, full_doc)
+async def run_a7(row, full_doc=False, metadata=False, template=REPAIR_EDITS_PROMPT_V2, name=None):
+    rec = await run_a6(row, full_doc, metadata, template)
     cur = lint_many([{**row, "cook": rec["cook"]}], fix=True)[row["udid"]]
     fm, body = split_frontmatter(cur["fixed"])
     issues = [i for i in cur["fixed_issues"] if i["kind"] not in FRONTMATTER_KINDS]
@@ -335,7 +337,7 @@ async def run_a7(row, full_doc=False):
     final, calls = cur["fixed"], list(rec["calls"])
     if issues:
         edits, rr, fallback = await repair_edits(row["original_text"], body, issue_lines(issues, None),
-                                                 template=REPAIR_EDITS_PROMPT_V2, number=False)
+                                                 template=template, number=False)
         for step, r in ((("repair2_strict_failed", fallback),) if fallback else ()) + (("repair2", rr),):
             calls.append({"step": step, "latency_ms": r["latency_ms"], "cost": r["cost"],
                           "usage": r["usage"], "cached": r.get("cached", False)})
@@ -354,9 +356,29 @@ async def run_a7(row, full_doc=False):
             if cand["fixed_score"] <= cur["fixed_score"]:
                 final = cand["fixed"]
                 r2["round2_kept"] = True
-    return {**rec, **r2, "pipeline": "A8" if full_doc else "A7", "cook": final, "calls": calls,
+    return {**rec, **r2, "pipeline": name or ("A8" if full_doc else "A7"), "cook": final, "calls": calls,
             "latency_ms": rec["latency_ms"] + r2["round2_latency_ms"],
             "cost": sum(c["cost"] for c in calls)}
+
+
+def no_method(lint_rec):
+    """The original is only an ingredient list: < 15 words outside the extracted ingredient
+    lines, and no such line of 6+ words (a real one-sentence method has one)."""
+    return lint_rec["method_words"] < 15 and lint_rec["method_longest_line"] < 6
+
+
+async def run_a9(row):
+    fixed = lint_many([row], fix=True)[row["udid"]]
+    if no_method(fixed):
+        return {"udid": row["udid"], "pipeline": "A9", "cook": fixed["fixed"], "no_method": True,
+                "repaired": False, "needs_repair_verdict": False, "verdict": None,
+                "judge_issues_kept": 0, "judge_issues_filtered": [], "edits": [], "edits_applied": 0,
+                "edits_rejected": 0, "reject_reasons": [], "guard_failed": [], "repair_kept": False,
+                "draft_score": fixed["fixed_score"], "final_score": fixed["fixed_score"],
+                "round2": False, "round2_edits": [], "round2_applied": 0, "round2_rejected": [],
+                "round2_kept": False, "round2_latency_ms": 0, "calls": [], "latency_ms": 0, "cost": 0.0}
+    rec = await run_a7(row, full_doc=True, metadata=True, template=REPAIR_EDITS_PROMPT_V3, name="A9")
+    return {**rec, "no_method": False}
 
 
 async def run_one(row, pipeline, baseline_lint):
@@ -369,6 +391,8 @@ async def run_one(row, pipeline, baseline_lint):
         return await run_a7(row)
     if pipeline == "A8":
         return await run_a7(row, full_doc=True)
+    if pipeline == "A9":
+        return await run_a9(row)
     fm, a0_body = split_frontmatter(row["cook"])
     calls, added_ms = [], 0
     if pipeline in ("B0", "B1"):

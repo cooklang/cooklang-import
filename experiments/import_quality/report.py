@@ -1,25 +1,35 @@
-"""Join checker lint + v2 Sonnet grades (full document) + run records, on the fixed grade sample.
+"""Join checker lint + Sonnet grades + run records, on the fixed grade sample.
 
-Prints per-pipeline grader and CLEAN rates, the Haiku judge (full document, as run in A8; cached)
-vs grader agreement on the A1 drafts, and writes (gitignored, contain recipe text):
-  results/grader_issues_sample_v2.jsonl  40 random A8 grader issues, for theme clustering
-  results/calibration_v2.jsonl           30 random A8 recipes where checker and grader disagree
-  results/summary.md                     the aggregate tables only
+    python3 report.py --version v2 --pipelines A1,A8   # grader saw the full document
+    python3 report.py --version v3 --pipelines A1,A9   # ... plus the page metadata block (default)
+
+Prints per-pipeline grader and CLEAN rates, the Haiku judge (full document; with the metadata
+block for v3, i.e. exactly the A8/A9 judge call; cached) vs grader agreement on the A1 drafts,
+and writes (gitignored, contain recipe text), <last> being the last pipeline:
+  results/grader_issues_sample_<version>.jsonl  40 random <last> grader issues, for theme clustering
+  results/calibration_<version>.jsonl           30 random <last> recipes where checker and grader disagree
+  results/summary.md                            the aggregate tables only
 
 The v1 grades (results/grades.jsonl, body-only grader input) are invalid and not read.
 """
-import asyncio, json, random
+import argparse, asyncio, json, random
 
 from common import RESULTS, lint_many, load_inputs, split_frontmatter
 from compare import drift
 from run import judge
 
-PIPES = ["A1", "A8"]
+ap = argparse.ArgumentParser()
+ap.add_argument("--version", default="v3", choices=["v2", "v3"])
+ap.add_argument("--pipelines", default="A1,A9")
+ARGS = ap.parse_args()
+VERSION, PIPES = ARGS.version, ARGS.pipelines.split(",")
+LAST = PIPES[-1]
+GRADER_INPUT = {"v2": "full_doc", "v3": "full_doc+metadata"}[VERSION]
 inputs = {r["udid"]: r for r in load_inputs()}
 grades = {}
-for l in open(RESULTS / "grades_v2.jsonl"):
+for l in open(RESULTS / f"grades_{VERSION}.jsonl"):
     g = json.loads(l)
-    assert g.get("grader_input") == "full_doc", g["id"]
+    assert g.get("grader_input") == GRADER_INPUT, g["id"]
     grades[g["id"]] = g["grade"]
 sample = json.loads((RESULTS / "grade_sample.json").read_text())
 a1 = {json.loads(l)["udid"]: json.loads(l) for l in open(RESULTS / "a0_a1_lint.jsonl")}
@@ -78,7 +88,7 @@ def table(title, rows):
 
 def main():
     graded = {p: [u for u in sample if f"{p}:{u}" in grades] for p in PIPES}
-    lines = ["# Import quality — graded results (v2: grader sees the full document)", "",
+    lines = [f"# Import quality — graded results ({VERSION}: grader input {GRADER_INPUT})", "",
              f"Sample: {len(sample)} recipes (results/grade_sample.json, random.seed(2026)).", ""]
     rows, lints = {}, {}
     for p in PIPES:
@@ -86,13 +96,15 @@ def main():
             rows[p], lints[p] = stats(p, graded[p])
     lines += table("Graded sample per pipeline", rows) + [""]
 
-    # Haiku judge on the full A1 document (exactly A8's judge call; cached) vs Sonnet grader on A1.
+    # Haiku judge on the full A1 document (exactly the A8 / A9 judge call; cached) vs grader on A1.
     async def verdicts(us):
-        return await asyncio.gather(*(judge(inputs[u]["original_text"], a1[u]["fixed"]) for u in us))
+        return await asyncio.gather(*(judge(inputs[u]["original_text"], a1[u]["fixed"],
+                                            inputs[u].get("metadata", {}) if VERSION == "v3" else None)
+                                      for u in us))
     us = graded["A1"]
     js = asyncio.run(verdicts(us))
     for name, flag in (("judge alone (not good+5)", lambda v, u: bad(v)),
-                       ("A8 verdict trigger (judge not good+5 OR checker issue)",
+                       (f"{LAST} verdict trigger (judge not good+5 OR checker issue)",
                         lambda v, u: bad(v) or bool(a1[u]["fixed_issues"]))):
         for gname, gbad in (("grader not good+5", bad), ("grader not good≥4", lambda g: not good4(g))):
             c = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
@@ -102,23 +114,23 @@ def main():
             lines += [f"- {name} vs {gname} on A1 (n={len(us)}): TP {c['tp']}, FP {c['fp']}, FN {c['fn']}, "
                       f"TN {c['tn']}; precision {pct(c['tp'], c['tp'] + c['fp'])}, "
                       f"recall {pct(c['tp'], c['tp'] + c['fn'])}"]
-    spend = sum(json.loads(l).get("cost", 0) for l in open(RESULTS / "grades_v2.jsonl"))
-    lines += ["", f"v2 grader spend: ${spend:.2f}"]
+    spend = sum(json.loads(l).get("cost", 0) for l in open(RESULTS / f"grades_{VERSION}.jsonl"))
+    lines += ["", f"{VERSION} grader spend: ${spend:.2f}"]
 
     rng = random.Random(7)
-    issues = [(u, s) for u in graded["A8"] for s in (grades[f"A8:{u}"] or {}).get("issues", [])]
-    with open(RESULTS / "grader_issues_sample_v2.jsonl", "w") as f:
+    issues = [(u, s) for u in graded[LAST] for s in (grades[f"{LAST}:{u}"] or {}).get("issues", [])]
+    with open(RESULTS / f"grader_issues_sample_{VERSION}.jsonl", "w") as f:
         for u, s in rng.sample(issues, min(40, len(issues))):
-            f.write(json.dumps({"pipeline": "A8", "udid": u, "issue": s}, ensure_ascii=False) + "\n")
-    dis = [u for u in graded["A8"] if (not lints["A8"][u]["issues"]) != good5(grades[f"A8:{u}"])]
-    with open(RESULTS / "calibration_v2.jsonl", "w") as f:
+            f.write(json.dumps({"pipeline": LAST, "udid": u, "issue": s}, ensure_ascii=False) + "\n")
+    dis = [u for u in graded[LAST] if (not lints[LAST][u]["issues"]) != good5(grades[f"{LAST}:{u}"])]
+    with open(RESULTS / f"calibration_{VERSION}.jsonl", "w") as f:
         for u in rng.sample(dis, min(30, len(dis))):
-            f.write(json.dumps({"udid": u, "checker_clean": not lints["A8"][u]["issues"],
-                                "checker_issues": lints["A8"][u]["issues"], "grader": grades[f"A8:{u}"],
-                                "original": inputs[u]["original_text"], "cook": finals["A8"][u]},
+            f.write(json.dumps({"udid": u, "checker_clean": not lints[LAST][u]["issues"],
+                                "checker_issues": lints[LAST][u]["issues"], "grader": grades[f"{LAST}:{u}"],
+                                "original": inputs[u]["original_text"], "cook": finals[LAST][u]},
                                ensure_ascii=False) + "\n")
-    lines += [f"A8 checker/grader (good+5) disagreements: {len(dis)} of {len(graded['A8'])}; "
-              f"{min(30, len(dis))} sampled to results/calibration_v2.jsonl"]
+    lines += [f"{LAST} checker/grader (good+5) disagreements: {len(dis)} of {len(graded[LAST])}; "
+              f"{min(30, len(dis))} sampled to results/calibration_{VERSION}.jsonl"]
     (RESULTS / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 

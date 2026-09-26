@@ -1,9 +1,14 @@
-"""Poll the v2 grading batches (results/grade_batches_v2.json) every 30 s for at most ~8 minutes,
-printing status; when all have ended, collect their results into results/grades_v2.jsonl.
+"""Poll the grading batches (results/grade_batches_<version>.json, default v3) every 30 s for at most ~8 minutes,
+printing status; when all have ended, collect their results into results/grades_<version>.jsonl.
 Exit code 0 = all ended and collected, 3 = still pending (run again)."""
-import json, sys, time
+import argparse, json, sys, time
 
-from grade import BATCHES, client, collect
+import grade
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--version", default="v3", choices=sorted(grade.VERSIONS))
+grade.use(ap.parse_args().version)
+BATCHES, client = grade.BATCHES, grade.client
 
 DEADLINE = time.monotonic() + 8 * 60
 
@@ -15,7 +20,7 @@ while True:
         print(time.strftime("%H:%M:%S"), b.id, b.processing_status,
               f"processing={c.processing} succeeded={c.succeeded} errored={c.errored} expired={c.expired}", flush=True)
     if ids and all(b.processing_status == "ended" for b in states):
-        collect()
+        grade.collect()
         sys.exit(0)
     if time.monotonic() + 30 > DEADLINE:
         print("still pending; run poll_batches.py again")

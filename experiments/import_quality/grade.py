@@ -5,10 +5,14 @@ so eval_prompt.txt's "missing frontmatter/title" rule made ~every grade a 2; tho
 results/grades.jsonl are INVALID and are no longer read or written. v2 records carry
 "grader_input": "full_doc".
 
-    python3 grade.py --pipelines A1,A8 --estimate 5            # 5 direct (non-batch) calls, project cost
-    python3 grade.py --pipelines A1,A8 --submit                # batch(es), ids -> results/grade_batches_v2.json
+v3 (2026-09-26): full document plus the page metadata block (prompts/page_metadata_wrapper.txt,
+from data/inputs.jsonl `metadata`) -> results/grades_v3.jsonl, "grader_input": "full_doc+metadata".
+--version picks v2 or v3 (default v3); each has its own grades and batch-id files.
+
+    python3 grade.py --pipelines A1,A9 --estimate 5            # 5 direct (non-batch) calls, project cost
+    python3 grade.py --pipelines A1,A9 --submit                # batch(es), ids -> results/grade_batches_v3.json
     python3 grade.py --collect                                 # poll once; append finished results
-    python3 poll_batches.py                                    # poll up to ~8 min, then collect
+    python3 poll_batches.py [--version v3]                     # poll up to ~8 min, then collect
 
 The recipe sample (default 200) is fixed in results/grade_sample.json: random.seed(2026), then
 random.sample over the udids of data/inputs.jsonl in file order. --sample 0 grades everything.
@@ -21,13 +25,23 @@ import argparse, json, random, re
 
 import anthropic
 
-from common import EVAL_PROMPT, RESULTS, SONNET, cost, load_inputs, parse_json
+from common import RESULTS, SONNET, cost, eval_prompt, load_inputs, parse_json
 
 client = anthropic.Anthropic()
-GRADES = RESULTS / "grades_v2.jsonl"
-BATCHES = RESULTS / "grade_batches_v2.json"
 SAMPLE = RESULTS / "grade_sample.json"
-GRADER_INPUT = "full_doc"
+VERSIONS = {"v2": ("full_doc", False), "v3": ("full_doc+metadata", True)}
+GRADES = BATCHES = GRADER_INPUT = WITH_METADATA = None
+
+
+def use(version):
+    """Selects the grader input version: its grades file, batch-id file and prompt."""
+    global GRADES, BATCHES, GRADER_INPUT, WITH_METADATA
+    GRADER_INPUT, WITH_METADATA = VERSIONS[version]
+    GRADES = RESULTS / f"grades_{version}.jsonl"
+    BATCHES = RESULTS / f"grade_batches_{version}.json"
+
+
+use("v3")
 CUSTOM_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
@@ -44,8 +58,8 @@ def outputs(pipelines):
                 yield p, r["udid"], r["cook"]
 
 
-def params(original, cook):
-    prompt = EVAL_PROMPT.replace("{{ORIGINAL}}", original).replace("{{COOKLANG}}", cook)
+def params(row, cook):
+    prompt = eval_prompt(row["original_text"], cook, row.get("metadata", {}) if WITH_METADATA else None)
     return {"model": SONNET, "max_tokens": 16000, "messages": [{"role": "user", "content": prompt}]}
 
 
@@ -72,7 +86,7 @@ def sample_udids(n):
 
 
 def pending(pipelines, sample=0):
-    originals = {r["udid"]: r["original_text"] for r in load_inputs()}
+    originals = {r["udid"]: r for r in load_inputs()}
     done = {json.loads(l)["id"] for l in open(GRADES)} if GRADES.exists() else set()
     keep = sample_udids(sample)
     for p, udid, cook in outputs(pipelines):
@@ -142,13 +156,15 @@ def collect():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pipelines", default="A1,A8")
+    ap.add_argument("--pipelines", default="A1,A9")
+    ap.add_argument("--version", default="v3", choices=sorted(VERSIONS))
     ap.add_argument("--estimate", type=int, default=0)
     ap.add_argument("--submit", action="store_true")
     ap.add_argument("--collect", action="store_true")
     ap.add_argument("--sample", type=int, default=200, help="grade only the fixed sample of N recipes (0 = all)")
     a = ap.parse_args()
     pipes = a.pipelines.split(",")
+    use(a.version)
     if a.estimate:
         estimate(pipes, a.estimate, a.sample)
     elif a.submit:

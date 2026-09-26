@@ -14,6 +14,8 @@ REPAIR_PROMPT = (ROOT / "prompts/repair_prompt.txt").read_text()
 REPAIR_PROMPT_V1 = (ROOT / "prompts/repair_prompt_v1.txt").read_text()
 REPAIR_EDITS_PROMPT = (ROOT / "prompts/repair_edits_prompt.txt").read_text()
 REPAIR_EDITS_PROMPT_V2 = (ROOT / "prompts/repair_edits_prompt_v2.txt").read_text()
+REPAIR_EDITS_PROMPT_V3 = (ROOT / "prompts/repair_edits_prompt_v3.txt").read_text()
+METADATA_WRAPPER = (ROOT / "prompts/page_metadata_wrapper.txt").read_text()
 
 CACHE.mkdir(exist_ok=True)
 RESULTS.mkdir(exist_ok=True)
@@ -40,6 +42,17 @@ def split_frontmatter(doc):
 
 def join_frontmatter(fm, body):
     return f"---\n{fm}\n---\n\n{body.strip()}\n" if fm else body.strip() + "\n"
+
+
+def eval_prompt(original, doc, metadata=None):
+    """eval_prompt.txt filled with the original and the conversion. With `metadata` (a dict, may
+    be empty) the page-metadata block is appended via prompts/page_metadata_wrapper.txt — the
+    frontmatter is generated from that structured data, which is not in `original`."""
+    prompt = EVAL_PROMPT.replace("{{ORIGINAL}}", original).replace("{{COOKLANG}}", doc)
+    if metadata is None:
+        return prompt
+    block = "\n".join(f"{k}: {v}" for k, v in metadata.items()) or "(none)"
+    return METADATA_WRAPPER.replace("{{EVAL_PROMPT}}", prompt).replace("{{METADATA}}", block)
 
 
 def cost(model, usage, batch=False):

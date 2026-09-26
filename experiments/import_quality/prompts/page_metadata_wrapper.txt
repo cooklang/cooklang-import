@@ -1,0 +1,6 @@
+{{EVAL_PROMPT}}
+
+<page_metadata>
+{{METADATA}}
+</page_metadata>
+The frontmatter was generated from this structured page metadata, not from the recipe text; treat frontmatter values that match it as faithful.
