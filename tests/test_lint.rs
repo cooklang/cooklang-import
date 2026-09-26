@@ -259,11 +259,13 @@ fn invalid_frontmatter_evidence_is_the_yaml_error_not_the_raw_text() {
 
 #[test]
 fn parse_errors_do_not_suppress_warnings_or_recipe() {
-    // "Timer value is text: abc" is a ParseError; "{~}" (an empty, invalid
-    // component) triggers "Invalid single word name..." as a ParseWarning.
-    // Both must surface, and the recipe (present despite the error) must
-    // still be handed to `consistency::check`.
-    let doc = "---\ntitle: T\n---\n\nCook for ~{abc%minutes}. {~}\n";
+    // "Reference not found: salt" (an `@&` reference with no definition) is a
+    // ParseError; "{~}" (an empty, invalid component) triggers "Invalid
+    // single word name..." as a ParseWarning. Both must surface, and the
+    // recipe (present despite the error) must still be handed to
+    // `consistency::check`. (The lint parser has ADVANCED_UNITS off, so a
+    // text timer value like `~{abc%minutes}` is no longer an error.)
+    let doc = "---\ntitle: T\n---\n\nAdd @&salt{1}. {~}\n";
     let ks = kinds(&lint("", doc));
     assert!(ks.contains(&Kind::ParseError));
     assert!(ks.contains(&Kind::ParseWarning));
@@ -990,4 +992,29 @@ fn entity_fix_always_quotes_a_yaml_1_1_boolean_word() {
         assert_eq!(value_line, &format!("vegan: \"{expected}\""), "{raw}: {after:?}");
         assert_eq!(fm_value(&after, "vegan").as_deref(), Some(expected));
     }
+}
+
+#[test]
+fn non_english_timer_units_are_not_parse_errors() {
+    // cooklang's ADVANCED_UNITS extension only knows English time units, so
+    // `~{10%Minuten}` was a hard "Unknown timer unit" error. Timer units stay
+    // in the recipe's language; the lint parser runs without that extension.
+    for body in ["Backen ~{10%Minuten}.", "Варить ~{5%минут}.", "Cuire ~{2%heures}."] {
+        let doc = format!("---\ntitle: T\n---\n\n{body}\n");
+        let ks = kinds(&lint("", &doc));
+        assert!(!ks.contains(&Kind::ParseError), "{body}: {ks:?}");
+    }
+}
+
+#[test]
+fn range_quantities_still_count_toward_double_count() {
+    // The lint parser keeps RANGE_VALUES on, so `{2-3%cloves}` is a numeric
+    // range and the double-count check reads its upper bound.
+    let orig = "2-3 cloves garlic\n1 onion\n\nFry the garlic, add the onion.";
+    let twice = "---\ntitle: T\n---\n\nFry @garlic{2-3%cloves}. Add @garlic{2-3%cloves} and @onion{1}.\n";
+    assert!(kinds(&lint(orig, twice)).contains(&Kind::DoubleCount));
+    let once = "---\ntitle: T\n---\n\nFry @garlic{2-3%cloves}. Add the @garlic{} and @onion{1}.\n";
+    let ks = kinds(&lint(orig, once));
+    assert!(!ks.contains(&Kind::DoubleCount), "{ks:?}");
+    assert!(!ks.contains(&Kind::ParseError) && !ks.contains(&Kind::ParseWarning), "{ks:?}");
 }
