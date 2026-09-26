@@ -1,4 +1,4 @@
-"""Compare A0, A1 and every finished LLM pipeline (A2, A4, A5, A6): re-lint every final output
+"""Compare A0, A1 and every finished LLM pipeline (A2, A4, A5, A6, A7, A8): re-lint every final output
 with the current binary, plus repair/edit/guard stats and drift vs the A1 draft. Prints a
 markdown table.
 
@@ -49,7 +49,7 @@ def main():
     finals = {"A0": {u: r["cook"] for u, r in rows.items()},
               "A1": {u: r["fixed"] for u, r in a1.items()}}
     recs = {}
-    for p in ("A2", "A4", "A5", "A6", "A7"):
+    for p in ("A2", "A4", "A5", "A6", "A7", "A8"):
         d = load(p)
         if d and len(d) == len(rows):
             finals[p], recs[p] = {u: r["cook"] for u, r in d.items()}, d
@@ -66,7 +66,7 @@ def main():
         row["cnd"] = pct(sum(1 for u in rows if not lint[u]["issues"] and not d[u][0] and not d[u][3]), n)
         if p in recs:
             R = recs[p]
-            if p in ("A4", "A6", "A7"):
+            if p in ("A4", "A6", "A7", "A8"):
                 trig = [u for u, r in R.items() if r["repaired"]]
                 kept = [u for u, r in R.items() if r["repair_kept"]]
             else:
@@ -82,16 +82,26 @@ def main():
                        lat=f"{q(lat, .5):.1f} / {q(lat, .9):.1f} s",
                        cost=f"${sum(r['cost'] for r in R.values()) / n:.4f}",
                        new=f"${sum(new_spend(p, r) for r in R.values()):.2f}")
-            if p == "A7":
+            if p in ("A7", "A8"):
                 r2 = [r for r in R.values() if r["round2"]]
                 lat2 = [r["round2_latency_ms"] / 1000 for r in r2]
                 spend2 = sum(c["cost"] for r in r2 for c in r["calls"]
                              if c["step"].startswith("repair2") and not c["cached"])
-                extra += [f"A7 round 2: {len(r2)} recipes ({pct(len(r2), n)}), kept {sum(r['round2_kept'] for r in r2)}, "
+                extra += [f"{p} round 2: {len(r2)} recipes ({pct(len(r2), n)}), kept {sum(r['round2_kept'] for r in r2)}, "
                           f"edits applied {sum(r['round2_applied'] for r in r2)}, rejected "
                           f"{dict(collections.Counter(x['reason'] for r in r2 for x in r['round2_rejected']))}, "
                           f"added latency p50/p90 {q(lat2, .5):.1f} / {q(lat2, .9):.1f} s, round-2 new $ {spend2:.2f}"]
-            if p in ("A4", "A6"):
+            if p == "A8":
+                vt = sum(r["needs_repair_verdict"] for r in R.values())
+                filt = sum(len(r["judge_issues_filtered"]) for r in R.values())
+                kept_j = sum(r["judge_issues_kept"] for r in R.values())
+                only_md = sum(r["needs_repair_verdict"] and not r["repaired"] for r in R.values())
+                j5 = sum(bool(r["verdict"]) and r["verdict"].get("verdict") == "good" and r["verdict"].get("score") == 5
+                         for r in R.values())
+                extra += [f"A8 judge (full doc): good+5 on {pct(j5, n)}; verdict-or-checker trigger {pct(vt, n)}; "
+                          f"repair skipped (only metadata issues left) on {only_md}; judge issues filtered as "
+                          f"metadata {filt} of {filt + kept_j} ({pct(filt, filt + kept_j)})"]
+            if p in ("A4", "A6", "A7", "A8"):
                 app = sum(r["edits_applied"] for r in R.values())
                 rej = sum(r["edits_rejected"] for r in R.values())
                 reasons = collections.Counter(x["reason"] for r in R.values() for x in r["reject_reasons"])

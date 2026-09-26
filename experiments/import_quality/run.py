@@ -11,6 +11,10 @@ A6: A4 with edit-level rejection: each edit is checked on its own against the te
 A7: A6, then one more edit round (same prompt v2, same per-edit checks, then autofix and the
     score guard) only when body checker issues remain after A6's final autofix. The problem
     list is the remaining checker issues only — no second judge call.
+A8: A7, but the Haiku judge sees the FULL document (frontmatter + body) — A2..A7 showed it only
+    the body, so eval_prompt.txt's "missing frontmatter/title" rule fired on ~every recipe. The
+    repair still edits the body only, so judge issues about metadata (METADATA_ISSUE keywords)
+    are dropped from the problem list, and no repair call is made when nothing fixable remains.
 """
 import argparse, asyncio, collections, json, re
 
@@ -23,11 +27,27 @@ RULES = CONVERT_PROMPT.split("Below are the Cooklang syntax rules you must follo
     .split("Now convert the recipe above", 1)[0].strip()
 
 
-def issue_lines(lint_issues, judge):
+def issue_lines(lint_issues, judge, judge_issues=None):
     lines = [f"- [{i['kind']}] {i['evidence']}" for i in lint_issues]
-    if judge:
+    if judge_issues is not None:
+        lines += [f"- {s}" for s in judge_issues]
+    elif judge:
         lines += [f"- {s}" for s in judge.get("issues", [])]
     return "\n".join(lines)
+
+
+# Judge issues about the frontmatter/metadata; a body-only edit repair cannot fix them.
+# "tags" and "source" count only as metadata keys: the judge also calls @ingredient tokens "tags"
+# and says "the source" for the original text.
+METADATA_ISSUE = re.compile(r"\b(title|frontmatter|front matter|front-matter|metadata|servings|prep time|"
+                            r"cook time|image|description|yield|nutrition)\b|\b(tags|source)\s*(:|url|field|key|link|list)"
+                            r"|['\"`](tags|source)['\"`]", re.I)
+
+
+def body_judge_issues(verdict):
+    """(kept, filtered) judge issues: `filtered` mention a metadata keyword."""
+    issues = [s for s in (verdict or {}).get("issues", []) if isinstance(s, str)]
+    return [s for s in issues if not METADATA_ISSUE.search(s)], [s for s in issues if METADATA_ISSUE.search(s)]
 
 
 async def judge(original, body):
@@ -243,24 +263,35 @@ def check_edit(text, edit, issues):
     return new, None
 
 
-async def run_a6(row):
+async def run_a6(row, full_doc=False):
+    """full_doc=False is A6/A7 as run (judge sees the body only). full_doc=True is A8: the judge
+    sees the whole document, metadata judge issues are filtered out of the problem list, and the
+    repair is skipped when no body problem remains."""
     calls, added_ms = [], 0
     fixed = lint_many([row], fix=True)[row["udid"]]
     draft, draft_issues, draft_score = fixed["fixed"], fixed["fixed_issues"], fixed["fixed_score"]
     fm, draft_body = split_frontmatter(draft)
-    verdict, jr = await judge(row["original_text"], draft_body)
+    verdict, jr = await judge(row["original_text"], draft if full_doc else draft_body)
     calls.append(("judge", jr))
     added_ms += jr["latency_ms"]
     needs_repair = bool(draft_issues) or not verdict or verdict.get("verdict") != "good" \
         or verdict.get("score", 0) < 5
-    rec = {"repaired": needs_repair, "edits": [], "edits_applied": 0, "edits_rejected": 0,
-           "reject_reasons": [], "guard_failed": [], "repair_kept": False,
-           "draft_score": draft_score, "final_score": draft_score}
+    body_issues = [i for i in draft_issues if i["kind"] not in FRONTMATTER_KINDS]
+    rec = {}
+    judge_kept = None
+    if full_doc:
+        judge_kept, judge_filtered = body_judge_issues(verdict)
+        rec = {"verdict": verdict, "needs_repair_verdict": needs_repair,
+               "judge_issues_kept": len(judge_kept), "judge_issues_filtered": judge_filtered}
+        # Nothing a body edit can fix: skip the repair call.
+        needs_repair = needs_repair and bool(body_issues or judge_kept)
+    rec.update({"repaired": needs_repair, "edits": [], "edits_applied": 0, "edits_rejected": 0,
+                "reject_reasons": [], "guard_failed": [], "repair_kept": False,
+                "draft_score": draft_score, "final_score": draft_score})
     final = draft
     if needs_repair:
-        body_issues = [i for i in draft_issues if i["kind"] not in FRONTMATTER_KINDS]
         edits, rr, fallback = await repair_edits(row["original_text"], draft_body,
-                                                 issue_lines(body_issues, verdict),
+                                                 issue_lines(body_issues, verdict, judge_kept),
                                                  template=REPAIR_EDITS_PROMPT_V2, number=False)
         if fallback:
             calls.append(("repair_strict_failed", fallback))
@@ -294,8 +325,8 @@ async def run_a6(row):
     }
 
 
-async def run_a7(row):
-    rec = await run_a6(row)
+async def run_a7(row, full_doc=False):
+    rec = await run_a6(row, full_doc)
     cur = lint_many([{**row, "cook": rec["cook"]}], fix=True)[row["udid"]]
     fm, body = split_frontmatter(cur["fixed"])
     issues = [i for i in cur["fixed_issues"] if i["kind"] not in FRONTMATTER_KINDS]
@@ -323,7 +354,7 @@ async def run_a7(row):
             if cand["fixed_score"] <= cur["fixed_score"]:
                 final = cand["fixed"]
                 r2["round2_kept"] = True
-    return {**rec, **r2, "pipeline": "A7", "cook": final, "calls": calls,
+    return {**rec, **r2, "pipeline": "A8" if full_doc else "A7", "cook": final, "calls": calls,
             "latency_ms": rec["latency_ms"] + r2["round2_latency_ms"],
             "cost": sum(c["cost"] for c in calls)}
 
@@ -336,6 +367,8 @@ async def run_one(row, pipeline, baseline_lint):
         return await run_a6(row)
     if pipeline == "A7":
         return await run_a7(row)
+    if pipeline == "A8":
+        return await run_a7(row, full_doc=True)
     fm, a0_body = split_frontmatter(row["cook"])
     calls, added_ms = [], 0
     if pipeline in ("B0", "B1"):
