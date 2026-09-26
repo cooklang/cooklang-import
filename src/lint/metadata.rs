@@ -8,6 +8,13 @@ pub(super) static ENTITY: LazyLock<Regex> =
 /// Top-level `key: value` line.
 pub(super) static TOP_LEVEL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([A-Za-z][A-Za-z0-9_ ]*):\s*(.*?)\s*$").unwrap());
+/// Indented `key: value` line inside a block mapping (space indentation
+/// only — YAML forbids tabs there).
+static NESTED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^( +)([A-Za-z][A-Za-z0-9_ ]*):\s*(.*?)\s*$").unwrap());
+/// A bare `key:` line (no value, no comment) that opens a block mapping.
+static PARENT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^( *)([A-Za-z][A-Za-z0-9_ ]*):\s*$").unwrap());
 pub(super) const PLACEHOLDERS: &[&str] = &["", "''", "\"\"", "null", "'null'", "\"null\"", "~"];
 pub(super) const KEY_RENAMES: &[(&str, &str)] = &[
     ("source_url", "source"),
@@ -280,9 +287,106 @@ fn round_trip_safe(lines: &[String], candidate_lines: &[String], key: &str, expe
     true
 }
 
+fn is_blank_or_comment(line: &str) -> bool {
+    let t = line.trim();
+    t.is_empty() || t.starts_with('#')
+}
+
+fn indent_of(line: &str) -> usize {
+    line.len() - line.trim_start_matches(' ').len()
+}
+
+/// Whether the nested line `lines[i]` (indented `indent` spaces) has children
+/// or a continuation: the next non-blank, non-comment line is indented deeper
+/// (a nested mapping, or a plain scalar folded onto the next line), is a
+/// sequence item at the same indent, or uses a tab.
+fn nested_has_children(lines: &[&str], i: usize, indent: usize) -> bool {
+    lines[i + 1..].iter().find(|l| !is_blank_or_comment(l)).is_some_and(|next| {
+        let ind = indent_of(next);
+        next[ind..].starts_with('\t') || ind > indent || (ind == indent && next[ind..].starts_with('-'))
+    })
+}
+
+/// The key path of the nested line `lines[i]`: each ancestor must be a bare
+/// `key:` line at a strictly smaller indent, up to column 0. `None` when any
+/// ancestor is something else (a sequence item, a key with an inline value
+/// or comment, ...) — only plain block mappings are in scope.
+fn nested_path(lines: &[&str], i: usize) -> Option<Vec<String>> {
+    let cap = NESTED.captures(lines[i])?;
+    let mut path = vec![cap[2].to_string()];
+    let mut cur = cap[1].len();
+    for line in lines[..i].iter().rev() {
+        if is_blank_or_comment(line) || indent_of(line) >= cur {
+            continue;
+        }
+        let parent = PARENT.captures(line)?;
+        path.push(parent[2].to_string());
+        cur = parent[1].len();
+        if cur == 0 {
+            path.reverse();
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Whether `candidate` parses to exactly the tree `lines` parses to, except
+/// that the string at `path` — which must have been exactly `original` — is
+/// now `decoded`. Validates the *whole* frontmatter, so a rewrite can't
+/// disturb any other key, however it's nested.
+fn tree_safe(lines: &[String], candidate: &[String], path: &[String], original: &str, decoded: &str) -> bool {
+    let (Ok(orig), Ok(cand)) = (
+        serde_yaml::from_str::<serde_yaml::Value>(&lines.join("\n")),
+        serde_yaml::from_str::<serde_yaml::Value>(&candidate.join("\n")),
+    ) else {
+        return false;
+    };
+    let mut want = orig;
+    let mut node = &mut want;
+    for key in path {
+        let Some(child) = node.as_mapping_mut().and_then(|m| m.get_mut(key.as_str())) else {
+            return false;
+        };
+        node = child;
+    }
+    if node.as_str() != Some(original) {
+        return false;
+    }
+    *node = serde_yaml::Value::String(decoded.to_string());
+    cand == want
+}
+
+/// The nested-mapping counterpart of the top-level entity fix: the same
+/// isolated value parse, fixed-point decode and `safe_scalar` quoting, but
+/// validated against the whole frontmatter tree (`tree_safe`). Sequences,
+/// flow collections, block scalars and folded continuations stay out of
+/// scope.
+fn nested_entity_fix(lines: &[String], i: usize) -> Option<String> {
+    let str_lines: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let cap = NESTED.captures(&lines[i])?;
+    let (indent, key) = (&cap[1], &cap[2]);
+    if nested_has_children(&str_lines, i, indent.len()) {
+        return None;
+    }
+    let path = nested_path(&str_lines, i)?;
+    let original_value = extract_string_value(&cap[3])?;
+    if !ENTITY.is_match(&original_value) {
+        return None;
+    }
+    let (decoded, changed) = decode_fixed_point(&original_value)?;
+    if !changed {
+        return None;
+    }
+    let candidate_line = format!("{indent}{key}: {}", safe_scalar(key, &decoded));
+    let mut candidate_lines = lines.to_vec();
+    candidate_lines[i] = candidate_line.clone();
+    tree_safe(lines, &candidate_lines, &path, &original_value, &decoded).then_some(candidate_line)
+}
+
 /// Attempts a safe HTML-entity fix for `lines[i]`, returning the replacement
 /// line when one exists. Scope is deliberately narrow — only a top-level
-/// `key: value` line's value is touched, and only when doing so is
+/// `key: value` line's value, or an indented one inside a plain block mapping
+/// (see `nested_entity_fix`), is touched, and only when doing so is
 /// YAML-safe:
 ///
 /// - A line with children (see `has_children`) is skipped entirely: either a
@@ -299,6 +403,9 @@ fn round_trip_safe(lines: &[String], candidate_lines: &[String], key: &str, expe
 ///   thing or the wrong type, or disturb another key, the line is left
 ///   completely untouched.
 pub(super) fn entity_fix_for_line(lines: &[String], i: usize) -> Option<String> {
+    if NESTED.is_match(lines.get(i)?) {
+        return nested_entity_fix(lines, i);
+    }
     let str_lines: Vec<&str> = lines.iter().map(String::as_str).collect();
     if has_children(&str_lines, i) {
         return None;
@@ -357,7 +464,10 @@ pub(super) fn check(frontmatter: &str) -> Vec<Issue> {
     let working: Vec<String> = structural.iter().map(|(_, l)| l.clone()).collect();
 
     for (i, line) in lines.iter().enumerate() {
-        let value_start = TOP_LEVEL.captures(line).map(|cap| cap.get(2).unwrap().start());
+        let value_start = TOP_LEVEL
+            .captures(line)
+            .map(|cap| cap.get(2).unwrap().start())
+            .or_else(|| NESTED.captures(line).map(|cap| cap.get(3).unwrap().start()));
         for m in ENTITY.find_iter(line) {
             let in_scope = value_start.is_some_and(|start| m.start() >= start);
             let autofixable = in_scope

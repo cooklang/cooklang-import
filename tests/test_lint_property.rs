@@ -109,6 +109,16 @@ const DEFECTS: &[&str] = &[
     "---\ndescription: foo &amp; bar\n  continued here\n---\n\nStep.\n",
     "---\nnutrition:\n  fat: 2 &amp; 3 g\n---\n\nStep.\n",
     "---\ntitle: a &amp; b\ntitle: c\n---\n\nStep.\n",
+    // Nested frontmatter entities (indented `key: value` in block mappings).
+    "---\nnutrition:\n  calories: 420&nbsp;kcal\n  fat: 22 g\n---\n\nStep.\n",
+    "---\na:\n  b:\n    c: x &amp; y\n  d: e\n---\n\nStep.\n",
+    "---\nn:\n  vegan: y&#101;s\n  x: a&#58; b\n  k: 4&#50;\n---\n\nStep.\n",
+    "---\nn:\n  t: &#126;\n  u: nu&#108;l\n---\n\nStep.\n",
+    "---\nn:\n  a: x &amp;amp; y # c\n  b: 'Grandma&#39;s'\n---\n\nStep.\n",
+    "---\nn:\n  note: |\n    a &amp; b\n---\n\nStep.\n",
+    "---\nsteps:\n- name: a &amp; b\n---\n\nStep.\n",
+    "---\nn:\n  k: &#52;2\n---\n\nStep.\n",
+    "---\nn:\n  x: [a &amp; b]\n  d: foo &amp; bar\n    continued\n---\n\nStep.\n",
 ];
 
 /// All the snippets in one pool for mutation, tagged so we can tell a

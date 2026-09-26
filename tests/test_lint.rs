@@ -1018,3 +1018,79 @@ fn range_quantities_still_count_toward_double_count() {
     assert!(!ks.contains(&Kind::DoubleCount), "{ks:?}");
     assert!(!ks.contains(&Kind::ParseError) && !ks.contains(&Kind::ParseWarning), "{ks:?}");
 }
+
+// --- Nested frontmatter entities (indented `key: value` inside block mappings) ---
+
+fn entity_fixable(doc: &str) -> Vec<bool> {
+    lint("", doc).iter().filter(|i| i.kind == Kind::HtmlEntity).map(|i| i.autofixable).collect()
+}
+
+fn fixed_fm(doc: &str) -> serde_yaml::Value {
+    let after = autofix(doc);
+    serde_yaml::from_str(split_frontmatter(&after).0.expect("frontmatter")).expect("valid YAML")
+}
+
+#[test]
+fn nested_entity_is_decoded_and_the_rest_of_the_tree_is_untouched() {
+    let doc = fm_doc("title: T\nnutrition:\n  calories: 420&nbsp;kcal\n  fat: 22 g\ntags:\n- a");
+    assert_eq!(entity_fixable(&doc), vec![true]);
+    let v = fixed_fm(&doc);
+    assert_eq!(v["nutrition"]["calories"].as_str(), Some("420\u{a0}kcal"));
+    assert_eq!(v["nutrition"]["fat"].as_str(), Some("22 g"));
+    assert_eq!(v["title"].as_str(), Some("T"));
+    assert_eq!(v["tags"][0].as_str(), Some("a"));
+    assert!(lint("", &autofix(&doc)).iter().all(|i| i.kind != Kind::HtmlEntity));
+}
+
+#[test]
+fn deeply_nested_entity_is_decoded() {
+    let doc = fm_doc("a:\n  b:\n    c: x &amp; y\n  d: e");
+    assert_eq!(entity_fixable(&doc), vec![true]);
+    let v = fixed_fm(&doc);
+    assert_eq!(v["a"]["b"]["c"].as_str(), Some("x & y"));
+    assert_eq!(v["a"]["d"].as_str(), Some("e"));
+}
+
+#[test]
+fn nested_entity_fix_quotes_when_needed() {
+    // YAML 1.1 bool word, a colon, a would-be number, a trailing comment.
+    let doc = fm_doc("n:\n  vegan: y&#101;s\n  x: a&#58; b\n  k: 4&#50;\n  fat: 2 &amp; 3 g # c");
+    assert_eq!(entity_fixable(&doc), vec![true, true, true, true]);
+    let after = autofix(&doc);
+    assert!(after.contains("vegan: \"yes\""), "{after}");
+    let v = fixed_fm(&doc);
+    assert_eq!(v["n"]["vegan"].as_str(), Some("yes"));
+    assert_eq!(v["n"]["x"].as_str(), Some("a: b"));
+    assert_eq!(v["n"]["k"].as_str(), Some("42"));
+    assert_eq!(v["n"]["fat"].as_str(), Some("2 & 3 g"));
+}
+
+#[test]
+fn nested_entity_skips_sequences_flow_collections_and_block_scalars() {
+    for fm in [
+        "tags:\n  - a &amp; b",
+        "steps:\n- name: a &amp; b",
+        "n:\n  list:\n  - a &amp; b",
+        "n:\n  x: [a &amp; b, c]",
+        "n:\n  x: {k: a &amp; b}",
+        "n:\n  note: |\n    a &amp; b",
+        "n:\n  note: >\n    a &amp; b",
+        "n:\n  d: foo &amp; bar\n    continued here",
+    ] {
+        let doc = fm_doc(fm);
+        assert!(entity_fixable(&doc).iter().all(|f| !f), "{fm:?}");
+        assert_eq!(autofix(&doc), doc, "{fm:?}");
+    }
+}
+
+#[test]
+fn nested_entity_under_invalid_frontmatter_is_not_fixed() {
+    // A duplicate key, and a value that *starts* with an entity (YAML reads
+    // the leading `&` as an anchor, so the whole frontmatter is invalid):
+    // there's no original tree to validate a nested rewrite against.
+    for fm in ["n:\n  a: x &amp; y\n  a: z", "n:\n  k: &#52;2"] {
+        let doc = fm_doc(fm);
+        assert!(entity_fixable(&doc).iter().all(|f| !f), "{fm:?}");
+        assert_eq!(autofix(&doc), doc, "{fm:?}");
+    }
+}
