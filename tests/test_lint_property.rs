@@ -119,6 +119,8 @@ const DEFECTS: &[&str] = &[
     "---\nsteps:\n- name: a &amp; b\n---\n\nStep.\n",
     "---\nn:\n  k: &#52;2\n---\n\nStep.\n",
     "---\nn:\n  x: [a &amp; b]\n  d: foo &amp; bar\n    continued\n---\n\nStep.\n",
+    "---\ncourse: Pies &amp;amp; Tarts\nnutrition:\n  calories: 420&nbsp;kcal\ntags:\n- a &amp; b\n---\n\nStep.\n",
+    "---\ntitle: &#39;Tis\nnutrition:\n  fat: 2 g\n---\n\nStep.\n",
 ];
 
 /// All the snippets in one pool for mutation, tagged so we can tell a

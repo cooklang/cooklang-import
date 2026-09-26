@@ -267,9 +267,15 @@ fn round_trip_safe(lines: &[String], candidate_lines: &[String], key: &str, expe
     if cand_map.get(&key_v) != Some(&serde_yaml::Value::String(expected.to_string())) {
         return false;
     }
+    let str_lines: Vec<&str> = lines.iter().map(String::as_str).collect();
     for (j, orig_line) in lines.iter().enumerate() {
         if candidate_lines[j] != *orig_line {
             continue; // this is the line we changed; verified above
+        }
+        if has_children(&str_lines, j) {
+            // A `key:` opening a nested map/list (or a folded scalar) parses
+            // standalone as null or a truncated value — nothing to compare.
+            continue;
         }
         let Some(cap) = TOP_LEVEL.captures(orig_line) else { continue };
         let other_key = &cap[1];
@@ -425,7 +431,16 @@ pub(super) fn entity_fix_for_line(lines: &[String], i: usize) -> Option<String> 
 
     let mut candidate_lines = lines.to_vec();
     candidate_lines[i] = candidate_line.clone();
-    round_trip_safe(lines, &candidate_lines, key, &decoded).then_some(candidate_line)
+    // When the original frontmatter parses, validate against its whole tree
+    // (as nested lines do). When it doesn't — e.g. a bare value starting
+    // with an entity, which YAML reads as an anchor — there is no original
+    // tree, so fall back to the per-key round-trip check.
+    let safe = if serde_yaml::from_str::<serde_yaml::Value>(&lines.join("\n")).is_ok() {
+        tree_safe(lines, &candidate_lines, &[key.to_string()], &original_value, &decoded)
+    } else {
+        round_trip_safe(lines, &candidate_lines, key, &decoded)
+    };
+    safe.then_some(candidate_line)
 }
 
 pub(super) fn check(frontmatter: &str) -> Vec<Issue> {

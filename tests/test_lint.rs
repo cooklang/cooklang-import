@@ -1094,3 +1094,22 @@ fn nested_entity_under_invalid_frontmatter_is_not_fixed() {
         assert_eq!(autofix(&doc), doc, "{fm:?}");
     }
 }
+
+#[test]
+fn top_level_entity_is_fixed_next_to_a_nested_mapping() {
+    // `round_trip_safe` compared every other top-level key with its
+    // standalone parse, and `nutrition:` alone parses as null — so any
+    // frontmatter with a nested mapping blocked every top-level entity fix.
+    let doc = fm_doc("course: Pies &amp;amp; Tarts\nnutrition:\n  calories: 420 kcal\ntags:\n- a");
+    assert_eq!(entity_fixable(&doc), vec![true]);
+    let v = fixed_fm(&doc);
+    assert_eq!(v["course"].as_str(), Some("Pies & Tarts"));
+    assert_eq!(v["nutrition"]["calories"].as_str(), Some("420 kcal"));
+    assert_eq!(v["tags"][0].as_str(), Some("a"));
+    // Same with a leading entity (invalid YAML until fixed) next to a nested map.
+    let doc = fm_doc("title: &#39;Tis the season\nnutrition:\n  calories: 420 kcal");
+    assert_eq!(entity_fixable(&doc), vec![true]);
+    let v = fixed_fm(&doc);
+    assert_eq!(v["title"].as_str(), Some("'Tis the season"));
+    assert_eq!(v["nutrition"]["calories"].as_str(), Some("420 kcal"));
+}
