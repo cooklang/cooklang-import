@@ -73,6 +73,16 @@ fn german_soup_is_clean() {
     assert_clean(original, cooklang);
 }
 
+#[test]
+fn split_listings_tagged_in_full_are_clean() {
+    // Two listings of the same ingredient (pesto + topping) and a "divided"
+    // amount spread over two steps: every amount is tagged, so no UnderCount
+    // (and no DoubleCount — neither ingredient has a single listing).
+    let original = "1/4 cup pine nuts\n2 cups basil\n1/4 cup pine nuts, toasted\n2 tbsp olive oil, divided\n\nBlend the basil with the pine nuts and oil. Top with toasted pine nuts and the rest of the oil.";
+    let cooklang = "---\ntitle: Pesto\n---\n\nBlend @basil{2%cups} with @pine nuts{1/4%cup} and @olive oil{1%tbsp}.\n\nTop with @pine nuts{1/4%cup}(toasted) and the rest of the @olive oil{1%tbsp}.\n";
+    assert_clean(original, cooklang);
+}
+
 /// Every fixture above is already valid Cooklang — `autofix` must be a
 /// complete no-op on each one. A regression in any fix regex would show up
 /// here as an unwanted rewrite of already-correct text.

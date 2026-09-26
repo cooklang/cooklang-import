@@ -36,6 +36,7 @@ pub enum Kind {
     MetadataKeyDrift,
     MissingIngredient,
     DoubleCount,
+    UnderCount,
     SpellingVariant,
     LanguageMismatch,
 }

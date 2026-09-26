@@ -18,6 +18,8 @@ pub(super) struct SourceIngredient {
     /// Lower-cased ingredient name without quantity, unit or trailing notes.
     pub name: String,
     pub qty: Option<f64>,
+    /// Lower bound of a dash range ("2-3 tbsp" -> 2); equal to `qty` otherwise.
+    pub qty_lo: Option<f64>,
     pub unit: Option<String>,
 }
 
@@ -26,7 +28,7 @@ pub(super) struct SourceIngredient {
 /// 3). The upper bound is what gets used as `qty` when present, matching
 /// `consistency::numeric`, which reads a *tagged* range's `end` too.
 static LEADING_QTY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔⅛])(?:\s*[-–]\s*([\d.,/]+))?\s*(.*)$").unwrap()
+    Regex::new(r"^(\d+\s*[½¼¾⅓⅔⅛]|\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔⅛])(?:\s*[-–]\s*([\d.,/]+))?\s*(.*)$").unwrap()
 });
 /// Trailing "name qty [unit]", e.g. "Zucchini 200 g" or "Молоко: 120 мл" — a
 /// format some real exports use instead of a leading quantity.
@@ -88,6 +90,13 @@ const MULTI_WORD_UNITS: &[&str] = &["c. à s.", "c. à c."];
 const BULLETS: &[char] = &['▢', '•', '-', '*', '·', '–', '\u{200b}'];
 
 fn parse_number(s: &str) -> Option<f64> {
+    // A mixed number with a unicode fraction: "1½", "2 ¼".
+    if let Some(last) = s.chars().last().filter(|c| "½¼¾⅓⅔⅛".contains(*c)) {
+        let whole = s[..s.len() - last.len_utf8()].trim();
+        if !whole.is_empty() {
+            return Some(whole.parse::<f64>().ok()? + parse_number(&last.to_string())?);
+        }
+    }
     match s {
         "½" => return Some(0.5),
         "¼" => return Some(0.25),
@@ -200,27 +209,29 @@ fn parse_line(raw: &str) -> Option<SourceIngredient> {
     if !looks_like_ingredient_line(line) {
         return None;
     }
-    let (qty, unit, rest) = if let Some(cap) = LEADING_QTY.captures(line) {
+    let (qty, qty_lo, unit, rest) = if let Some(cap) = LEADING_QTY.captures(line) {
         let rest = cap.get(3).map_or("", |m| m.as_str());
-        let qty = cap.get(2).and_then(|m| parse_number(m.as_str())).or_else(|| parse_number(&cap[1]));
+        let lo = parse_number(&cap[1]);
+        let qty = cap.get(2).and_then(|m| parse_number(m.as_str())).or(lo);
         if let Some((mw, remainder)) = strip_multi_word_unit(rest) {
-            (qty, Some(mw), remainder)
+            (qty, lo, Some(mw), remainder)
         } else {
             let first = rest.split_whitespace().next().unwrap_or("");
             if UNITS.contains(&first.to_lowercase().as_str()) {
-                (qty, Some(first.to_string()), rest[first.len()..].trim().to_string())
+                (qty, lo, Some(first.to_string()), rest[first.len()..].trim().to_string())
             } else {
-                (qty, None, rest.to_string())
+                (qty, lo, None, rest.to_string())
             }
         }
     } else if let Some(cap) = TRAILING_QTY.captures(line) {
-        let qty = cap.name("qhi").and_then(|m| parse_number(m.as_str())).or_else(|| parse_number(&cap["q"]));
-        (qty, cap.name("u").map(|m| m.as_str().to_string()), cap["name"].trim_end_matches(':').to_string())
+        let lo = parse_number(&cap["q"]);
+        let qty = cap.name("qhi").and_then(|m| parse_number(m.as_str())).or(lo);
+        (qty, lo, cap.name("u").map(|m| m.as_str().to_string()), cap["name"].trim_end_matches(':').to_string())
     } else {
-        (None, None, line.to_string())
+        (None, None, None, line.to_string())
     };
     let name = clean_name(&rest);
-    (!name.is_empty()).then(|| SourceIngredient { line: line.to_string(), name, qty, unit })
+    (!name.is_empty()).then(|| SourceIngredient { line: line.to_string(), name, qty, qty_lo, unit })
 }
 
 /// Whether a run of candidate lines is dense enough with quantities to
@@ -483,6 +494,18 @@ mod tests {
     fn abbreviation_period_does_not_read_as_prose() {
         let got = source_ingredients("Pitas 4 Stk.\nFeta 0.5 Packungen\nPaprika 2 Stk.\n\nAlles klein schneiden und servieren.");
         assert_eq!(got.len(), 3);
+    }
+
+    /// A mixed number with a unicode fraction ("1½ teaspoons") is one amount
+    /// with its unit, not "1" followed by "½ teaspoons ...".
+    #[test]
+    fn mixed_unicode_fraction_is_one_amount() {
+        let got = source_ingredients("1½ teaspoons onion powder\n2 ¼ cups flour\n1 egg\n\nMix everything well together now.");
+        assert_eq!(got[0].qty, Some(1.5));
+        assert_eq!(got[0].unit.as_deref(), Some("teaspoons"));
+        assert_eq!(got[0].name, "onion powder");
+        assert_eq!(got[1].qty, Some(2.25));
+        assert_eq!(got[1].unit.as_deref(), Some("cups"));
     }
 
     /// Item 8: a dash range stores the upper bound, matching how a tagged

@@ -1113,3 +1113,155 @@ fn top_level_entity_is_fixed_next_to_a_nested_mapping() {
     assert_eq!(v["title"].as_str(), Some("'Tis the season"));
     assert_eq!(v["nutrition"]["calories"].as_str(), Some("420 kcal"));
 }
+
+// ---------------------------------------------------------------- UnderCount
+
+fn under(orig: &str, body: &str) -> Vec<Issue> {
+    lint(orig, &format!("---\ntitle: T\n---\n\n{body}\n")).into_iter().filter(|i| i.kind == Kind::UnderCount).collect()
+}
+
+/// Two source listings of the same ingredient (one per sub-recipe) are summed:
+/// tagging only one of them loses the other from the shopping list.
+#[test]
+fn under_count_sums_every_source_listing() {
+    let orig = "1/4 cup pine nuts\n2 cups basil\n1/4 cup pine nuts, toasted\n\nBlend the basil with the pine nuts. Top with toasted pine nuts.";
+    let got = under(orig, "Blend @basil{2%cups} with @pine nuts{1/4%cup}. Top with @pine nuts{}(toasted).");
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].severity, Severity::Error);
+    assert!(!got[0].autofixable);
+    assert!(got[0].evidence.contains("pine nuts"), "{}", got[0].evidence);
+    // Both listings tagged: no issue.
+    assert!(under(orig, "Blend @basil{2%cups} with @pine nuts{1/4%cup}. Top with @pine nuts{1/4%cup}(toasted).").is_empty());
+}
+
+/// The main quantity never makes it into a token in its unit: only a small
+/// amount in a different-dimension unit and empty braces ("550 g flour").
+#[test]
+fn under_count_flags_a_quantity_left_only_in_empty_braces() {
+    let orig = "550 g flour\n250 ml milk\n1 egg\n\nMix the flour with the milk and the egg.";
+    let got = under(orig, "Mix @flour{1%tbsp} with @milk{250%ml}. Add the rest of the @flour{} and @egg{1}.");
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert!(got[0].evidence.contains("flour"));
+    // Empty braces everywhere.
+    assert_eq!(under(orig, "Mix @flour{} with @milk{250%ml} and @egg{1}.").len(), 1);
+}
+
+#[test]
+fn under_count_quiet_when_split_amounts_add_up() {
+    let orig = "2 tbsp olive oil, divided\n1 onion\n\nHeat oil. Add onion. Add more oil.";
+    assert!(under(orig, "Heat @olive oil{1%tbsp}. Add @onion{1}. Add @olive oil{1%tbsp}.").is_empty());
+    // Unit spelling variants normalize ("tablespoons" / "tbsp").
+    assert!(under(orig, "Heat @olive oil{1%tablespoon}. Add @onion{1}. Add @olive oil{1%tbsp}.").is_empty());
+}
+
+#[test]
+fn under_count_skipped_when_units_may_be_a_conversion() {
+    // Count vs mass (unknown dimension) and volume vs volume: possibly a conversion.
+    let orig = "2 cloves garlic\n1 cup milk\n1 onion\n\nMince the garlic, warm the milk, chop the onion.";
+    assert!(under(orig, "Mince @garlic{10%g}. Warm @milk{240%ml}. Chop @onion{1}.").is_empty());
+}
+
+#[test]
+fn under_count_tolerates_rounding_and_accepts_ranges() {
+    let orig = "1/3 cup sugar\n2-3 tbsp water\n1 lemon\n\nDissolve the sugar in the water with lemon.";
+    assert!(under(orig, "Dissolve @sugar{0.33%cup} in @water{2%tbsp} with @lemon{1}.").is_empty());
+    assert!(under(orig, "Dissolve @sugar{0.3%cup} in @water{2-3%tbsp} with @lemon{1}.").len() == 1);
+}
+
+#[test]
+fn under_count_skips_text_quantities() {
+    let orig = "1 tsp salt\n2 eggs\n\nBeat the eggs with the salt.";
+    assert!(under(orig, "Beat @eggs{2} with @salt{a pinch}.").is_empty());
+}
+
+/// Overlapping names ("butter" in "peanut butter") are compared as one group,
+/// so the peanut butter line isn't charged to @butter alone.
+#[test]
+fn under_count_groups_overlapping_names() {
+    let orig = "100 g butter\n50 g peanut butter\n2 eggs\n\nCream the butter with the peanut butter and eggs.";
+    assert!(under(orig, "Cream @butter{100%g} with @peanut butter{50%g} and @eggs{2}.").is_empty());
+    // Word boundary: "salt" is not in "unsalted butter".
+    let orig = "1 tsp salt\n1 cup unsalted butter\n2 eggs\n\nMelt the butter and season.";
+    assert!(under(orig, "Melt @unsalted butter{1%cup}. Season with @salt{1%tsp}. Add @eggs{2}.").is_empty());
+}
+
+/// The source gives an alternative amount in parentheses and the draft tags
+/// that one: "1/2 cup (8 Tbsp; 113g) butter" -> @butter{113%g}. Not an under count.
+#[test]
+fn under_count_accepts_a_parenthetical_alternative_unit() {
+    let orig = "1/2 cup (8 Tbsp; 113g) unsalted butter, softened\n1 1/4 teaspoons (8g) table salt\n2 eggs\n\nBeat the butter with the salt and eggs.";
+    assert!(under(orig, "Beat @unsalted butter{113%g}(softened) with @salt{8%g} and @eggs{2}.").is_empty());
+}
+
+/// An instruction sentence the extractor read as a listing ("1 Spitzkohl in
+/// Streifen schneiden.", "1 tsp of the egg white you set aside earlier") is
+/// not a second listing.
+#[test]
+fn under_count_ignores_instruction_shaped_listings() {
+    let orig = "1 Spitzkohl\n2 Zwiebeln\n1 Spitzkohl in Streifen schneiden.\n\nDie Zwiebeln hacken.";
+    assert!(under(orig, "@Spitzkohl{1}(in Streifen) und @Zwiebeln{2} hacken.").is_empty());
+    let orig = "1 egg\n100 g sugar\n1 tsp of the egg white you set aside earlier\n\nBeat the egg with sugar.";
+    assert!(under(orig, "Beat @egg{1} with @sugar{100%g}.").is_empty());
+}
+
+#[test]
+fn under_count_accepts_an_alternative_amount_anywhere_in_the_line() {
+    let orig = "1/2 cup all-purpose flour 128 g\n2 eggs\n\nMix the flour and eggs.";
+    assert!(under(orig, "Mix @flour{128%g} and @eggs{2}.").is_empty());
+}
+
+/// A large unitless number is a product type, not a count ("Weizenmehl Type 405").
+#[test]
+fn under_count_ignores_large_unitless_numbers() {
+    let orig = "Weizenmehl Type 405\n2 Eier\n100 g Zucker\n\nAlles verrühren.";
+    assert!(under(orig, "@Weizenmehl Type 405{} mit @Eier{2} und @Zucker{100%g} verrühren.").is_empty());
+}
+
+/// Part of the amount tagged in the source unit and the rest as a spoon
+/// measure (200 g cream -> 3 EL + 150 g) is a split, not an under count; with
+/// nothing in the source unit at all it is still flagged.
+#[test]
+fn under_count_skips_a_split_across_dimensions_but_not_a_lost_amount() {
+    let orig = "200 g Sahne\n250 g Ricotta\n\nRicotta mit 3 EL Sahne verrühren. Die restliche Sahne schlagen.";
+    assert!(under(orig, "@Ricotta{250%g} mit @Sahne{3%EL} verrühren. @Sahne{150%g} schlagen.").is_empty());
+    assert_eq!(under(orig, "@Ricotta{250%g} mit @Sahne{3%EL} verrühren. @Sahne{} schlagen.").len(), 1);
+}
+
+/// "powdered/icing sugar" is tagged @powdered sugar: every word of the name is
+/// in the listing, so it joins the group instead of being charged to @sugar.
+#[test]
+fn under_count_links_names_whose_words_all_appear_in_the_listing() {
+    let orig = "100 g caster sugar\n180 g powdered/icing sugar\n2 eggs\n\nBeat the eggs with the sugar. Dust with icing sugar.";
+    assert!(under(orig, "Beat @eggs{2} with @sugar{100%g}. Dust with @powdered sugar{180%g}.").is_empty());
+}
+
+/// A page dump that repeats the whole ingredient list is read once.
+#[test]
+fn under_count_reads_a_repeated_ingredient_list_once() {
+    let list = "молоко 1 ст.л.\nмука 120 г\nсоль 1/4 ч.л.\n";
+    let orig = format!("{list}\n{list}\nВсё смешать.");
+    assert!(under(&orig, "Смешать @мука{120%г}, @соль{1/4%ч.л.} и @молоко{1%ст.л.}.").is_empty());
+}
+
+/// The same amount in another unit (250 ml -> 250 g) is a unit change, not an under count.
+#[test]
+fn under_count_skips_the_same_amount_in_another_unit() {
+    let orig = "250 ml Zucker\n3 Eier\n\nEier und Zucker schaumig rühren.";
+    assert!(under(orig, "@Eier{3} und @Zucker{250%g} schaumig rühren.").is_empty());
+}
+
+/// "50g egg (1 egg)": the listing's alternative amount is the tagged one.
+#[test]
+fn under_count_accepts_a_listing_covered_by_its_alternative_amount() {
+    let orig = "50g egg (1 egg)\n1 egg\n100 g flour\n\nBeat one egg into the flour, brush with the other.";
+    assert!(under(orig, "Beat @egg{1} into @flour{100%g}. Brush with @egg{1}.").is_empty());
+    // Nothing tagged at all is still flagged.
+    assert_eq!(under(orig, "Beat @egg{} into @flour{100%g}. Brush with @egg{}.").len(), 1);
+}
+
+/// A unitless count of a compound listing ("1 salt & pepper") is meaningless.
+#[test]
+fn under_count_ignores_a_counted_compound_listing() {
+    let orig = "1 salt & pepper\n2 eggs\n100 g flour\n\nSeason and mix.";
+    assert!(under(orig, "Season with @salt{} and @pepper{}. Mix @eggs{2} and @flour{100%g}.").is_empty());
+}

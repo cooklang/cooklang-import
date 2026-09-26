@@ -273,3 +273,103 @@ fn mutated_documents_pass_all_invariants() {
         check_case(&doc);
     }
 }
+
+// ---------------------------------------------------------------- UnderCount property
+
+/// Distinct single-word names with no word overlap, each with its unit
+/// ("" = a count) and a multiplier so amounts look realistic.
+const PANTRY: &[(&str, &str, u32)] = &[
+    ("flour", "g", 50), ("sugar", "g", 25), ("milk", "ml", 100), ("butter", "g", 10), ("rice", "g", 50),
+    ("honey", "tbsp", 1), ("vinegar", "tsp", 1), ("eggs", "", 1), ("lentils", "cup", 1), ("carrots", "", 1),
+    ("Mehl", "g", 50), ("Zucker", "EL", 1), ("farine", "g", 25), ("lait", "ml", 50),
+];
+
+fn token(name: &str, qty: Option<u32>, unit: &str) -> String {
+    match (qty, unit) {
+        (None, _) => format!("@{name}{{}}"),
+        (Some(q), "") => format!("@{name}{{{q}}}"),
+        (Some(q), u) => format!("@{name}{{{q}%{u}}}"),
+    }
+}
+
+/// Splits `total` into up to `k` positive integer parts.
+fn split(rng: &mut Rng, total: u32, k: usize) -> Vec<u32> {
+    let k = k.min(total as usize).max(1);
+    let mut parts = vec![1u32; k];
+    for _ in 0..total - k as u32 {
+        parts[rng.range(k)] += 1;
+    }
+    parts
+}
+
+fn under_counts(orig: &str, doc: &str) -> Vec<String> {
+    lint(orig, doc).into_iter().filter(|i| i.kind == Kind::UnderCount).map(|i| i.evidence).collect()
+}
+
+/// Random recipes built from listings (sometimes one ingredient listed twice)
+/// and tokens that split each total across 1-3 uses:
+/// (a) every amount tagged -> no UnderCount;
+/// (b) one ingredient left in empty braces everywhere -> exactly one UnderCount naming it;
+/// (c) one of several uses of an ingredient dropped to empty braces -> exactly one UnderCount.
+#[test]
+fn under_count_fires_exactly_when_an_amount_is_lost() {
+    let mut rng = Rng::new(0x0DDC_0FFE_u64);
+    for case in 0..1500 {
+        let n = 2 + rng.range(4);
+        let mut picked: Vec<usize> = Vec::new();
+        while picked.len() < n {
+            let i = rng.range(PANTRY.len());
+            if !picked.contains(&i) {
+                picked.push(i);
+            }
+        }
+        let mut lines = Vec::new();
+        let mut uses: Vec<(usize, u32)> = Vec::new(); // (ingredient index in `picked`, amount)
+        for (j, &i) in picked.iter().enumerate() {
+            let (name, unit, mult) = PANTRY[i];
+            let listings = if rng.range(4) == 0 { 2 } else { 1 };
+            let mut total = 0;
+            for l in 0..listings {
+                let q = (1 + rng.range(6) as u32) * mult;
+                total += q;
+                let suffix = if l == 1 { ", for serving" } else { "" };
+                lines.push(if unit.is_empty() { format!("{q} {name}{suffix}") } else { format!("{q} {unit} {name}{suffix}") });
+            }
+            let k = 1 + rng.range(3);
+            for p in split(&mut rng, total, k) {
+                uses.push((j, p));
+            }
+        }
+        // Shuffle the uses into steps.
+        for i in (1..uses.len()).rev() {
+            uses.swap(i, rng.range(i + 1));
+        }
+        let orig = format!("{}\n\nMix everything together and cook until done.", lines.join("\n"));
+        let render = |blank: &dyn Fn(usize, usize) -> bool| -> String {
+            let steps: Vec<String> = uses
+                .iter()
+                .enumerate()
+                .map(|(k, &(j, q))| {
+                    let (name, unit, _) = PANTRY[picked[j]];
+                    format!("Add {}.", token(name, (!blank(k, j)).then_some(q), unit))
+                })
+                .collect();
+            format!("---\ntitle: T\n---\n\n{}\n", steps.join("\n\n"))
+        };
+        // (a)
+        let full = render(&|_, _| false);
+        assert!(under_counts(&orig, &full).is_empty(), "case {case}: false UnderCount\n{orig}\n{full}");
+        // (b)
+        let victim = rng.range(n);
+        let doc = render(&|_, j| j == victim);
+        let got = under_counts(&orig, &doc);
+        let name = PANTRY[picked[victim]].0.to_lowercase();
+        assert!(got.len() == 1 && got[0].contains(&name), "case {case}: expected one UnderCount for {name}, got {got:?}\n{orig}\n{doc}");
+        // (c)
+        if let Some(k) = (0..uses.len()).find(|&k| uses.iter().filter(|u| u.0 == uses[k].0).count() >= 2) {
+            let doc = render(&|kk, _| kk == k);
+            let got = under_counts(&orig, &doc);
+            assert_eq!(got.len(), 1, "case {case}: dropped use not flagged: {got:?}\n{orig}\n{doc}");
+        }
+    }
+}

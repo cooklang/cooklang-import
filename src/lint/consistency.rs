@@ -310,6 +310,10 @@ pub(super) fn check(original: &str, _body: &str, recipe: &Recipe) -> Vec<Issue> 
         }
     }
 
+    if !language_mismatch && sources.len() <= MAX_SOURCES_FOR_COVERAGE {
+        issues.extend(under_count(&sources, recipe));
+    }
+
     // Spelling variants: two distinct names with the same stem.
     let mut by_stem: BTreeMap<String, Vec<&String>> = BTreeMap::new();
     for n in &names {
@@ -323,6 +327,186 @@ pub(super) fn check(original: &str, _body: &str, recipe: &Recipe) -> Vec<Issue> 
         issues.push(Issue::new(Kind::SpellingVariant, Severity::Warning, evidence, false));
     }
 
+    issues
+}
+
+/// Coarse physical dimension of a normalized unit: two tagged/listed units in
+/// the same (or an unknown) dimension may be a unit conversion of one another
+/// ("1 cup" -> "240 ml", "2 cloves" -> "10 g"); units in two different known
+/// dimensions ("550 g" vs "1 tbsp") never are.
+fn dimension(unit: &str) -> Option<&'static str> {
+    match unit {
+        "g" | "kg" | "mg" | "oz" | "lb" => Some("mass"),
+        "ml" | "cl" | "dl" | "l" | "tsp" | "tbsp" | "cup" => Some("volume"),
+        _ => None,
+    }
+}
+
+static COMPOUND: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"&|\b(and|und|et|y|i)\b").unwrap());
+
+/// A parenthetical in a source line.
+static PAREN_AMOUNT: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"\(([^()]*)\)").unwrap()
+});
+static AMOUNT_UNIT: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"\d(?:[\d.,/ ]*\d)?\s*([\p{L}.]+)").unwrap());
+
+/// Normalized units of every amount a source line gives ("1/2 cup (8 Tbsp;
+/// 113g) butter" -> ["cup", "tbsp", "g"], "1/2 cup flour 128 g" -> ["cup",
+/// "g"]): tagging an alternative amount instead of the leading one is a
+/// faithful choice.
+fn alt_units(line: &str) -> Vec<String> {
+    AMOUNT_UNIT.captures_iter(line).map(|c| norm_unit(&c[1])).collect()
+}
+
+/// A multi-word tagged name whose every (non-stop) word is in the listing:
+/// "powdered sugar" in "powdered/icing sugar".
+fn all_words_in(name: &str, listing: &str) -> bool {
+    let nw = words(name);
+    let lw = words_raw(listing);
+    nw.len() >= 2 && nw.iter().all(|w| lw.iter().any(|l| similar(w, l)))
+}
+
+/// An instruction sentence the extractor took for a listing: a long "name"
+/// ("the egg white you set aside earlier"), or a line that ends in a period
+/// once parentheticals are removed ("1 Spitzkohl in Streifen schneiden.").
+fn instruction_shaped(src: &SourceIngredient) -> bool {
+    let words = src.name.split_whitespace().count();
+    let bare = PAREN_AMOUNT.replace_all(&src.line, "");
+    words >= 5 || (words >= 3 && bare.trim_end().ends_with('.'))
+}
+
+/// Formats an amount without float noise ("0.5", "550", "0.333").
+fn amount(x: f64) -> String {
+    let s = format!("{:.3}", x);
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// Under count: the source's total quantity of an ingredient (summed across
+/// EVERY source listing — "1/4 cup pine nuts" for the pesto and "1/4 cup pine
+/// nuts, toasted" for the topping) is larger than what the tagged tokens
+/// carry in that unit, with 1% tolerance — including a quantified listing
+/// tagged only with empty braces ("550 g flour" -> `@flour{}`).
+///
+/// Source listings and tagged names are linked by a word-boundary match in
+/// either direction and grouped into connected components, so overlapping
+/// names ("butter" / "peanut butter") are compared as one group instead of
+/// charging one listing to the wrong token. A group is skipped when a token
+/// has a text quantity ("a pinch"), or when a tagged unit that isn't among
+/// the source's units could be a conversion of a source unit (same or unknown
+/// dimension). A range compares the source's lower bound against the tagged
+/// upper bound, so "2-3 tbsp" is satisfied by `{2%tbsp}`.
+fn under_count(sources: &[SourceIngredient], recipe: &Recipe) -> Vec<Issue> {
+    // A page dump that repeats its whole ingredient list: read each line once.
+    // (A few identical lines are kept — "½ tsp salt" in two sub-recipes is real.)
+    let mut distinct: Vec<&str> = sources.iter().map(|s| s.line.as_str()).collect();
+    distinct.sort_unstable();
+    distinct.dedup();
+    let repeated = sources.len() >= 4 && (distinct.len() as f64) <= 0.6 * sources.len() as f64;
+    let mut seen = std::collections::HashSet::new();
+    let srcs: Vec<(&SourceIngredient, String, String, f64)> = sources
+        .iter()
+        .filter(|s| !repeated || seen.insert(s.line.as_str()))
+        .filter(|s| !instruction_shaped(s))
+        .filter_map(|s| {
+            let lo = s.qty_lo.or(s.qty)?;
+            Some((s, normalize(&s.name), norm_unit(s.unit.as_deref().unwrap_or("")), lo))
+        })
+        .filter(|(_, name, _, lo)| !name.is_empty() && *lo > 0.0)
+        // A large unitless number is a product type ("Weizenmehl Type 405"), not a count,
+        // and a count of a compound listing ("1 salt & pepper") means nothing.
+        .filter(|(_, name, unit, lo)| !(unit.is_empty() && (*lo > 50.0 || COMPOUND.is_match(name))))
+        .collect();
+    let mut names: Vec<String> = recipe.ingredients.iter().map(|i| normalize(&i.name)).collect();
+    names.sort();
+    names.dedup();
+    if srcs.is_empty() || names.is_empty() {
+        return Vec::new();
+    }
+    // Union-find over [sources..., names...].
+    let n = srcs.len();
+    let mut parent: Vec<usize> = (0..n + names.len()).collect();
+    fn find(p: &mut [usize], mut x: usize) -> usize {
+        while p[x] != x {
+            p[x] = p[p[x]];
+            x = p[x];
+        }
+        x
+    }
+    let mut linked = vec![false; n + names.len()];
+    for (i, (_, sname, _, _)) in srcs.iter().enumerate() {
+        for (j, name) in names.iter().enumerate() {
+            if word_boundary_match(sname, name) || word_boundary_match(name, sname) || all_words_in(name, sname) {
+                let (a, b) = (find(&mut parent, i), find(&mut parent, n + j));
+                parent[a] = b;
+                linked[i] = true;
+                linked[n + j] = true;
+            }
+        }
+    }
+    let mut groups: BTreeMap<usize, (Vec<usize>, Vec<usize>)> = BTreeMap::new();
+    for (i, _) in linked.iter().enumerate().filter(|(_, l)| **l) {
+        {
+            let root = find(&mut parent, i);
+            let g = groups.entry(root).or_default();
+            if i < n { g.0.push(i) } else { g.1.push(i - n) }
+        }
+    }
+    let mut issues = Vec::new();
+    'group: for (src_idx, name_idx) in groups.values() {
+        let group_names: Vec<&String> = name_idx.iter().map(|&j| &names[j]).collect();
+        let mut source_total: BTreeMap<String, f64> = BTreeMap::new();
+        for &i in src_idx {
+            *source_total.entry(srcs[i].2.clone()).or_default() += srcs[i].3;
+        }
+        let mut tagged: BTreeMap<String, f64> = BTreeMap::new();
+        for ing in recipe.ingredients.iter().filter(|i| group_names.contains(&&normalize(&i.name))) {
+            let Some(q) = &ing.quantity else { continue };
+            let Some(v) = numeric(q.value()) else { continue 'group };
+            *tagged.entry(norm_unit(q.unit().unwrap_or(""))).or_default() += v;
+        }
+        let alternatives: Vec<String> = src_idx.iter().flat_map(|&i| alt_units(&srcs[i].0.line)).collect();
+        let partly_in_source_unit = source_total.keys().any(|u| tagged.get(u).is_some_and(|v| *v > 0.0));
+        for unit in tagged.keys().filter(|u| !source_total.contains_key(*u)) {
+            // Another amount the source line itself gives ("(113g)", "... flour 128 g"),
+            // or part tagged in the source unit and part in a spoon measure: a split.
+            // The same amount under another unit (250 ml -> 250 g) is a unit change.
+            let same_amount = source_total.values().any(|t| (tagged[unit] - t).abs() <= 0.01 * t);
+            if alternatives.contains(unit) || partly_in_source_unit || same_amount {
+                continue 'group;
+            }
+            let convertible = source_total.keys().any(|su| match (dimension(unit), dimension(su)) {
+                (Some(a), Some(b)) => a == b,
+                _ => true,
+            });
+            if convertible {
+                continue 'group;
+            }
+        }
+        let tagged_any = tagged.values().any(|v| *v > 0.0);
+        for (unit, total) in &source_total {
+            let have = tagged.get(unit).copied().unwrap_or(0.0);
+            // Every listing in this unit also gives another amount ("50g egg (1 egg)")
+            // and something is tagged: it may be carried in that other amount.
+            let alt_only = src_idx
+                .iter()
+                .filter(|&&i| &srcs[i].2 == unit)
+                .all(|&i| AMOUNT_UNIT.find_iter(&srcs[i].0.line).count() >= 2);
+            if have < total * 0.99 && !(alt_only && tagged_any) {
+                let names_s = group_names.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" / ");
+                let u = if unit.is_empty() { String::new() } else { format!(" {unit}") };
+                let evidence = format!(
+                    "@{names_s}: source lists {}{u} over {} line(s), tagged {}{u}",
+                    amount(*total),
+                    src_idx.len(),
+                    amount(have)
+                );
+                issues.push(Issue::new(Kind::UnderCount, Severity::Error, evidence, false));
+                break;
+            }
+        }
+    }
     issues
 }
 
@@ -353,9 +537,9 @@ mod tests {
 
     #[test]
     fn covers_allows_two_character_words() {
-        let src = SourceIngredient { line: "1 Ei".into(), name: "ei".into(), qty: Some(1.0), unit: None };
+        let src = SourceIngredient { line: "1 Ei".into(), name: "ei".into(), qty: Some(1.0), qty_lo: Some(1.0), unit: None };
         assert!(cov("ei", &src));
-        let src = SourceIngredient { line: "1 EL Öl".into(), name: "öl".into(), qty: Some(1.0), unit: Some("EL".into()) };
+        let src = SourceIngredient { line: "1 EL Öl".into(), name: "öl".into(), qty: Some(1.0), qty_lo: Some(1.0), unit: Some("EL".into()) };
         assert!(cov("öl", &src));
     }
 
@@ -365,13 +549,13 @@ mod tests {
     /// characters and fails from the very first letter.
     #[test]
     fn covers_folds_french_ligatures() {
-        let src = SourceIngredient { line: "2 œufs".into(), name: "œufs".into(), qty: Some(2.0), unit: None };
+        let src = SourceIngredient { line: "2 œufs".into(), name: "œufs".into(), qty: Some(2.0), qty_lo: Some(2.0), unit: None };
         assert!(cov("oeufs", &src));
     }
 
     #[test]
     fn covers_matches_cjk_by_character_containment() {
-        let src = SourceIngredient { line: "洋葱 一个".into(), name: "洋葱".into(), qty: Some(1.0), unit: None };
+        let src = SourceIngredient { line: "洋葱 一个".into(), name: "洋葱".into(), qty: Some(1.0), qty_lo: Some(1.0), unit: None };
         assert!(cov("洋葱", &src));
         assert!(!cov("胡萝卜", &src));
     }
