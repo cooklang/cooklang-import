@@ -56,6 +56,7 @@ pub trait Converter: Send + Sync {
     fn name(&self) -> &str;
 
     /// Convert recipe ingredients and instructions to Cooklang format
+    #[allow(clippy::double_must_use)] // async_trait boxes the future, which is already #[must_use]
     async fn convert(
         &self,
         ingredients_and_instructions: &str,

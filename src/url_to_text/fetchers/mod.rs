@@ -20,6 +20,7 @@ pub(crate) fn domain_in_list(url: &str, domains: &[String]) -> bool {
 
 #[async_trait::async_trait]
 pub trait Fetcher {
+    #[allow(clippy::double_must_use)] // async_trait boxes the future, which is already #[must_use]
     async fn fetch(&self, url: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Whether the fetcher *can* be used, if false the fetcher will be ignored
