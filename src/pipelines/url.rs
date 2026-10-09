@@ -118,7 +118,7 @@ async fn fetch_and_extract_with(
         }
     }
 
-    unreachable!()
+    Err("No usable fetcher for this URL".into())
 }
 
 /// Try all structured extractors on HTML content.
