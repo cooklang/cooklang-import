@@ -30,7 +30,7 @@ uniffi = ["dep:uniffi"]
 
 [dependencies]
 async-trait = "0.1.83"
-base64 = "0.22"
+base64 = "0.23"
 # Only enable toml format - saves ~300KB from yaml/json5/ron/ini parsers
 config = { version = "0.15", default-features = false, features = ["toml"] }
 # Disable default features (regex, color) - saves ~430KB from regex stack
