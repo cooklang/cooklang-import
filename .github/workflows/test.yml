@@ -88,3 +88,33 @@ jobs:
 
       - name: Run cargo clippy
         run: cargo clippy -- -D warnings
+
+  wasm:
+    name: Wasm build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Clippy (wasm, no native features)
+        run: cargo clippy --no-default-features --features wasm --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked || true
+
+      - name: Build and smoke-test the npm package
+        working-directory: wasm
+        run: |
+          npm run build-wasm
+          npm test
