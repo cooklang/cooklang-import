@@ -1,3 +1,5 @@
 /target
 .DS_Store
 config.toml
+# wasm-pack output for the npm package (built in CI, never committed)
+wasm/pkg/
