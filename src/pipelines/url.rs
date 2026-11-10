@@ -1,8 +1,6 @@
 use super::RecipeComponents;
 use crate::url_to_text::fetchers::{DynFetcher, Fetcher, PageScriberFetcher, RequestFetcher};
-use crate::url_to_text::html::extractors::{
-    Extractor, HtmlClassExtractor, JsonLdExtractor, MicroDataExtractor, ParsingContext,
-};
+use crate::url_to_text::html::extractors::extract_recipe;
 use crate::url_to_text::text::TextExtractor;
 use log::debug;
 use scraper::Html;
@@ -124,84 +122,7 @@ async fn fetch_and_extract_with(
 /// Try all structured extractors on HTML content.
 /// Returns Some(RecipeComponents) if any extractor succeeds, None otherwise.
 fn try_structured_extractors(html_content: &str, url: &str) -> Option<RecipeComponents> {
-    let document = Html::parse_document(html_content);
-
-    let context = ParsingContext {
-        url: url.to_string(),
-        document,
-        texts: None,
-    };
-
-    let extractors: Vec<Box<dyn Extractor>> = vec![
-        Box::new(JsonLdExtractor),
-        Box::new(MicroDataExtractor),
-        Box::new(HtmlClassExtractor),
-    ];
-
-    for extractor in extractors {
-        if let Ok(recipe) = extractor.parse(&context) {
-            let components = recipe_to_components(&recipe);
-            // A hit that is missing either half is worse than no hit at all: it stops
-            // the pipeline before the remaining extractors and the LLM fallback run,
-            // and the caller converts a partial recipe.
-            //
-            // Instructions are the half that matters most here. A page yielding
-            // ingredients and nothing else still produces non-empty text, so it used
-            // to be returned as a success — and the converter, handed a list of
-            // ingredients with no method, answered "no recipe". Thirteen of the 55
-            // failures in the 2026-08-31..09-07 window carry that byte-identical
-            // message, papillesetpupilles.fr (8 ingredients, 0 instructions) and
-            // chefkoch.de (16 and 0) among them. Both pages *do* publish their method;
-            // the extractor simply missed it, and stopping here denied the later
-            // extractors and the LLM their chance to find it.
-            if components.text.trim().is_empty() || recipe.instructions.trim().is_empty() {
-                continue;
-            }
-            return Some(components);
-        }
-    }
-
-    None
-}
-
-/// Convert a Recipe to RecipeComponents
-fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
-    // Build text from ingredients and instructions
-    let mut text = String::new();
-    for ingredient in &recipe.ingredients {
-        text.push_str(ingredient.trim());
-        text.push('\n');
-    }
-    // Always add a blank line between ingredients and instructions
-    if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
-        text.push('\n');
-    }
-    text.push_str(recipe.instructions.trim_start());
-
-    // Build metadata YAML (without --- delimiters)
-    let mut entries = Vec::new();
-    if let Some(desc) = &recipe.description {
-        entries.push(("description".to_string(), desc.clone()));
-    }
-    // Only use the first image if multiple are available
-    if let Some(first_image) = recipe.image.first() {
-        entries.push(("image".to_string(), first_image.clone()));
-    }
-    for (key, value) in &recipe.metadata {
-        if key == "servings" {
-            // Reduce free-form yields ("Makes 12", "4 personnes") to a numeric
-            // servings value; the original text is kept under `yield`.
-            entries.extend(super::servings_entries(value));
-        } else {
-            entries.push((key.clone(), value.clone()));
-        }
-    }
-
-    RecipeComponents {
-        text,
-        metadata: super::metadata_to_yaml(&entries),
-        name: super::sanitize_name(&recipe.name),
-    }
+    extract_recipe(html_content, url).map(|recipe| super::recipe_to_components(&recipe))
 }
 
 /// Upper bound on the plain text handed to the LLM extractor.
