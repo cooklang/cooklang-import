@@ -52,7 +52,7 @@ base64 = { version = "0.23", optional = true }
 config = { version = "0.15", default-features = false, features = ["toml"], optional = true }
 # Disable default features (regex, color) - saves ~430KB from regex stack
 env_logger = { version = "0.11", default-features = false, optional = true }
-html-escape = "0.2"
+html-escape = "0.3"
 log = "0.4"
 # Use rustls with bundled Mozilla CA certs - more reliable across platforms (including Android)
 # gzip/brotli/deflate are not optional niceties: some CDNs answer with
