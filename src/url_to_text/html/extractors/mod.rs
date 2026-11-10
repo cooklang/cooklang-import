@@ -90,4 +90,24 @@ mod tests {
         </script></head><body></body></html>"#;
         assert!(extract_recipe(html, "https://example.com/stub").is_none());
     }
+
+    #[test]
+    fn extract_recipe_falls_through_to_a_later_extractor() {
+        let html = r#"<html><head><script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Recipe","name":"Stub",
+         "recipeIngredient":["1 egg"]}
+        </script></head><body>
+        <div itemscope itemtype="https://schema.org/Recipe">
+            <h1 itemprop="name">Boiled Egg</h1>
+            <ul><li itemprop="recipeIngredient">1 egg</li></ul>
+            <div itemprop="recipeInstructions">Boil the egg for six minutes.</div>
+        </div>
+        </body></html>"#;
+        let recipe = extract_recipe(html, "https://example.com/egg")
+            .expect("the MicroData extractor should supply the recipe JSON-LD could not");
+        assert!(recipe
+            .instructions
+            .contains("Boil the egg for six minutes."));
+        assert_eq!(recipe.name, "Boiled Egg");
+    }
 }
