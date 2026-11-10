@@ -504,19 +504,19 @@ public struct FfiImportConfig {
     /// Default memberwise initializers are never public by default, so we
     /// declare one manually.
     public init(
-        /* 
+        /*
          * Optional LLM provider (uses default if not specified)
          */ provider: FfiLlmProvider?,
-        /* 
+        /*
             * Optional API key (uses environment variable if not specified)
             */ apiKey: String?,
-        /* 
+        /*
             * Optional model name (uses provider default if not specified)
             */ model: String?,
-        /* 
+        /*
             * Optional timeout in seconds (uses default if not specified)
             */ timeoutSeconds: UInt64?,
-        /* 
+        /*
             * If true, only extract recipe without converting to Cooklang
             */ extractOnly: Bool
     ) {
@@ -615,13 +615,13 @@ public struct FfiRecipeComponents {
     /// Default memberwise initializers are never public by default, so we
     /// declare one manually.
     public init(
-        /* 
+        /*
          * Recipe text (ingredients + instructions)
          */ text: String,
-        /* 
+        /*
             * YAML-formatted metadata (without --- delimiters)
             */ metadata: String,
-        /* 
+        /*
             * Recipe name/title
             */ name: String
     ) {
@@ -808,7 +808,7 @@ extension FfiImportError: Foundation.LocalizedError {
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/* 
+/*
  * FFI-compatible import result
  */
 
@@ -871,7 +871,7 @@ extension FfiImportResult: Equatable, Hashable {}
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
-/* 
+/*
  * FFI-compatible LLM provider enum
  */
 
