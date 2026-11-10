@@ -679,7 +679,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v7
         with:
-          ref: main
+          # The release tag, not main: a commit merged during the release window
+          # must not be published under this version.
+          ref: ${{ needs.prepare-release.outputs.version_tag }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -715,7 +717,7 @@ jobs:
         working-directory: wasm
         run: |
           npm pack --ignore-scripts
-          for f in pkg/cooklang_import.js pkg/cooklang_import_bg.wasm index.js index.d.ts; do
+          for f in pkg/cooklang_import.js pkg/cooklang_import.d.ts pkg/cooklang_import_bg.wasm pkg/cooklang_import_bg.wasm.d.ts index.js index.d.ts LICENSE; do
             tar tzf cooklang-cooklang-import-*.tgz | grep -qx "package/$f" || { echo "::error::npm tarball is missing $f"; exit 1; }
           done
 

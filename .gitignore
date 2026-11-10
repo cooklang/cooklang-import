@@ -3,3 +3,5 @@
 config.toml
 # wasm-pack output for the npm package (built in CI, never committed)
 wasm/pkg/
+# Build copy of the root LICENSE for the npm tarball (the root file is the source)
+wasm/LICENSE

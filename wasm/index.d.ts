@@ -16,7 +16,11 @@ export interface Recipe {
   description: string | null;
   image: string[];
   ingredients: string[];
-  /** Steps as one string, separated by newlines. */
+  /**
+   * Steps as one string. JSON-LD and MicroData recipes separate steps with a
+   * blank line (`\n\n`); HTML-class recipes can also separate them with a
+   * single `\n`. Split on `/\n+/` to get the steps either way.
+   */
   instructions: string;
   /** Free-form metadata: servings, times, author, source and so on. */
   metadata: Record<string, string>;

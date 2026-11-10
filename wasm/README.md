@@ -22,9 +22,11 @@ In Node, load the bytes yourself:
 
 ```js
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { initSync, extractRecipe } from "@cooklang/cooklang-import";
 
-initSync({ module: readFileSync("node_modules/@cooklang/cooklang-import/pkg/cooklang_import_bg.wasm") });
+const wasmPath = fileURLToPath(import.meta.resolve("@cooklang/cooklang-import/cooklang_import_bg.wasm"));
+initSync({ module: readFileSync(wasmPath) });
 ```
 
 `extractRecipe` returns `null` when the page has no structured recipe.
