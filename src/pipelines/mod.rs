@@ -1,6 +1,10 @@
+#[cfg(feature = "native")]
 pub mod image;
+#[cfg(feature = "native")]
 pub mod text;
+#[cfg(feature = "native")]
 pub mod title;
+#[cfg(feature = "native")]
 pub mod url;
 
 /// Components extracted from a recipe source.
@@ -22,6 +26,7 @@ pub struct RecipeComponents {
 /// slicing panic unless the index lands on a character boundary. Truncating blindly
 /// killed the worker thread on any page whose text crossed the cap mid-character
 /// (hostthetoast.com, 2026-09-06).
+#[cfg(feature = "native")]
 pub(crate) fn truncate_on_char_boundary(mut s: String, max_bytes: usize) -> String {
     if s.len() <= max_bytes {
         return s;
