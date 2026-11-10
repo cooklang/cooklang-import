@@ -2,8 +2,9 @@ pub mod builder;
 pub mod config;
 pub mod converters;
 pub mod error;
+pub mod extract;
 pub mod images_to_text;
-pub(crate) mod model;
+pub mod model;
 pub mod pipelines;
 pub mod url_to_text;
 
