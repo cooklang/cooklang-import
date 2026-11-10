@@ -102,12 +102,15 @@ flowchart TB
 ```
 src/
 ├── lib.rs                      # Public API exports
+├── api.rs                      # url/image/text_to_recipe, text_to_cooklang (native only)
 ├── main.rs                     # CLI binary
 ├── model.rs                    # Recipe struct with serialization
 ├── builder.rs                  # Builder API + pipeline orchestration
 ├── config.rs                   # Configuration loading (+ FallbackConfig)
 ├── error.rs                    # Error types
+├── extract.rs                  # HTML → Recipe + RecipeComponents, no network (also wasm)
 ├── uniffi_bindings.rs          # FFI bindings for iOS/Android (feature-gated)
+├── wasm.rs                     # wasm-bindgen export (wasm feature)
 │
 ├── pipelines/                  # Flow orchestration
 │   ├── mod.rs
@@ -157,6 +160,13 @@ scripts/
 ├── publish-android.sh
 └── test-ios-release.sh
 ```
+
+### Build shapes
+
+- **native** (default feature): the whole crate.
+- **`--no-default-features --features wasm`**: `extract.rs`, `model.rs`, the extractors and
+  the YAML helpers in `pipelines/mod.rs`. Built with `wasm-pack` into `wasm/pkg/` and
+  published as `@cooklang/cooklang-import`.
 
 ## Input Flows
 

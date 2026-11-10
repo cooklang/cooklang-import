@@ -1,6 +1,10 @@
+#[cfg(feature = "native")]
 pub mod image;
+#[cfg(feature = "native")]
 pub mod text;
+#[cfg(feature = "native")]
 pub mod title;
+#[cfg(feature = "native")]
 pub mod url;
 
 /// Components extracted from a recipe source.
@@ -22,6 +26,7 @@ pub struct RecipeComponents {
 /// slicing panic unless the index lands on a character boundary. Truncating blindly
 /// killed the worker thread on any page whose text crossed the cap mid-character
 /// (hostthetoast.com, 2026-09-06).
+#[cfg(feature = "native")]
 pub(crate) fn truncate_on_char_boundary(mut s: String, max_bytes: usize) -> String {
     if s.len() <= max_bytes {
         return s;
@@ -109,6 +114,46 @@ pub fn metadata_to_yaml(entries: &[(String, String)]) -> String {
     }
 }
 
+/// Convert an extracted `Recipe` into the `RecipeComponents` the converter takes.
+pub fn recipe_to_components(recipe: &crate::model::Recipe) -> RecipeComponents {
+    // Build text from ingredients and instructions
+    let mut text = String::new();
+    for ingredient in &recipe.ingredients {
+        text.push_str(ingredient.trim());
+        text.push('\n');
+    }
+    // Always add a blank line between ingredients and instructions
+    if !recipe.ingredients.is_empty() && !recipe.instructions.is_empty() {
+        text.push('\n');
+    }
+    text.push_str(recipe.instructions.trim_start());
+
+    // Build metadata YAML (without --- delimiters)
+    let mut entries = Vec::new();
+    if let Some(desc) = &recipe.description {
+        entries.push(("description".to_string(), desc.clone()));
+    }
+    // Only use the first image if multiple are available
+    if let Some(first_image) = recipe.image.first() {
+        entries.push(("image".to_string(), first_image.clone()));
+    }
+    for (key, value) in &recipe.metadata {
+        if key == "servings" {
+            // Reduce free-form yields ("Makes 12", "4 personnes") to a numeric
+            // servings value; the original text is kept under `yield`.
+            entries.extend(servings_entries(value));
+        } else {
+            entries.push((key.clone(), value.clone()));
+        }
+    }
+
+    RecipeComponents {
+        text,
+        metadata: metadata_to_yaml(&entries),
+        name: sanitize_name(&recipe.name),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +231,33 @@ mod tests {
     #[test]
     fn test_sanitize_name() {
         assert_eq!(sanitize_name("hello  world\n test"), "hello world test");
+    }
+
+    #[test]
+    fn test_recipe_to_components() {
+        let recipe = crate::model::Recipe {
+            name: "  Pancakes \n".to_string(),
+            description: Some("Thin ones".to_string()),
+            image: vec![
+                "https://example.com/a.jpg".to_string(),
+                "https://example.com/b.jpg".to_string(),
+            ],
+            ingredients: vec![" 200 g flour ".to_string(), "2 eggs".to_string()],
+            instructions: "Whisk.\nFry.".to_string(),
+            metadata: std::collections::HashMap::from([(
+                "servings".to_string(),
+                "Makes 4".to_string(),
+            )]),
+        };
+        let components = recipe_to_components(&recipe);
+        assert_eq!(components.name, "Pancakes");
+        assert_eq!(components.text, "200 g flour\n2 eggs\n\nWhisk.\nFry.");
+        assert!(components.metadata.contains("description: Thin ones"));
+        assert!(components
+            .metadata
+            .contains("image: https://example.com/a.jpg"));
+        assert!(!components.metadata.contains("b.jpg"));
+        assert!(components.metadata.contains("servings: 4"));
+        assert!(components.metadata.contains("yield: Makes 4"));
     }
 }

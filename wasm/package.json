@@ -1,0 +1,40 @@
+{
+  "name": "@cooklang/cooklang-import",
+  "version": "0.10.0",
+  "license": "MIT",
+  "description": "Extract recipes from web page HTML (JSON-LD, MicroData, HTML classes). The cooklang-import extractors compiled to WebAssembly; no network access.",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./cooklang_import_bg.wasm": "./pkg/cooklang_import_bg.wasm"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cooklang/cooklang-import.git",
+    "directory": "wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/cooklang/cooklang-import/issues"
+  },
+  "homepage": "https://cooklang.org",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "pkg/cooklang_import.js",
+    "pkg/cooklang_import.d.ts",
+    "pkg/cooklang_import_bg.wasm",
+    "pkg/cooklang_import_bg.wasm.d.ts"
+  ],
+  "keywords": ["cooklang", "recipe", "json-ld", "schema.org", "scraper", "wasm"],
+  "scripts": {
+    "build-wasm": "cd .. && CARGO_PROFILE_RELEASE_STRIP=true CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 wasm-pack build --release --target web --out-dir wasm/pkg --out-name cooklang_import -- --no-default-features --features wasm && rm -f wasm/pkg/.gitignore wasm/pkg/package.json wasm/pkg/README.md wasm/pkg/LICENSE && cp LICENSE wasm/LICENSE",
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -665,3 +665,62 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: cargo publish --no-verify
+
+  # Publish the wasm extractors to npm (@cooklang/cooklang-import)
+  publish-npm:
+    name: Publish to npm
+    needs: [prepare-release, create-release]
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          # The release tag, not main: a commit merged during the release window
+          # must not be published under this version.
+          ref: ${{ needs.prepare-release.outputs.version_tag }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          # npm@latest (needed for OIDC trusted publishing) requires node >= 22
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for OIDC trusted publishing support
+        run: npm install -g npm@latest
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked || true
+
+      - name: Sync package.json version
+        working-directory: wasm
+        run: npm version "${{ needs.prepare-release.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Build and test
+        working-directory: wasm
+        run: |
+          npm run build-wasm
+          npm test
+
+      # Publish the exact tarball we verified, so a missing pkg/ (an ignore file
+      # excluding it, as happened to @cooklang/cooklang 0.19.0) fails the release.
+      - name: Pack and verify npm tarball
+        working-directory: wasm
+        run: |
+          npm pack --ignore-scripts
+          for f in pkg/cooklang_import.js pkg/cooklang_import.d.ts pkg/cooklang_import_bg.wasm pkg/cooklang_import_bg.wasm.d.ts index.js index.d.ts LICENSE; do
+            tar tzf cooklang-cooklang-import-*.tgz | grep -qx "package/$f" || { echo "::error::npm tarball is missing $f"; exit 1; }
+          done
+
+      - name: Publish to npm
+        working-directory: wasm
+        run: npm publish ./cooklang-cooklang-import-*.tgz --provenance --access public
