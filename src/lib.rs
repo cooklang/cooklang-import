@@ -14,6 +14,8 @@ pub mod images_to_text;
 pub mod model;
 pub mod pipelines;
 pub mod url_to_text;
+#[cfg(feature = "wasm")]
+mod wasm;
 
 #[cfg(feature = "uniffi")]
 pub mod uniffi_bindings;
