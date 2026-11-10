@@ -36,6 +36,12 @@ See [docs/api-rust.md](docs/api-rust.md) for library usage.
 - [iOS (Swift)](docs/sdk-ios.md) - Swift Package Manager or manual installation
 - [Android (Kotlin)](docs/sdk-android.md) - GitHub Packages (Maven) or manual installation
 
+### Browser (WebAssembly)
+
+The structured extractors (JSON-LD, MicroData, HTML classes) are also published as
+[`@cooklang/cooklang-import`](wasm/README.md) on npm. That build has no network code and
+no AI conversion: it takes a page's HTML and returns the recipe it finds.
+
 ## Quick Start
 
 Set your API key:
