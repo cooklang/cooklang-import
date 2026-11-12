@@ -42,7 +42,8 @@ pub struct ProviderConfig {
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
     /// Reasoning effort for OpenAI models that reason ("none", "low", "medium",
-    /// "high"). Unset means "none". `OPENAI_REASONING_EFFORT` overrides it.
+    /// "high"). Unset means "none" for the default model and the model's own
+    /// default for any other. `OPENAI_REASONING_EFFORT` overrides it.
     #[serde(default)]
     pub reasoning_effort: Option<String>,
 

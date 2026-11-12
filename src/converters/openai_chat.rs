@@ -14,10 +14,18 @@ pub(crate) const DEFAULT_MODEL: &str = "gpt-6-luna";
 
 pub(crate) const OPENAI_BASE_URL: &str = "https://api.openai.com";
 
-/// Reasoning effort used when none is configured. Converting a recipe is markup,
-/// not problem solving: with reasoning off the answer is as good and several
-/// times faster.
+/// Reasoning effort for the default model when none is configured. Converting a
+/// recipe is markup, not problem solving: with reasoning off the answer is as
+/// good and several times faster.
 pub(crate) const DEFAULT_REASONING_EFFORT: &str = "none";
+
+/// Whether [`DEFAULT_REASONING_EFFORT`] may be sent to `model` unasked. Not every
+/// reasoning model can switch reasoning off (gpt-6-astra answers 400 to "none"),
+/// so only the default model family gets it; any other model keeps its own
+/// default unless an effort is configured.
+fn reasoning_off_by_default(model: &str) -> bool {
+    model.starts_with(DEFAULT_MODEL)
+}
 
 /// GPT-4-family and GPT-3.5 models, and fine-tunes of them. They take
 /// `temperature` and reject `reasoning_effort`.
@@ -31,7 +39,8 @@ pub(crate) struct Generation<'a> {
     pub model: &'a str,
     /// `false` for an OpenAI-compatible server reached through a custom base URL.
     pub openai_host: bool,
-    /// Configured effort; `None` means [`DEFAULT_REASONING_EFFORT`].
+    /// Configured effort. `None` means [`DEFAULT_REASONING_EFFORT`] for the default
+    /// model family and the model's own default for any other.
     pub reasoning_effort: Option<&'a str>,
     pub temperature: Option<f32>,
     pub max_output_tokens: Option<u32>,
@@ -68,10 +77,14 @@ impl Generation<'_> {
             return;
         }
 
-        let effort = self.reasoning_effort.unwrap_or(DEFAULT_REASONING_EFFORT);
-        body["reasoning_effort"] = json!(effort);
-        // With reasoning on, only the default temperature is accepted.
-        if effort == "none" {
+        let effort = self
+            .reasoning_effort
+            .or_else(|| reasoning_off_by_default(self.model).then_some(DEFAULT_REASONING_EFFORT));
+        if let Some(effort) = effort {
+            body["reasoning_effort"] = json!(effort);
+        }
+        // While a model reasons, only the default temperature is accepted.
+        if effort == Some("none") {
             if let Some(t) = self.temperature {
                 body["temperature"] = json!(t);
             }
@@ -146,6 +159,30 @@ mod tests {
             assert_eq!(b["temperature"], json!(0.2f32), "{model}");
             assert_eq!(b["max_completion_tokens"], 2000, "{model}");
         }
+    }
+
+    // gpt-6-astra: "'reasoning_effort' does not support 'none' with this model".
+    #[test]
+    fn another_reasoning_model_keeps_its_own_default() {
+        let b = body(Generation {
+            model: "gpt-6-astra",
+            openai_host: true,
+            reasoning_effort: None,
+            temperature: Some(0.2),
+            max_output_tokens: Some(4000),
+        });
+        assert!(b.get("reasoning_effort").is_none());
+        assert!(b.get("temperature").is_none());
+        assert_eq!(b["max_completion_tokens"], 4000);
+
+        let b = body(Generation {
+            model: "gpt-6-astra",
+            openai_host: true,
+            reasoning_effort: Some("low"),
+            temperature: Some(0.2),
+            max_output_tokens: Some(4000),
+        });
+        assert_eq!(b["reasoning_effort"], "low");
     }
 
     #[test]

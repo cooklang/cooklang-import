@@ -6,7 +6,7 @@
 
 - **Models**: gpt-6-luna (default). OpenAI removes the GPT-4 family (gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini and fine-tunes of them) from its API on 2027-01-14.
 - **Environment Variables**: `OPENAI_API_KEY`; optional `OPENAI_MODEL` and `OPENAI_REASONING_EFFORT`
-- **Reasoning**: off by default (`none`), which is the fastest and is enough for conversion. Set `reasoning_effort` (or `OPENAI_REASONING_EFFORT`) to `low`, `medium` or `high` to turn it on. `temperature` is only sent while reasoning is off: the model rejects it otherwise.
+- **Reasoning**: off by default (`none`) for `gpt-6-luna`, which is the fastest and is enough for conversion. Another model keeps its own default unless you set an effort; not every model accepts `none`. Set `reasoning_effort` (or `OPENAI_REASONING_EFFORT`) to `low`, `medium` or `high` to turn it on. `temperature` is only sent while reasoning is off: the model rejects it otherwise.
 
 ```toml
 [providers.openai]

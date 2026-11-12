@@ -507,8 +507,8 @@ mod model_selection_tests {
         assert_eq!(default_model_for_provider("open_ai"), "gpt-6-luna");
     }
 
-    // Regression: cells sets OPENAI_MODEL, and this path ignored it. Every
-    // conversion went to the built-in default whatever the variable said.
+    // Regression: this path ignored OPENAI_MODEL. Every conversion went to the
+    // built-in default whatever the variable said.
     #[test]
     fn openai_model_env_selects_the_model() {
         let _guard = ENV_LOCK.lock().unwrap();
