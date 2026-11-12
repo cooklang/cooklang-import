@@ -17,7 +17,10 @@ use std::error::Error;
 /// derived file names comfortably inside filesystem limits.
 pub const MAX_TITLE_CHARS: usize = 60;
 
-const MODEL: &str = "gpt-4o-mini";
+use crate::converters::openai_chat::{Generation, DEFAULT_MODEL};
+
+/// A title is at most 60 characters; the cap only stops a runaway answer.
+const MAX_OUTPUT_TOKENS: u32 = 200;
 
 const PROMPT: &str = r#"You name recipes. Given a recipe (and possibly its current title), reply with only this JSON: {"title": "<TITLE>"}
 
@@ -124,17 +127,26 @@ async fn generate_title(
         format!("Current title: {}", current)
     };
 
+    let mut body = serde_json::json!({
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": PROMPT },
+            { "role": "user", "content": format!("{current_line}\n\nRecipe:\n{excerpt}") }
+        ]
+    });
+    Generation {
+        model: DEFAULT_MODEL,
+        openai_host: true,
+        reasoning_effort: None,
+        temperature: None,
+        max_output_tokens: Some(MAX_OUTPUT_TOKENS),
+    }
+    .apply(&mut body);
+
     let response = Client::new()
         .post("https://api.openai.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {api_key}"))
-        .json(&serde_json::json!({
-            "model": MODEL,
-            "response_format": { "type": "json_object" },
-            "messages": [
-                { "role": "system", "content": PROMPT },
-                { "role": "user", "content": format!("{current_line}\n\nRecipe:\n{excerpt}") }
-            ]
-        }))
+        .json(&body)
         .send()
         .await?
         .json::<Value>()

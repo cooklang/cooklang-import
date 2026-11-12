@@ -59,7 +59,8 @@ EXAMPLES:
 
 ENVIRONMENT VARIABLES:
     OPENAI_API_KEY      OpenAI API key (required for default provider)
-    OPENAI_MODEL        OpenAI model to use (default: gpt-4)
+    OPENAI_MODEL        OpenAI model to use (default: gpt-6-luna)
+    OPENAI_REASONING_EFFORT  Reasoning effort for OpenAI models that reason (default: none)
     GOOGLE_API_KEY      Google Cloud Vision API key (required for --image)
     RUST_LOG            Set log level (debug, info, warn, error)
 

@@ -273,7 +273,7 @@ impl RecipeImporterBuilder {
     /// let builder = RecipeImporter::builder()
     ///     .url("https://example.com/recipe")
     ///     .provider(LlmProvider::Anthropic)
-    ///     .model("claude-3-5-sonnet-20241022");
+    ///     .model("claude-haiku-4-5");
     /// ```
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
@@ -414,15 +414,32 @@ impl RecipeImporterBuilder {
 
     /// Build provider configuration from builder settings and environment
     fn build_provider_config(&self, provider_name: &str) -> ProviderConfig {
-        // Try to load config from file first
-        let base_config = load_config()
-            .ok()
-            .and_then(|c| c.providers.get(provider_name).cloned());
+        // Try to load config from file first. The documented section name is
+        // `[providers.openai]`, the provider's own name is `open_ai`: accept both.
+        let is_openai = matches!(provider_name, "open_ai" | "openai");
+        let base_config = load_config().ok().and_then(|c| {
+            c.providers.get(provider_name).cloned().or_else(|| {
+                is_openai
+                    .then(|| {
+                        c.providers
+                            .get("openai")
+                            .or_else(|| c.providers.get("open_ai"))
+                            .cloned()
+                    })
+                    .flatten()
+            })
+        });
+        // OPENAI_MODEL picks the model for the OpenAI provider.
+        let env_model = is_openai
+            .then(|| std::env::var("OPENAI_MODEL").ok())
+            .flatten()
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty());
 
         // Build config with overrides from builder
         ProviderConfig {
             enabled: true,
-            model: self.model.clone().unwrap_or_else(|| {
+            model: self.model.clone().or(env_model).unwrap_or_else(|| {
                 base_config
                     .as_ref()
                     .map(|c| c.model.clone())
@@ -433,6 +450,9 @@ impl RecipeImporterBuilder {
                 .map(|c| c.temperature)
                 .unwrap_or_else(crate::config::default_temperature),
             max_tokens: base_config.as_ref().map(|c| c.max_tokens).unwrap_or(4000),
+            reasoning_effort: base_config
+                .as_ref()
+                .and_then(|c| c.reasoning_effort.clone()),
             api_key: self
                 .api_key
                 .clone()
@@ -449,12 +469,12 @@ impl RecipeImporterBuilder {
 /// Get default model for a given provider
 fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {
-        "open_ai" => "gpt-4o-mini",
+        "open_ai" | "openai" => crate::converters::openai_chat::DEFAULT_MODEL,
         "anthropic" => "claude-haiku-4-5",
         "google" => "gemini-1.5-flash",
         "azure_openai" => "gpt-4",
         "ollama" => "llama2",
-        _ => "gpt-4o-mini",
+        _ => crate::converters::openai_chat::DEFAULT_MODEL,
     }
 }
 
@@ -472,5 +492,49 @@ impl RecipeImporter {
     /// ```
     pub fn builder() -> RecipeImporterBuilder {
         RecipeImporterBuilder::default()
+    }
+}
+
+#[cfg(test)]
+mod model_selection_tests {
+    use super::*;
+
+    /// `OPENAI_MODEL` is process-global; the tests that set it must not interleave.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn default_openai_model_is_current() {
+        assert_eq!(default_model_for_provider("open_ai"), "gpt-6-luna");
+    }
+
+    // Regression: this path ignored OPENAI_MODEL. Every conversion went to the
+    // built-in default whatever the variable said.
+    #[test]
+    fn openai_model_env_selects_the_model() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("OPENAI_MODEL", "gpt-test-model");
+        let config = RecipeImporter::builder().build_provider_config("open_ai");
+        std::env::remove_var("OPENAI_MODEL");
+        assert_eq!(config.model, "gpt-test-model");
+    }
+
+    #[test]
+    fn explicit_model_beats_the_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("OPENAI_MODEL", "gpt-test-model");
+        let config = RecipeImporter::builder()
+            .model("chosen-in-code")
+            .build_provider_config("open_ai");
+        std::env::remove_var("OPENAI_MODEL");
+        assert_eq!(config.model, "chosen-in-code");
+    }
+
+    #[test]
+    fn openai_model_env_does_not_leak_into_other_providers() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::set_var("OPENAI_MODEL", "gpt-test-model");
+        let config = RecipeImporter::builder().build_provider_config("anthropic");
+        std::env::remove_var("OPENAI_MODEL");
+        assert_eq!(config.model, default_model_for_provider("anthropic"));
     }
 }

@@ -4,26 +4,28 @@
 
 ## OpenAI
 
-- **Models**: gpt-4.1-mini (default), gpt-4.1-nano (fastest), gpt-4o-mini, gpt-4o
-- **Environment Variable**: `OPENAI_API_KEY`
+- **Models**: gpt-6-luna (default). OpenAI removes the GPT-4 family (gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini and fine-tunes of them) from its API on 2027-01-14.
+- **Environment Variables**: `OPENAI_API_KEY`; optional `OPENAI_MODEL` and `OPENAI_REASONING_EFFORT`
+- **Reasoning**: off by default (`none`) for `gpt-6-luna`, which is the fastest and is enough for conversion. Another model keeps its own default unless you set an effort; not every model accepts `none`. Set `reasoning_effort` (or `OPENAI_REASONING_EFFORT`) to `low`, `medium` or `high` to turn it on. `temperature` is only sent while reasoning is off: the model rejects it otherwise.
 
 ```toml
 [providers.openai]
 enabled = true
-model = "gpt-4.1-mini"
-temperature = 0.7
-max_tokens = 2000
+model = "gpt-6-luna"
+temperature = 0.2
+max_tokens = 4000
+# reasoning_effort = "low"
 ```
 
 ## Anthropic Claude
 
-- **Models**: claude-sonnet-4.5, claude-haiku-4.5 (fastest), claude-opus-4.1
+- **Models**: claude-haiku-4-5 (default). Claude 5 models are not supported yet: they reject the `temperature` this converter sends.
 - **Environment Variable**: `ANTHROPIC_API_KEY`
 
 ```toml
 [providers.anthropic]
 enabled = true
-model = "claude-sonnet-4.5"
+model = "claude-haiku-4-5"
 temperature = 0.7
 max_tokens = 4000
 ```
@@ -104,7 +106,8 @@ When enabled:
 For nested configuration, use double underscores:
 
 ```sh
-export COOKLANG__PROVIDERS__OPENAI__MODEL="gpt-4.1-mini"
+export OPENAI_MODEL="gpt-6-luna"            # OpenAI model, shortest form
+export COOKLANG__PROVIDERS__OPENAI__MODEL="gpt-6-luna"
 export COOKLANG__FALLBACK__ENABLED=true
 ```
 

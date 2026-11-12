@@ -135,6 +135,7 @@ mod tests {
             model: "gemini-2.5-flash".to_string(),
             temperature: 0.7,
             max_tokens: 2000,
+            reasoning_effort: None,
             api_key: Some("test-key".to_string()),
             base_url: None,
             endpoint: None,
