@@ -28,11 +28,11 @@ Given the text, output only this JSON without any other characters:
 }
 "#;
 
-const MODEL: &str = "gpt-4o-mini";
+use crate::converters::openai_chat::{Generation, DEFAULT_MODEL};
 
 /// Upper bound on the text sent to the model.
 ///
-/// The window is 128k tokens. OCR output and page text tokenize unevenly (CJK and
+/// Set when the model's window was 128k tokens. OCR output and page text tokenize unevenly (CJK and
 /// Cyrillic run well under 4 chars/token), so the cap leaves generous headroom
 /// rather than betting on an average ratio. Six URL cookifications were rejected
 /// outright in the week of 2026-08-17 for exceeding the window, one at 924,697
@@ -190,18 +190,26 @@ async fn fetch_json(texts: String) -> Result<Value, Box<dyn Error + Send + Sync>
 
     let texts = clamp_input(&texts);
 
+    let mut body = serde_json::json!({
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": PROMPT },
+            { "role": "user", "content": texts }
+        ]
+    });
+    Generation {
+        model: DEFAULT_MODEL,
+        openai_host: true,
+        reasoning_effort: None,
+        temperature: None,
+        max_output_tokens: Some(MAX_OUTPUT_TOKENS),
+    }
+    .apply(&mut body);
+
     let response = Client::new()
         .post("https://api.openai.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {api_key}"))
-        .json(&serde_json::json!({
-            "model": MODEL,
-            "response_format": { "type": "json_object" },
-            "max_tokens": MAX_OUTPUT_TOKENS,
-            "messages": [
-                { "role": "system", "content": PROMPT },
-                { "role": "user", "content": texts }
-            ]
-        }))
+        .json(&body)
         .send()
         .await?
         .json::<Value>()

@@ -4,6 +4,7 @@ mod evaluator;
 mod google;
 mod ollama;
 mod open_ai;
+pub(crate) mod openai_chat;
 mod prompt;
 
 pub use anthropic::AnthropicConverter;
@@ -77,7 +78,7 @@ pub fn create_converter(
     config: &crate::config::ProviderConfig,
 ) -> Option<Box<dyn Converter>> {
     match name {
-        "open_ai" => OpenAiConverter::new(config)
+        "open_ai" | "openai" => OpenAiConverter::new(config)
             .ok()
             .map(|c| Box::new(c) as Box<dyn Converter>),
         "anthropic" => AnthropicConverter::new(config)

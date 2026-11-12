@@ -33,7 +33,7 @@ pub struct AiConfig {
 pub struct ProviderConfig {
     /// Whether this provider is enabled
     pub enabled: bool,
-    /// Model identifier (e.g., "gpt-4", "claude-3-5-sonnet-20250929")
+    /// Model identifier (e.g., "gpt-6-luna", "claude-haiku-4-5")
     pub model: String,
     /// Temperature for generation (0.0-1.0)
     #[serde(default = "default_temperature")]
@@ -41,6 +41,10 @@ pub struct ProviderConfig {
     /// Maximum tokens to generate
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    /// Reasoning effort for OpenAI models that reason ("none", "low", "medium",
+    /// "high"). Unset means "none". `OPENAI_REASONING_EFFORT` overrides it.
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
 
     // Optional provider-specific fields
     /// API key for authentication (can also be set via environment variable)
@@ -223,9 +227,10 @@ mod tests {
         // Test that ProviderConfig can be created with None for optional fields
         let config = ProviderConfig {
             enabled: true,
-            model: "gpt-4.1-mini".to_string(),
+            model: "gpt-6-luna".to_string(),
             temperature: 0.7,
             max_tokens: 2000,
+            reasoning_effort: None,
             api_key: None,
             base_url: None,
             endpoint: None,
@@ -274,9 +279,10 @@ mod tests {
             "openai".to_string(),
             ProviderConfig {
                 enabled: true,
-                model: "gpt-4.1-mini".to_string(),
+                model: "gpt-6-luna".to_string(),
                 temperature: 0.7,
                 max_tokens: 2000,
+                reasoning_effort: None,
                 api_key: Some("test-key".to_string()),
                 base_url: None,
                 endpoint: None,

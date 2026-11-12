@@ -127,7 +127,7 @@ fn try_structured_extractors(html_content: &str, url: &str) -> Option<RecipeComp
 
 /// Upper bound on the plain text handed to the LLM extractor.
 ///
-/// gpt-4o-mini's window is 128k tokens. Minified JavaScript and CSS tokenize far
+/// The extraction model's window was 128k tokens when this cap was set. Minified JavaScript and CSS tokenize far
 /// worse than prose (often under 2 chars/token), so the cap is set well below a
 /// naive 4-chars-per-token estimate. Recipes live near the top of a page, so
 /// truncating the tail loses far less than overflowing the request loses.

@@ -50,7 +50,7 @@ Set your API key:
 export OPENAI_API_KEY="your-api-key-here"
 ```
 
-The tool works immediately with OpenAI's GPT-4.1-mini model.
+The tool works immediately with OpenAI's `gpt-6-luna` model. Set `OPENAI_MODEL` to use another one.
 
 ## Usage
 
@@ -101,11 +101,11 @@ default_provider = "openai"
 
 [providers.openai]
 enabled = true
-model = "gpt-4.1-mini"
+model = "gpt-6-luna"
 
 [providers.anthropic]
 enabled = true
-model = "claude-sonnet-4.5"
+model = "claude-haiku-4-5"
 
 [fallback]
 enabled = true

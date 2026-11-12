@@ -96,7 +96,7 @@ func convertText() async throws {
     let config = FfiImportConfig(
         provider: .openai,
         apiKey: "your-api-key",
-        model: "gpt-4.1-mini",
+        model: "gpt-6-luna",
         timeoutSeconds: 30,
         extractOnly: false
     )

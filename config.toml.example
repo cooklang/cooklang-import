@@ -7,16 +7,19 @@ default_provider = "openai"
 # OpenAI Configuration
 [providers.openai]
 enabled = true
-model = "gpt-4.1-mini"  # Fast and cost-effective (Oct 2025). Use "gpt-4.1-nano" for lowest latency
-temperature = 0.7
-max_tokens = 2000
+model = "gpt-6-luna"
+temperature = 0.2
+max_tokens = 4000
+# Reasoning is off by default ("none"): fastest, and enough for conversion.
+# With "low", "medium" or "high" the temperature above is not sent.
+# reasoning_effort = "low"
 # API key can be set here or via OPENAI_API_KEY environment variable
 # api_key = "sk-..."
 
 # Anthropic Claude Configuration
 [providers.anthropic]
 enabled = false
-model = "claude-sonnet-4.5"  # Most capable (Sep 2025). Use "claude-haiku-4.5" for faster/cheaper (Oct 2025)
+model = "claude-haiku-4-5"
 temperature = 0.7
 max_tokens = 4000
 # API key can be set here or via ANTHROPIC_API_KEY environment variable

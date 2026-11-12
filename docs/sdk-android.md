@@ -113,7 +113,7 @@ suspend fun convertText(text: String, apiKey: String): String {
     val config = FfiImportConfig(
         provider = FfiLlmProvider.OPENAI,
         apiKey = apiKey,
-        model = "gpt-4.1-mini",
+        model = "gpt-6-luna",
         timeoutSeconds = 30u,
         extractOnly = false
     )
