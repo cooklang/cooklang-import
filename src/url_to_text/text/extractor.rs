@@ -119,18 +119,29 @@ pub(crate) fn extraction_error(json: &Value) -> Option<String> {
 /// group or match. A sentence is read for the same two causes.
 fn refusal_message(error: &str) -> &'static str {
     let e = error.to_lowercase();
+    // "not found" alone is not enough: "Recipe not found in the text" is the
+    // other cause. A sentence counts as a dead page only when it says so of
+    // the page.
     let dead_page = e == "not_found"
         || [
-            "not found",
-            "not_found",
+            "404",
             "missing-page",
             "missing page",
-            "404",
-            "no longer available",
-            "no longer exists",
+            "page not found",
+            "page-not-found",
+            "page was not found",
+            "page could not be found",
+            "page cannot be found",
+            "page no longer",
+            "page is no longer",
+            "page has been removed",
+            "page was removed",
+            "page does not exist",
             "unavailable-page",
+            "unavailable page",
             "page unavailable",
-            "been removed",
+            "page is unavailable",
+            "error page",
         ]
         .iter()
         .any(|k| e.contains(k));
@@ -138,6 +149,17 @@ fn refusal_message(error: &str) -> &'static str {
         PAGE_NOT_FOUND
     } else {
         NO_RECIPE
+    }
+}
+
+/// The extractor's error for text that did not come from a link (pasted text,
+/// a photo): there is no page to be missing, so [`PAGE_NOT_FOUND`] is
+/// [`NO_RECIPE`] there. Every other error is returned as it is.
+pub(crate) fn without_a_link(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error + Send + Sync> {
+    if e.to_string() == PAGE_NOT_FOUND {
+        NO_RECIPE.into()
+    } else {
+        e
     }
 }
 
@@ -317,9 +339,18 @@ mod tests {
             "The text is not a recipe.",
             "The text is unreadable image data and does not contain extractable recipe information.",
             "The text is not a recipe; it is a category page",
+            "Recipe not found in the text.",
+            "No recipe was found on this page.",
         ] {
             assert_eq!(refusal_message(other), NO_RECIPE, "{other}");
         }
+    }
+
+    #[test]
+    fn test_text_that_is_not_from_a_link_has_no_page_to_be_missing() {
+        assert_eq!(without_a_link(PAGE_NOT_FOUND.into()).to_string(), NO_RECIPE);
+        assert_eq!(without_a_link(NO_RECIPE.into()).to_string(), NO_RECIPE);
+        assert_eq!(without_a_link("HTTP 500".into()).to_string(), "HTTP 500");
     }
 
     #[test]
