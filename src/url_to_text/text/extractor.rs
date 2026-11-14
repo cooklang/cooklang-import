@@ -6,7 +6,7 @@ use std::error::Error;
 
 const PROMPT: &str = r#"
 You're an expert in extracting recipe information from messy texts (often OCR'd from images).
-Sometimes the text is not a recipe - in that case specify that in the error field.
+Sometimes the text is not a recipe - in that case set the error field as described below and leave the lists empty.
 
 IMPORTANT: Only extract information that is EXPLICITLY present in the text. Do NOT invent, guess, or estimate any values. If a field is not mentioned in the text, use null.
 
@@ -24,9 +24,18 @@ Given the text, output only this JSON without any other characters:
   "total_time": "<TOTAL TIME OR null IF NOT EXPLICITLY STATED>",
   "ingredients": ["<LIST OF INGREDIENTS>"],
   "instructions": ["<LIST OF INSTRUCTIONS>"],
-  "error": "<ERROR MESSAGE IF NO RECIPE, OTHERWISE null>"
+  "error": "<null WHEN THE TEXT HAS A RECIPE OR AN INGREDIENT LIST; OTHERWISE EXACTLY ONE OF: not_found, no_recipe>"
 }
+
+Use "not_found" when the text is a missing-page, removed-page or error notice (for example a 404 page with site navigation). Use "no_recipe" for any other text that is not a recipe.
 "#;
+
+/// The message for a text that is not a recipe. Callers compare against it, so
+/// it is one fixed sentence whatever the model wrote.
+pub const NO_RECIPE: &str = "No recipe found in the text";
+
+/// The message for a page that is a missing-page notice: the link is dead.
+pub const PAGE_NOT_FOUND: &str = "Page not found: the link leads to a missing-page notice";
 
 use crate::converters::openai_chat::{Generation, DEFAULT_MODEL};
 
@@ -98,7 +107,60 @@ pub(crate) fn extraction_error(json: &Value) -> Option<String> {
         return None;
     }
 
-    Some(error.to_string())
+    Some(refusal_message(error).to_string())
+}
+
+/// One of the two fixed messages for whatever the model put in `error`.
+///
+/// The prompt asks for `not_found` or `no_recipe`. A model that writes a
+/// sentence instead ("The text is a missing-page notice and website
+/// navigation") used to become the error message as written: twenty phrasings
+/// of two causes in one day of production, which nothing downstream could
+/// group or match. A sentence is read for the same two causes.
+fn refusal_message(error: &str) -> &'static str {
+    let e = error.to_lowercase();
+    // "not found" alone is not enough: "Recipe not found in the text" is the
+    // other cause. A sentence counts as a dead page only when it says so of
+    // the page.
+    let dead_page = e == "not_found"
+        || [
+            "404",
+            "missing-page",
+            "missing page",
+            "page not found",
+            "page-not-found",
+            "page was not found",
+            "page could not be found",
+            "page cannot be found",
+            "page no longer",
+            "page is no longer",
+            "page has been removed",
+            "page was removed",
+            "page does not exist",
+            "unavailable-page",
+            "unavailable page",
+            "page unavailable",
+            "page is unavailable",
+            "error page",
+        ]
+        .iter()
+        .any(|k| e.contains(k));
+    if dead_page {
+        PAGE_NOT_FOUND
+    } else {
+        NO_RECIPE
+    }
+}
+
+/// The extractor's error for text that did not come from a link (pasted text,
+/// a photo): there is no page to be missing, so [`PAGE_NOT_FOUND`] is
+/// [`NO_RECIPE`] there. Every other error is returned as it is.
+pub(crate) fn without_a_link(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error + Send + Sync> {
+    if e.to_string() == PAGE_NOT_FOUND {
+        NO_RECIPE.into()
+    } else {
+        e
+    }
 }
 
 pub struct TextExtractor;
@@ -236,6 +298,65 @@ mod tests {
     // column 11": the model hit its completion cap, OpenAI returned partial JSON with
     // finish_reason "length", and serde was handed a half-written string. The parse
     // error told nobody what actually happened.
+
+    // --- Stable refusal messages (production, 2026-11-14) ---
+    //
+    // The model wrote its own sentence for every refusal, and the sentence was
+    // the error message: 20 phrasings of two causes in one day.
+
+    #[test]
+    fn test_refusal_codes_become_fixed_messages() {
+        for (error, expected) in [
+            ("no_recipe", NO_RECIPE),
+            ("not_found", PAGE_NOT_FOUND),
+            ("NOT_FOUND", PAGE_NOT_FOUND),
+        ] {
+            let json = serde_json::json!({ "ingredients": [], "instructions": [], "error": error });
+            assert_eq!(
+                extraction_error(&json).as_deref(),
+                Some(expected),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_sentence_instead_of_a_code_is_read_for_the_same_two_causes() {
+        // As written by the model on 2026-11-14.
+        for dead in [
+            "The text is a missing-page notice and does not contain a recipe.",
+            "No recipe found; the text is a missing-page notice and website navigation.",
+            "The text is a 404 page, not a recipe.",
+            "The text is not a recipe; it is a 404 page-not-found message.",
+            "The text is not a recipe; it describes a page not found error (404).",
+            "This text is not a recipe; it contains website navigation and an unavailable-page message.",
+        ] {
+            assert_eq!(refusal_message(dead), PAGE_NOT_FOUND, "{dead}");
+        }
+        for other in [
+            "The text does not contain a recipe.",
+            "No recipe found in the provided text.",
+            "The text is not a recipe.",
+            "The text is unreadable image data and does not contain extractable recipe information.",
+            "The text is not a recipe; it is a category page",
+            "Recipe not found in the text.",
+            "No recipe was found on this page.",
+        ] {
+            assert_eq!(refusal_message(other), NO_RECIPE, "{other}");
+        }
+    }
+
+    #[test]
+    fn test_text_that_is_not_from_a_link_has_no_page_to_be_missing() {
+        assert_eq!(without_a_link(PAGE_NOT_FOUND.into()).to_string(), NO_RECIPE);
+        assert_eq!(without_a_link(NO_RECIPE.into()).to_string(), NO_RECIPE);
+        assert_eq!(without_a_link("HTTP 500".into()).to_string(), "HTTP 500");
+    }
+
+    #[test]
+    fn test_the_prompt_names_the_two_codes() {
+        assert!(PROMPT.contains("not_found") && PROMPT.contains("no_recipe"));
+    }
 
     #[test]
     fn test_truncated_response_reports_the_real_cause() {

@@ -1,6 +1,6 @@
 use super::RecipeComponents;
 use crate::images_to_text::{self, ImageSource};
-use crate::url_to_text::text::TextExtractor;
+use crate::url_to_text::text::{without_a_link, TextExtractor};
 use std::error::Error;
 
 pub async fn process(
@@ -25,7 +25,9 @@ pub async fn process(
     // Try structured extraction if API key available
     if TextExtractor::is_available() {
         // Scanned recipes frequently have no stated title — normalize/generate.
-        let mut components = TextExtractor::extract(&combined, &source).await?;
+        let mut components = TextExtractor::extract(&combined, &source)
+            .await
+            .map_err(without_a_link)?;
         super::title::ensure_title(&mut components).await;
         Ok(components)
     } else {

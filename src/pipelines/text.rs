@@ -1,5 +1,5 @@
 use super::RecipeComponents;
-use crate::url_to_text::text::TextExtractor;
+use crate::url_to_text::text::{without_a_link, TextExtractor};
 use std::error::Error;
 
 pub async fn process(
@@ -8,7 +8,9 @@ pub async fn process(
 ) -> Result<RecipeComponents, Box<dyn Error + Send + Sync>> {
     if extract {
         // Run through LLM extractor - returns RecipeComponents directly
-        let mut components = TextExtractor::extract(text, "direct-input").await?;
+        let mut components = TextExtractor::extract(text, "direct-input")
+            .await
+            .map_err(without_a_link)?;
         super::title::ensure_title(&mut components).await;
         Ok(components)
     } else {

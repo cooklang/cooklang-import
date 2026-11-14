@@ -1,7 +1,7 @@
 use super::RecipeComponents;
 use crate::url_to_text::fetchers::{DynFetcher, Fetcher, PageScriberFetcher, RequestFetcher};
 use crate::url_to_text::html::extractors::extract_recipe;
-use crate::url_to_text::text::TextExtractor;
+use crate::url_to_text::text::{TextExtractor, NO_RECIPE, PAGE_NOT_FOUND};
 use log::debug;
 use scraper::Html;
 use std::error::Error;
@@ -74,6 +74,20 @@ async fn try_fetch_and_extract(
         return Ok(components);
     }
 
+    // A social post fetched through the page scriber is its caption, wrapped in
+    // a marked document. A caption is short by nature, so the short-page rule
+    // below does not apply to it, and when it holds no recipe that is the
+    // answer: the recipe is in the video or behind a link, and no other way of
+    // fetching the post will find it.
+    if is_social_post(&html) {
+        if !TextExtractor::is_available() {
+            return Err(NO_RECIPE_IN_POST.into());
+        }
+        return TextExtractor::extract(&extract_text_from_html(&html), url)
+            .await
+            .map_err(post_error);
+    }
+
     // Some sites answer a plain HTTP client with 200 and a bot-challenge or
     // JavaScript-shell page. That is a failed fetch in every sense that matters, so
     // demote it to an error.
@@ -104,7 +118,9 @@ async fn fetch_and_extract_with(
         match try_fetch_and_extract(url, &fetcher).await {
             Ok(components) => return Ok(components),
             Err(e) => {
-                if last {
+                // A verdict on the post itself: a second fetch cannot change it,
+                // and its "blocked" would replace the true reason.
+                if last || is_final(e.as_ref()) {
                     // No more fetchers to try, just return the latest error
                     return Err(e);
                 }
@@ -180,6 +196,33 @@ fn extract_text_from_html(html: &str) -> String {
         }
     }
     out
+}
+
+/// The message for a social post whose caption holds no recipe.
+pub const NO_RECIPE_IN_POST: &str =
+    "No recipe in the post's caption: the recipe may be in the video or behind a link";
+
+/// The extractor's refusal of a post's caption, said as what it means for a
+/// post. Any other error (the API failing, a truncated answer) stays as it is.
+fn post_error(e: Box<dyn Error + Send + Sync>) -> Box<dyn Error + Send + Sync> {
+    match e.to_string().as_str() {
+        NO_RECIPE | PAGE_NOT_FOUND => NO_RECIPE_IN_POST.into(),
+        _ => e,
+    }
+}
+
+/// An error no other fetcher can change.
+fn is_final(e: &(dyn Error + Send + Sync)) -> bool {
+    e.to_string() == NO_RECIPE_IN_POST
+}
+
+/// Whether `html` is a social post's text as the page scriber wraps it:
+/// `<meta name="page-scriber-source" content="social-post">`.
+pub(crate) fn is_social_post(html: &str) -> bool {
+    let document = Html::parse_document(html);
+    scraper::Selector::parse(r#"meta[name="page-scriber-source"][content="social-post"]"#)
+        .ok()
+        .is_some_and(|sel| document.select(&sel).next().is_some())
 }
 
 /// Heuristic for a page that returned HTTP 200 but is a bot challenge, consent
@@ -475,6 +518,57 @@ mod tests {
     }
 
     // --- Regression: structured extractors returning empty content ---
+
+    // --- Social posts (production, 2026-11-14) ---
+    //
+    // 38 of 51 Instagram imports failed with "Blocked or empty page returned by
+    // direct fetch". Nothing was blocked: the page scriber had returned each
+    // post's caption, the captions were 47-471 characters long, and the
+    // short-page rule took them for empty shells. Three of the ten longest held
+    // an ingredient list.
+    const POST: &str = r#"<html><head><meta name="page-scriber-source" content="social-post"></head><body><pre>Author: someone
+
+Caption: Beef stew. 3 slices bacon, 2 1/2 lbs beef chuck, 2 onions.</pre></body></html>"#;
+
+    #[test]
+    fn test_a_marked_social_post_is_recognised() {
+        assert!(is_social_post(POST));
+        // The same caption without the marker is an ordinary short page.
+        let unmarked = POST.replace(
+            r#"<meta name="page-scriber-source" content="social-post">"#,
+            "",
+        );
+        assert!(!is_social_post(&unmarked));
+        assert!(looks_blocked(&unmarked));
+        // Another marker value is not a post.
+        assert!(!is_social_post(
+            r#"<html><head><meta name="page-scriber-source" content="page"></head><body></body></html>"#
+        ));
+    }
+
+    #[test]
+    fn test_a_caption_without_a_recipe_is_said_to_be_that() {
+        for refusal in [NO_RECIPE, PAGE_NOT_FOUND] {
+            assert_eq!(post_error(refusal.into()).to_string(), NO_RECIPE_IN_POST);
+        }
+        // Not a verdict on the caption: left alone.
+        let other = "Failed to get response content: Rate limit reached";
+        assert_eq!(post_error(other.into()).to_string(), other);
+    }
+
+    #[test]
+    fn test_only_the_verdict_on_a_post_ends_the_fetcher_chain() {
+        let verdict: Box<dyn Error + Send + Sync> = NO_RECIPE_IN_POST.into();
+        assert!(is_final(verdict.as_ref()));
+        for retryable in [
+            NO_RECIPE,
+            "Blocked or empty page returned by direct fetch",
+            "HTTP 403 (Forbidden)",
+        ] {
+            let e: Box<dyn Error + Send + Sync> = retryable.into();
+            assert!(!is_final(e.as_ref()), "{retryable}");
+        }
+    }
 
     #[test]
     fn test_structured_extractors_reject_empty_result() {
