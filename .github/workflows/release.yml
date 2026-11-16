@@ -123,14 +123,22 @@ jobs:
           cp swift/CooklangImport.swift CooklangImport/Sources/CooklangImport/
           zip -r ../../CooklangImport-ios.zip CooklangImport CooklangImportFFI.xcframework swift
 
+      # The extract-only SDK: extract_recipe_from_html without the network stack.
+      - name: Build extract-only iOS artifacts
+        run: |
+          ./scripts/build-ios-extract.sh
+          cp target/ios-extract/CooklangImportExtractFFI.xcframework.zip .
+
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ios-artifacts
           path: |
             CooklangImportFFI.xcframework.zip
+            CooklangImportExtractFFI.xcframework.zip
             CooklangImport-ios.zip
             target/ios/swift/CooklangImport.swift
+            target/ios-extract/swift/CooklangImportExtract.swift
 
   # Build Android artifacts
   build-android:
@@ -299,11 +307,15 @@ jobs:
           CHECKSUM=$(swift package compute-checksum CooklangImportFFI.xcframework.zip)
           echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
           echo "Computed checksum: ${CHECKSUM}"
+          EXTRACT_CHECKSUM=$(swift package compute-checksum CooklangImportExtractFFI.xcframework.zip)
+          echo "extract_checksum=${EXTRACT_CHECKSUM}" >> $GITHUB_OUTPUT
+          echo "Computed extract-only checksum: ${EXTRACT_CHECKSUM}"
 
       - name: Update Package.swift
         run: |
           VERSION="${{ needs.prepare-release.outputs.version_tag }}"
           CHECKSUM="${{ steps.checksum.outputs.checksum }}"
+          EXTRACT_CHECKSUM="${{ steps.checksum.outputs.extract_checksum }}"
 
           cat > Package.swift << EOF
           // swift-tools-version:5.5
@@ -322,6 +334,12 @@ jobs:
                       name: "CooklangImport",
                       targets: ["CooklangImport", "CooklangImportFFI"]
                   ),
+                  // extractRecipeFromHtml only: no network, no LLM. Link this or
+                  // CooklangImport, never both.
+                  .library(
+                      name: "CooklangImportExtract",
+                      targets: ["CooklangImportExtract", "CooklangImportExtractFFI"]
+                  ),
               ],
               targets: [
                   .target(
@@ -334,6 +352,16 @@ jobs:
                       url: "https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportFFI.xcframework.zip",
                       checksum: "${CHECKSUM}"
                   ),
+                  .target(
+                      name: "CooklangImportExtract",
+                      dependencies: ["CooklangImportExtractFFI"],
+                      path: "Sources/CooklangImportExtract"
+                  ),
+                  .binaryTarget(
+                      name: "CooklangImportExtractFFI",
+                      url: "https://github.com/cooklang/cooklang-import/releases/download/${VERSION}/CooklangImportExtractFFI.xcframework.zip",
+                      checksum: "${EXTRACT_CHECKSUM}"
+                  ),
               ]
           )
           EOF
@@ -342,6 +370,8 @@ jobs:
         run: |
           mkdir -p Sources/CooklangImport
           cp target/ios/swift/CooklangImport.swift Sources/CooklangImport/
+          mkdir -p Sources/CooklangImportExtract
+          cp target/ios-extract/swift/CooklangImportExtract.swift Sources/CooklangImportExtract/
 
       - name: Commit Package.swift and Sources
         run: |
@@ -401,6 +431,7 @@ jobs:
           generate_release_notes: true
           files: |
             CooklangImportFFI.xcframework.zip
+            CooklangImportExtractFFI.xcframework.zip
             CooklangImport-ios.zip
             cooklang-import-android.zip
           body: |
@@ -415,6 +446,7 @@ jobs:
 
             **Downloads:**
             - `CooklangImportFFI.xcframework.zip` - XCFramework binary (used by Package.swift)
+            - `CooklangImportExtractFFI.xcframework.zip` - Extract-only XCFramework: `extractRecipeFromHtml` without the network stack (the `CooklangImportExtract` product)
             - `CooklangImport-ios.zip` - Full package with Swift sources for manual integration
 
             ### Android (GitHub Packages Maven)

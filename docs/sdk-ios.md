@@ -69,6 +69,38 @@ func importWithLlm() async throws {
 }
 ```
 
+### Extract a Recipe From HTML You Already Have (No Network, No LLM)
+
+For a page the app has already loaded, such as one in a `WKWebView` the user is
+signed in to. The structured extractors (JSON-LD, MicroData, HTML classes) run on the
+device; nothing is fetched.
+
+```swift
+let html = try await webView.evaluateJavaScript("document.documentElement.outerHTML") as? String ?? ""
+
+if let recipe = extractRecipeFromHtml(html: html, url: "https://example.com/recipe") {
+    print(recipe.name)      // "Pancakes"
+    print(recipe.metadata)  // YAML, without the --- lines
+    print(recipe.text)      // ingredients, a blank line, instructions
+} else {
+    // No structured recipe on the page
+}
+```
+
+The call is synchronous; run it off the main thread for large pages.
+
+If this is all the app needs, depend on the **`CooklangImportExtract`** product
+instead of `CooklangImport`:
+
+```swift
+.product(name: "CooklangImportExtract", package: "cooklang-import")
+```
+
+It has `extractRecipeFromHtml` and `getVersion` only, links no HTTP, TLS or async
+runtime (about a third of the full SDK's size in the app), and its XCFramework also
+has a Mac Catalyst slice. Link one product or the other, never both: they contain
+the same Rust library.
+
 ### Extract Recipe Without Conversion (No LLM Required)
 
 ```swift

@@ -41,7 +41,10 @@ native = [
     "dep:whatlang",
 ]
 uniffi-cli = ["uniffi", "uniffi/cli"]
-uniffi = ["dep:uniffi", "native"]
+# The Swift/Kotlin bindings. With the default features this is the full SDK. With
+# `--no-default-features` it is the extract-only build: `extract_recipe_from_html`
+# and nothing that needs the network (see src/uniffi_bindings/mod.rs).
+uniffi = ["dep:uniffi"]
 # The browser build: `wasm-pack build -- --no-default-features --features wasm`.
 wasm = ["dep:wasm-bindgen"]
 

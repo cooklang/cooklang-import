@@ -1,0 +1,8 @@
+# Bindings for the extract-only build (`--no-default-features --features uniffi`).
+# Its Swift module has its own name so that it can sit next to the full SDK's in one
+# Swift package; an app links one of the two, never both.
+
+[bindings.swift]
+ffi_module_name = "CooklangImportExtractFFI"
+module_name = "CooklangImportExtract"
+generate_immutable_records = true
