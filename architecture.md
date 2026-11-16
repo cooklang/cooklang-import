@@ -313,7 +313,7 @@ The library compiles as `lib`, `cdylib`, and `staticlib` crate types to support 
 Provides FFI-safe mirrors of core types and synchronous wrappers around the async API:
 - `FfiRecipeComponents`, `FfiLlmProvider`, `FfiImportResult`, `FfiImportError`, `FfiImportConfig`
 - Exported functions: `import_from_url`, `convert_text_to_cooklang`, `convert_image_to_cooklang`, `extract_recipe_from_url`, `simple_import`, `get_version`, `is_provider_available`
-- `extract_recipe_from_html` and `get_version` need neither the network nor a runtime. Built with `--no-default-features --features uniffi` they are the whole extract-only SDK (`scripts/build-ios-extract.sh`, the `CooklangImportExtract` Swift product)
+- `extract_recipe_from_html` and `get_version` need neither the network nor a runtime. Built with `--no-default-features --features uniffi` they are the whole extract-only SDK (`scripts/build-ios-extract.sh`, the `CooklangImportExtract` Swift product; `scripts/build-android-extract.sh`, the `org.cooklang:cooklang-import-extract` Android library)
 
 ### Platform Targets
 - **iOS/macOS**: Swift bindings generated via UniFFI → `Sources/CooklangImport/CooklangImport.swift`, distributed as Swift Package (`Package.swift`)

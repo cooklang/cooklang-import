@@ -276,11 +276,21 @@ jobs:
           cd target/android
           zip -r ../../cooklang-import-android.zip cooklang-import-android jniLibs kotlin
 
+      # The extract-only SDK: extract_recipe_from_html without the network stack.
+      # The script builds in a target directory of its own, so it leaves the full
+      # SDK's libraries above alone.
+      - name: Build extract-only Android artifacts
+        run: |
+          ./scripts/build-android-extract.sh
+          cp target/android-extract/cooklang-import-extract-android.zip .
+
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
         with:
           name: android-artifacts
-          path: cooklang-import-android.zip
+          path: |
+            cooklang-import-android.zip
+            cooklang-import-extract-android.zip
 
   # Update Package.swift with correct checksum
   update-package-swift:
@@ -434,6 +444,7 @@ jobs:
             CooklangImportExtractFFI.xcframework.zip
             CooklangImport-ios.zip
             cooklang-import-android.zip
+            cooklang-import-extract-android.zip
           body: |
             ## Mobile SDK Release ${{ needs.prepare-release.outputs.version_tag }}
 
@@ -476,6 +487,13 @@ jobs:
             - `jniLibs/` - Native libraries for all architectures
             - `kotlin/` - Kotlin bindings source files
 
+            Extract-only build, `extractRecipeFromHtml` without the network stack (package `org.cooklang.extract`). Use it instead of `cooklang-import`, never together with it:
+            ```kotlin
+            implementation("org.cooklang:cooklang-import-extract:${{ needs.prepare-release.outputs.version }}")
+            ```
+
+            Or download `cooklang-import-extract-android.zip`, the same build as an Android library module.
+
             ### Supported Architectures
 
             **iOS:**
@@ -511,8 +529,9 @@ jobs:
 
       - name: Extract Android artifacts
         run: |
-          mkdir -p target/android
+          mkdir -p target/android target/android-extract
           unzip cooklang-import-android.zip -d target/android/
+          unzip cooklang-import-extract-android.zip -d target/android-extract/
 
       - name: Setup JDK
         uses: actions/setup-java@v6
@@ -526,150 +545,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Configure Android library for publishing
-        run: |
-          VERSION="${{ needs.prepare-release.outputs.version }}"
-          ANDROID_DIR="target/android/cooklang-import-android"
-
-          # Create settings.gradle.kts with plugin management
-          cat > "${ANDROID_DIR}/settings.gradle.kts" << 'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "cooklang-import-android"
-          EOF
-
-          # Create build.gradle.kts with publishing
-          cat > "${ANDROID_DIR}/build.gradle.kts" << EOF
-          plugins {
-              id("com.android.library") version "8.2.0"
-              id("org.jetbrains.kotlin.android") version "1.9.22"
-              id("maven-publish")
-          }
-
-          group = "org.cooklang"
-          version = "${VERSION}"
-
-          android {
-              namespace = "org.cooklang.cooklang_import"
-              compileSdk = 34
-
-              defaultConfig {
-                  minSdk = 21
-                  testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-                  consumerProguardFiles("consumer-rules.pro")
-
-                  aarMetadata {
-                      minCompileSdk = 21
-                  }
-              }
-
-              buildTypes {
-                  release {
-                      isMinifyEnabled = false
-                      proguardFiles(
-                          getDefaultProguardFile("proguard-android-optimize.txt"),
-                          "proguard-rules.pro"
-                      )
-                  }
-              }
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_1_8
-                  targetCompatibility = JavaVersion.VERSION_1_8
-              }
-              kotlinOptions {
-                  jvmTarget = "1.8"
-              }
-              sourceSets {
-                  getByName("main") {
-                      jniLibs.srcDirs("src/main/jniLibs")
-                  }
-              }
-
-              publishing {
-                  singleVariant("release") {
-                      withSourcesJar()
-                  }
-              }
-          }
-
-          dependencies {
-              implementation("net.java.dev.jna:jna:5.14.0@aar")
-              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-          }
-
-          publishing {
-              publications {
-                  register<MavenPublication>("release") {
-                      groupId = "org.cooklang"
-                      artifactId = "cooklang-import"
-                      version = "${VERSION}"
-
-                      afterEvaluate {
-                          from(components["release"])
-                      }
-
-                      pom {
-                          name.set("CooklangImport")
-                          description.set("Android library for importing recipes into Cooklang format")
-                          url.set("https://github.com/cooklang/cooklang-import")
-
-                          licenses {
-                              license {
-                                  name.set("MIT License")
-                                  url.set("https://opensource.org/licenses/MIT")
-                              }
-                          }
-
-                          scm {
-                              connection.set("scm:git:git://github.com/cooklang/cooklang-import.git")
-                              developerConnection.set("scm:git:ssh://github.com/cooklang/cooklang-import.git")
-                              url.set("https://github.com/cooklang/cooklang-import")
-                          }
-                      }
-                  }
-              }
-
-              repositories {
-                  maven {
-                      name = "GitHubPackages"
-                      url = uri("https://maven.pkg.github.com/cooklang/cooklang-import")
-                      credentials {
-                          username = System.getenv("GITHUB_ACTOR")
-                          password = System.getenv("GITHUB_TOKEN")
-                      }
-                  }
-              }
-          }
-          EOF
-
-          # Create gradle.properties
-          cat > "${ANDROID_DIR}/gradle.properties" << 'GRADLE_EOF'
-          android.useAndroidX=true
-          kotlin.code.style=official
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.nonTransitiveRClass=true
-          GRADLE_EOF
-
-      - name: Publish to GitHub Packages
-        working-directory: target/android/cooklang-import-android
+      # scripts/publish-android-module.sh writes the Gradle build for a module and
+      # publishes it. Both SDKs go to the same Maven repository.
+      - name: Publish the full SDK to GitHub Packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: |
-          gradle wrapper --gradle-version 8.5
-          ./gradlew publish --no-daemon
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: ./scripts/publish-android-module.sh full target/android/cooklang-import-android "$VERSION"
+
+      - name: Publish the extract-only SDK to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: ./scripts/publish-android-module.sh extract target/android-extract/cooklang-import-extract-android "$VERSION"
 
   # Publish Rust crate to crates.io
   publish-rust:
