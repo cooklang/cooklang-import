@@ -1,52 +1,17 @@
-//! UniFFI bindings for cooklang-import
+//! The UniFFI exports that need the network, an LLM or an async runtime.
 //!
-//! This module provides FFI-compatible types and functions for use with iOS and Android.
-//! It wraps the async Rust API with synchronous functions that manage their own tokio runtime.
+//! They wrap the async Rust API in synchronous functions that manage their own tokio
+//! runtime. Compiled only with the `native` feature; the extract-only build leaves
+//! them out (see the parent module).
 
 use std::fmt;
 use std::time::Duration;
 
-use crate::{ImportError, RecipeComponents};
-
-// Re-export UniFFI macro
-#[cfg(feature = "uniffi")]
-uniffi::setup_scaffolding!();
-
-/// FFI-compatible recipe components structure
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-pub struct FfiRecipeComponents {
-    /// Recipe text (ingredients + instructions)
-    pub text: String,
-    /// YAML-formatted metadata (without --- delimiters)
-    pub metadata: String,
-    /// Recipe name/title
-    pub name: String,
-}
-
-impl From<RecipeComponents> for FfiRecipeComponents {
-    fn from(components: RecipeComponents) -> Self {
-        FfiRecipeComponents {
-            text: components.text,
-            metadata: components.metadata,
-            name: components.name,
-        }
-    }
-}
-
-impl From<FfiRecipeComponents> for RecipeComponents {
-    fn from(ffi: FfiRecipeComponents) -> Self {
-        RecipeComponents {
-            text: ffi.text,
-            metadata: ffi.metadata,
-            name: ffi.name,
-        }
-    }
-}
+use super::FfiRecipeComponents;
+use crate::ImportError;
 
 /// FFI-compatible LLM provider enum
-#[derive(Debug, Clone, Copy)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
 pub enum FfiLlmProvider {
     OpenAI,
     Anthropic,
@@ -68,8 +33,7 @@ impl From<FfiLlmProvider> for crate::LlmProvider {
 }
 
 /// FFI-compatible import result
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[derive(Debug, Clone, uniffi::Enum)]
 pub enum FfiImportResult {
     /// Recipe converted to Cooklang format
     Cooklang { content: String },
@@ -78,8 +42,7 @@ pub enum FfiImportResult {
 }
 
 /// FFI-compatible error type
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
+#[derive(Debug, Clone, uniffi::Error)]
 pub enum FfiImportError {
     /// Failed to fetch recipe from URL
     FetchError { reason: String },
@@ -148,8 +111,7 @@ impl From<ImportError> for FfiImportError {
 }
 
 /// Configuration for importing recipes
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Default, uniffi::Record)]
 pub struct FfiImportConfig {
     /// Optional LLM provider (uses default if not specified)
     pub provider: Option<FfiLlmProvider>,
@@ -178,7 +140,7 @@ fn create_runtime() -> Result<tokio::runtime::Runtime, FfiImportError> {
 ///
 /// # Returns
 /// An `FfiImportResult` containing either Cooklang text or a Recipe struct
-#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[uniffi::export]
 pub fn import_from_url(
     url: String,
     config: Option<FfiImportConfig>,
@@ -233,7 +195,7 @@ async fn import_from_url_async(
 ///
 /// # Returns
 /// A string containing the recipe in Cooklang format
-#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[uniffi::export]
 pub fn convert_text_to_cooklang(
     text: String,
     config: Option<FfiImportConfig>,
@@ -280,7 +242,7 @@ async fn convert_text_async(
 ///
 /// # Returns
 /// A string containing the recipe in Cooklang format
-#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[uniffi::export]
 pub fn convert_image_to_cooklang(
     image_path: String,
     config: Option<FfiImportConfig>,
@@ -327,7 +289,7 @@ async fn convert_image_async(
 ///
 /// # Returns
 /// An `FfiRecipeComponents` struct containing the extracted recipe data
-#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[uniffi::export]
 pub fn extract_recipe_from_url(
     url: String,
     timeout_seconds: Option<u64>,
@@ -361,7 +323,7 @@ pub fn extract_recipe_from_url(
 ///
 /// # Returns
 /// A string containing the recipe in Cooklang format
-#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[uniffi::export]
 pub fn simple_import(url: String) -> Result<String, FfiImportError> {
     import_from_url(url, None).map(|result| match result {
         FfiImportResult::Cooklang { content } => content,
@@ -369,14 +331,8 @@ pub fn simple_import(url: String) -> Result<String, FfiImportError> {
     })
 }
 
-/// Get the library version
-#[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn get_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-
 /// Check if a provider is available (has required environment variables)
-#[cfg_attr(feature = "uniffi", uniffi::export)]
+#[uniffi::export]
 pub fn is_provider_available(provider: FfiLlmProvider) -> bool {
     match provider {
         FfiLlmProvider::OpenAI => std::env::var("OPENAI_API_KEY").is_ok(),
@@ -390,35 +346,5 @@ pub fn is_provider_available(provider: FfiLlmProvider) -> bool {
             // Ollama doesn't require API key, check if base URL is set or use default
             true
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ffi_recipe_components_conversion() {
-        let components = RecipeComponents {
-            text: "2 eggs\n1 cup flour\n\nMix together and bake.".to_string(),
-            metadata: "author: Chef".to_string(),
-            name: "Test Recipe".to_string(),
-        };
-
-        let ffi_components: FfiRecipeComponents = components.clone().into();
-        assert_eq!(ffi_components.name, "Test Recipe");
-        assert_eq!(ffi_components.metadata, "author: Chef");
-        assert!(ffi_components.text.contains("2 eggs"));
-
-        let back: RecipeComponents = ffi_components.into();
-        assert_eq!(back.name, components.name);
-        assert_eq!(back.metadata, components.metadata);
-        assert_eq!(back.text, components.text);
-    }
-
-    #[test]
-    fn test_get_version() {
-        let version = get_version();
-        assert!(!version.is_empty());
     }
 }

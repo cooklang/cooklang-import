@@ -109,7 +109,9 @@ src/
 ├── config.rs                   # Configuration loading (+ FallbackConfig)
 ├── error.rs                    # Error types
 ├── extract.rs                  # HTML → Recipe + RecipeComponents, no network (also wasm)
-├── uniffi_bindings.rs          # FFI bindings for iOS/Android (feature-gated)
+├── uniffi_bindings/            # FFI bindings for iOS/Android (feature-gated)
+│   ├── mod.rs                  # Network-free exports: extract_recipe_from_html
+│   └── native.rs               # Exports that fetch or convert (`native` feature)
 ├── wasm.rs                     # wasm-bindgen export (wasm feature)
 │
 ├── pipelines/                  # Flow orchestration
@@ -307,10 +309,11 @@ Converts recipe to Cooklang syntax:
 
 The library compiles as `lib`, `cdylib`, and `staticlib` crate types to support native Rust use and FFI consumption. Mobile bindings are feature-gated behind the `uniffi` feature flag.
 
-### FFI Layer (src/uniffi_bindings.rs)
+### FFI Layer (src/uniffi_bindings/)
 Provides FFI-safe mirrors of core types and synchronous wrappers around the async API:
 - `FfiRecipeComponents`, `FfiLlmProvider`, `FfiImportResult`, `FfiImportError`, `FfiImportConfig`
 - Exported functions: `import_from_url`, `convert_text_to_cooklang`, `convert_image_to_cooklang`, `extract_recipe_from_url`, `simple_import`, `get_version`, `is_provider_available`
+- `extract_recipe_from_html` and `get_version` need neither the network nor a runtime. Built with `--no-default-features --features uniffi` they are the whole extract-only SDK (`scripts/build-ios-extract.sh`, the `CooklangImportExtract` Swift product)
 
 ### Platform Targets
 - **iOS/macOS**: Swift bindings generated via UniFFI → `Sources/CooklangImport/CooklangImport.swift`, distributed as Swift Package (`Package.swift`)

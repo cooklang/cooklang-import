@@ -1,7 +1,7 @@
 # Makefile for cooklang-import
 # Supports building for iOS, Android, and native platforms
 
-.PHONY: all build test lint clean ios android bindings help install-deps
+.PHONY: all build test lint clean ios ios-extract android bindings help install-deps
 
 # Default target
 all: build
@@ -46,6 +46,11 @@ clean-mobile:
 ios:
 	@chmod +x scripts/build-ios.sh
 	@scripts/build-ios.sh
+
+# Build the extract-only Apple SDK: extract_recipe_from_html, no network stack
+ios-extract:
+	@chmod +x scripts/build-ios-extract.sh
+	@scripts/build-ios-extract.sh
 
 # Build iOS release artifacts
 ios-release: ios
@@ -166,6 +171,7 @@ help:
 	@echo ""
 	@echo "Mobile targets:"
 	@echo "  ios           - Build iOS XCFramework + Swift bindings"
+	@echo "  ios-extract   - Build the extract-only XCFramework (no network stack)"
 	@echo "  android       - Build Android AAR + Kotlin bindings"
 	@echo "  mobile        - Build for both iOS and Android"
 	@echo "  clean-mobile  - Clean only mobile artifacts"
