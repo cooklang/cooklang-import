@@ -1017,6 +1017,30 @@ private struct FfiConverterOptionTypeFfiImportConfig: FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
+private struct FfiConverterOptionTypeFfiRecipeComponents: FfiConverterRustBuffer {
+    typealias SwiftType = FfiRecipeComponents?
+
+    static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiRecipeComponents.write(value, into: &buf)
+    }
+
+    static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiRecipeComponents.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
 private struct FfiConverterOptionTypeFfiLlmProvider: FfiConverterRustBuffer {
     typealias SwiftType = FfiLlmProvider?
 
@@ -1072,6 +1096,31 @@ public func convertTextToCooklang(text: String, config: FfiImportConfig?) throws
         uniffi_cooklang_import_fn_func_convert_text_to_cooklang(
             FfiConverterString.lower(text),
             FfiConverterOptionTypeFfiImportConfig.lower(config), $0
+        )
+    })
+}
+
+/**
+ * Extract recipe components from a page's HTML with the structured extractors
+ * (JSON-LD, microdata, HTML classes).
+ *
+ * Makes no network request and calls no LLM: the caller already has the page, for
+ * example from a web view the user is signed in to. The components are the same
+ * ones the URL pipeline produces after a successful structured extraction.
+ *
+ * # Arguments
+ * * `html` - The page's HTML
+ * * `url` - The page's URL, used for the source metadata
+ *
+ * # Returns
+ * The extracted components, or `None` when no extractor finds a recipe with
+ * instructions.
+ */
+public func extractRecipeFromHtml(html: String, url: String) -> FfiRecipeComponents? {
+    return try! FfiConverterOptionTypeFfiRecipeComponents.lift(try! rustCall {
+        uniffi_cooklang_import_fn_func_extract_recipe_from_html(
+            FfiConverterString.lower(html),
+            FfiConverterString.lower(url), $0
         )
     })
 }
@@ -1174,6 +1223,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_cooklang_import_checksum_func_convert_text_to_cooklang() != 2319 {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if uniffi_cooklang_import_checksum_func_extract_recipe_from_html() != 37049 {
         return InitializationResult.apiChecksumMismatch
     }
     if uniffi_cooklang_import_checksum_func_extract_recipe_from_url() != 45075 {
