@@ -48,14 +48,20 @@ cargo run --features uniffi-cli --bin uniffi-bindgen -- generate \
     --language swift \
     --out-dir "$SWIFT_OUTPUT_DIR"
 
-# One folder per platform: the library, and the header with its module map. The
-# module map has to be in Headers/ for a static-library xcframework.
+# One folder per platform: the library, and the header with its module map.
+#
+# The header and module map go in a folder named after the module, not straight
+# into Headers/. Xcode copies every static-library xcframework's Headers/ into one
+# shared include folder, so two xcframeworks that each ship Headers/module.modulemap
+# cannot be built into the same app ("Multiple commands produce .../include/
+# module.modulemap"). Clang still finds <include>/<Module>/module.modulemap.
 slice() {
     local dir="${OUTPUT_DIR}/$1"
-    mkdir -p "${dir}/Headers"
-    cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "${dir}/Headers/"
+    local headers="${dir}/Headers/${FRAMEWORK_NAME}"
+    mkdir -p "$headers"
+    cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "${headers}/"
     printf 'module %s {\n    header "%s.h"\n    export *\n}\n' "$FRAMEWORK_NAME" "$FRAMEWORK_NAME" \
-        > "${dir}/Headers/module.modulemap"
+        > "${headers}/module.modulemap"
 }
 
 slice ios-device
