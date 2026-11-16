@@ -89,6 +89,45 @@ suspend fun importWithLlm(url: String, apiKey: String): String {
 }
 ```
 
+### Extract a Recipe From HTML You Already Have (No Network, No LLM)
+
+For a page the app has already loaded, for example in a `WebView` the user is signed in
+to. The structured extractors (JSON-LD, MicroData, HTML classes) run on the HTML you
+pass in; nothing is fetched.
+
+```kotlin
+val recipe = extractRecipeFromHtml(html = html, url = "https://example.com/recipe")
+if (recipe != null) {
+    recipe.name      // "Pancakes"
+    recipe.metadata  // YAML front matter, without the --- delimiters
+    recipe.text      // ingredients and instructions
+} else {
+    // No structured recipe on the page
+}
+```
+
+The call is synchronous; run it off the main thread for large pages.
+
+If this is all the app needs, depend on **`cooklang-import-extract`** instead of
+`cooklang-import` (same Maven repository, same version numbers; published from the
+first release after 0.13.1):
+
+```kotlin
+dependencies {
+    implementation("org.cooklang:cooklang-import-extract:<version>")
+}
+```
+
+```kotlin
+import org.cooklang.extract.extractRecipeFromHtml
+```
+
+Its package is `org.cooklang.extract`. It has `extractRecipeFromHtml` and `getVersion`
+only, links no HTTP, TLS or async runtime (its arm64 library is about 2 MB, a fraction
+of the full SDK's), asks for no `INTERNET` permission and needs no coroutines. Depend on one
+artifact or the other, never both: each ships a `libcooklang_import.so`, and only one
+of them can end up in the app.
+
 ### Extract Recipe Without Conversion (No LLM Required)
 
 ```kotlin
@@ -239,6 +278,15 @@ Output in `target/android/`:
 - `cooklang-import-android/` - Android library module
 - `jniLibs/` - Native libraries for all architectures
 - `kotlin/` - Kotlin binding files
+
+The extract-only SDK is built by `./scripts/build-android-extract.sh` (needs
+`cargo-ndk` and `ANDROID_NDK_HOME`), into `target/android-extract/`. To try a local
+build in an app before a release, publish it to `~/.m2`:
+
+```bash
+./scripts/publish-android-module.sh extract \
+    target/android-extract/cooklang-import-extract-android 0.0.0-local publishToMavenLocal
+```
 
 ### Supported Architectures
 

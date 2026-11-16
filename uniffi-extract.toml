@@ -1,6 +1,12 @@
 # Bindings for the extract-only build (`--no-default-features --features uniffi`).
-# Its Swift module has its own name so that it can sit next to the full SDK's in one
-# Swift package; an app links one of the two, never both.
+# Its Swift module and its Kotlin package have their own names, so that they cannot be
+# mistaken for the full SDK's (`CooklangImport`, `org.cooklang.import`). An app links
+# one of the two builds, never both: they are the same Rust library.
+
+[bindings.kotlin]
+package_name = "org.cooklang.extract"
+generate_immutable_records = true
+android = true
 
 [bindings.swift]
 ffi_module_name = "CooklangImportExtractFFI"
