@@ -109,11 +109,12 @@ if (recipe != null) {
 The call is synchronous; run it off the main thread for large pages.
 
 If this is all the app needs, depend on **`cooklang-import-extract`** instead of
-`cooklang-import` (same Maven repository, same version numbers):
+`cooklang-import` (same Maven repository, same version numbers; published from the
+first release after 0.13.1):
 
 ```kotlin
 dependencies {
-    implementation("org.cooklang:cooklang-import-extract:0.13.2")
+    implementation("org.cooklang:cooklang-import-extract:<version>")
 }
 ```
 

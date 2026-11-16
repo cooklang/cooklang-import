@@ -107,10 +107,12 @@ for entry in "${TARGETS[@]}"; do
 
     # Android 15+ devices with 16 KB pages refuse a 64-bit library whose segments
     # are aligned to less. The toolchain links with 16 KB as it is (seen with NDK
-    # 25.2 and 27.0); this fails the build if a change of toolchain takes that away.
+    # 25.2, 26.1 and 27.0); this fails the build if a change of toolchain takes
+    # that away.
     if [[ "$abi" != "armeabi-v7a" ]]; then
-        if "${NDK_BIN}/llvm-readelf" -lW "$lib" | awk '$1 == "LOAD" && $NF != "0x4000" { bad = 1 } END { exit !bad }'; then
-            echo "error: ${lib} is not aligned to 16 KB pages" >&2
+        alignments=$("${NDK_BIN}/llvm-readelf" -lW "$lib" | awk '$1 == "LOAD" { print $NF }' | sort -u)
+        if [[ "$alignments" != "0x4000" ]]; then
+            echo "error: ${lib} is not aligned to 16 KB pages (LOAD alignment: ${alignments:-none found})" >&2
             exit 1
         fi
     fi
