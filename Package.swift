@@ -29,8 +29,8 @@ let package = Package(
         ),
         .binaryTarget(
             name: "CooklangImportFFI",
-            url: "https://github.com/cooklang/cooklang-import/releases/download/v0.13.2/CooklangImportFFI.xcframework.zip",
-            checksum: "d00dd83c22e86c11017f4e68a192205b5f531af0201c77df9615c8d8a031ceff"
+            url: "https://github.com/cooklang/cooklang-import/releases/download/v0.13.3/CooklangImportFFI.xcframework.zip",
+            checksum: "fa0f02e0f97724517cbdd1b3393f35f3fd3734dd623f8f1e6f1b693ebae41ff3"
         ),
         .target(
             name: "CooklangImportExtract",
@@ -39,8 +39,8 @@ let package = Package(
         ),
         .binaryTarget(
             name: "CooklangImportExtractFFI",
-            url: "https://github.com/cooklang/cooklang-import/releases/download/v0.13.2/CooklangImportExtractFFI.xcframework.zip",
-            checksum: "bf09e69635451a3102945520279d2793df3e799bef5261daa3a2010caf2c4695"
+            url: "https://github.com/cooklang/cooklang-import/releases/download/v0.13.3/CooklangImportExtractFFI.xcframework.zip",
+            checksum: "fa5b025ff7263d084f7b8599cad79a22de314a449897272aa17c08f84a9524ce"
         ),
     ]
 )
