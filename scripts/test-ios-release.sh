@@ -70,15 +70,21 @@ ERRORS=0
 # Check device slice
 check_exists "CooklangImportFFI.xcframework/ios-arm64" || ((ERRORS++))
 check_exists "CooklangImportFFI.xcframework/ios-arm64/libcooklang_import.a" || ((ERRORS++))
-check_exists "CooklangImportFFI.xcframework/ios-arm64/Headers/CooklangImportFFI.h" || ((ERRORS++))
+check_exists "CooklangImportFFI.xcframework/ios-arm64/Headers/CooklangImportFFI/CooklangImportFFI.h" || ((ERRORS++))
+check_exists "CooklangImportFFI.xcframework/ios-arm64/Headers/CooklangImportFFI/module.modulemap" || ((ERRORS++))
+# A module map straight in Headers/ collides with other xcframeworks in an app.
+if [ -e "CooklangImportFFI.xcframework/ios-arm64/Headers/module.modulemap" ]; then
+    echo -e "  ${RED}✗${NC} Headers/module.modulemap must be in Headers/CooklangImportFFI/"
+    ((ERRORS++))
+fi
 
 # Check simulator slice
 if [ -d "CooklangImportFFI.xcframework/ios-arm64-simulator" ]; then
     check_exists "CooklangImportFFI.xcframework/ios-arm64-simulator/libcooklang_import.a" || ((ERRORS++))
-    check_exists "CooklangImportFFI.xcframework/ios-arm64-simulator/Headers/CooklangImportFFI.h" || ((ERRORS++))
+    check_exists "CooklangImportFFI.xcframework/ios-arm64-simulator/Headers/CooklangImportFFI/CooklangImportFFI.h" || ((ERRORS++))
 elif [ -d "CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator" ]; then
     check_exists "CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/libcooklang_import.a" || ((ERRORS++))
-    check_exists "CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/Headers/CooklangImportFFI.h" || ((ERRORS++))
+    check_exists "CooklangImportFFI.xcframework/ios-arm64_x86_64-simulator/Headers/CooklangImportFFI/CooklangImportFFI.h" || ((ERRORS++))
 else
     echo -e "  ${RED}✗${NC} No simulator slice found"
     ((ERRORS++))

@@ -100,12 +100,16 @@ jobs:
           # Copy simulator library
           cp target/aarch64-apple-ios-sim/release/libcooklang_import.a target/ios/ios-simulator/
 
-          # Create headers and module maps (must be in Headers/ directory)
-          mkdir -p target/ios/ios-device/Headers target/ios/ios-simulator/Headers
-          cp target/ios/swift/CooklangImportFFI.h target/ios/ios-device/Headers/
-          cp target/ios/swift/CooklangImportFFI.h target/ios/ios-simulator/Headers/
-          echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > target/ios/ios-device/Headers/module.modulemap
-          echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > target/ios/ios-simulator/Headers/module.modulemap
+          # The header and module map go in Headers/CooklangImportFFI/, not straight
+          # into Headers/: Xcode copies every static-library xcframework's Headers/
+          # into one shared include folder, and two that each ship
+          # Headers/module.modulemap cannot be built into the same app. Keep in
+          # step with scripts/build-ios.sh.
+          for platform in ios-device ios-simulator; do
+            mkdir -p "target/ios/${platform}/Headers/CooklangImportFFI"
+            cp target/ios/swift/CooklangImportFFI.h "target/ios/${platform}/Headers/CooklangImportFFI/"
+            echo 'module CooklangImportFFI { header "CooklangImportFFI.h" export * }' > "target/ios/${platform}/Headers/CooklangImportFFI/module.modulemap"
+          done
 
           # Create XCFramework
           xcodebuild -create-xcframework \
