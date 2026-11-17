@@ -120,16 +120,18 @@ create_xcframework() {
     export *
 }"
 
-    # Create headers and modulemap for device
-    # Note: modulemap must be in Headers/ directory for static library xcframeworks
-    mkdir -p "$ios_device_dir/Headers"
-    cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$ios_device_dir/Headers/"
-    echo "$modulemap_content" > "$ios_device_dir/Headers/module.modulemap"
-
-    # Create headers and modulemap for simulator
-    mkdir -p "$ios_sim_dir/Headers"
-    cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$ios_sim_dir/Headers/"
-    echo "$modulemap_content" > "$ios_sim_dir/Headers/module.modulemap"
+    # The header and module map go in a folder named after the module, not straight
+    # into Headers/. Xcode copies every static-library xcframework's Headers/ into
+    # one shared include folder, so two xcframeworks that each ship
+    # Headers/module.modulemap cannot be built into the same app ("Multiple commands
+    # produce .../include/module.modulemap"). Clang still finds
+    # <include>/<Module>/module.modulemap.
+    local platform_dir
+    for platform_dir in "$ios_device_dir" "$ios_sim_dir"; do
+        mkdir -p "$platform_dir/Headers/${FRAMEWORK_NAME}"
+        cp "${SWIFT_OUTPUT_DIR}/${FRAMEWORK_NAME}.h" "$platform_dir/Headers/${FRAMEWORK_NAME}/"
+        echo "$modulemap_content" > "$platform_dir/Headers/${FRAMEWORK_NAME}/module.modulemap"
+    done
 
     # Create XCFramework
     xcodebuild -create-xcframework \
